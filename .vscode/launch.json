@@ -1,0 +1,55 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Local",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "oremi_device",
+      "args": [
+        "start",
+        "--node-id",
+        "oremi-localhost-01",
+        "--language",
+        "fr",
+        "--ohunerin-host",
+        "localhost",
+        "--ohunerin-port",
+        "45023",
+        "--mqtt-broker",
+        "localhost",
+        "--mqtt-port",
+        "41883",
+        "--config",
+        "config/device.json"
+      ],
+      "cwd": "${workspaceFolder}",
+      "justMyCode": true
+    },
+    {
+      "name": "Container",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "oremi_device",
+      "args": [
+        "start",
+        "--node-id",
+        "oremi-docker-01",
+        "--language",
+        "fr",
+        "--ohunerin-host",
+        "detector",
+        "--ohunerin-port",
+        "5023",
+        "--mqtt-broker",
+        "mosquitto",
+        "--mqtt-port",
+        "1883",
+        "--config",
+        "config/device.json"
+      ],
+      "cwd": "${workspaceFolder}",
+      "justMyCode": true
+    }
+  ]
+}
