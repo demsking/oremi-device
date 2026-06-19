@@ -80,7 +80,8 @@ class OhunerinConfig(BaseModel):
   """
 
   threshold: float = Field(
-    default=0.85, description="The minimum confidence score required to trigger a sound event detection. Defaults to 0.85."
+    default=0.65,
+    description="The minimum confidence score required to trigger a sound event detection. Defaults to 0.65.",
   )
 
 

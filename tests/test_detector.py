@@ -26,7 +26,7 @@ class MockWebSocket:
   def __init__(self, messages: list[str]) -> None:
     self.messages = messages
 
-  def __aiter__(self) -> 'MockWebSocket':
+  def __aiter__(self) -> "MockWebSocket":
     return self
 
   async def __anext__(self) -> str:
@@ -42,22 +42,26 @@ async def test_detector_threshold_filtering() -> None:
   # Message 1: below threshold
   # Message 2: above threshold
   messages = [
-    json.dumps({
-      "type": "sound",
-      "sound": "cough",
-      "score": 0.5,
-      "date": "2026-06-15T09:00:00",
-    }),
-    json.dumps({
-      "type": "sound",
-      "sound": "cough",
-      "score": 0.9,
-      "date": "2026-06-15T09:00:00",
-    }),
+    json.dumps(
+      {
+        "type": "sound",
+        "sound": "cough",
+        "score": 0.5,
+        "date": "2026-06-15T09:00:00",
+      }
+    ),
+    json.dumps(
+      {
+        "type": "sound",
+        "sound": "cough",
+        "score": 0.6677674,
+        "date": "2026-06-13T07:35:04.123456",
+      }
+    ),
   ]
   mock_ws = MockWebSocket(messages)
 
-  detector = SoundDetector(mock_mqtt, mock_ws, None, delay=1, threshold=0.8)  # type: ignore
+  detector = SoundDetector(mock_mqtt, mock_ws, None, delay=1, threshold=0.65)  # type: ignore
 
   # Run detecting (it terminates when messages are exhausted)
   await detector.detecting()
@@ -67,7 +71,7 @@ async def test_detector_threshold_filtering() -> None:
   args = mock_mqtt.publish.call_args[0]
   assert args[0] == "sound"
   data = json.loads(args[1])
-  assert data["score"] == 0.9
+  assert data["score"] == 0.6677674
 
 
 @pytest.mark.asyncio
@@ -155,6 +159,7 @@ async def test_detector_multiple_active_sounds_clearing() -> None:
     "score": 0.9,
     "date": "2026-06-15T09:00:00",
   }
+
   sound2: DetectedSound = {
     "type": "sound",
     "sound": "snoring",

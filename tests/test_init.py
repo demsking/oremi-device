@@ -92,7 +92,7 @@ def test_ohunerin_config_with_threshold() -> None:
   # Default threshold
   features_content_default = {}
   config_default = OhunerinConfig.model_validate(features_content_default)
-  assert config_default.threshold == 0.85
+  assert config_default.threshold == 0.65
 
 
 def test_device_config_nested() -> None:

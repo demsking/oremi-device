@@ -157,7 +157,7 @@ state and reconnects Ohunerin with the newly selected language.
 
 **Ohunerin Component Settings**
 
-- `components.ohunerin.threshold` (Optional, default: `0.85`): Minimum confidence score accepted for Ohunerin sound and wake-word events.
+- `components.ohunerin.threshold` (Optional, default: `0.65`): Minimum confidence score accepted for Ohunerin sound and wake-word events.
 
 **Andika Component Settings**
 
@@ -170,7 +170,7 @@ state and reconnects Ohunerin with the newly selected language.
 {
   "components": {
     "ohunerin": {
-      "threshold": 0.85
+      "threshold": 0.65
     },
     "andika": {
       "model": "vosk-model-small-fr-0.22",
@@ -227,7 +227,7 @@ lowercase slug before publication:
   "type": "sound",
   "sound": "baby-cry-infant-cry",
   "score": 0.91,
-  "date": "2026-06-19T12:04:10.123456"
+  "datetime": "2026-06-19T12:04:10.123456"
 }
 ```
 
