@@ -90,7 +90,8 @@ async def test_andika_transcriber_publishes_partial_results() -> None:
 async def test_andika_transcriber_publishes_final_results() -> None:
   mqtt_client = MagicMock()
   websocket = AsyncMessages([json.dumps({"text": "bonjour oremi", "confidence": 0.9})])
-  transcriber = AndikaTranscriber(_make_context(), mqtt_client, websocket)
+  transcription_complete_event = asyncio.Event()
+  transcriber = AndikaTranscriber(_make_context(), mqtt_client, websocket, transcription_complete_event)
 
   await transcriber.transcribing()
 
@@ -101,6 +102,50 @@ async def test_andika_transcriber_publishes_final_results() -> None:
     retain=False,
     props=ANY,
   )
+  assert transcription_complete_event.is_set()
+
+
+@pytest.mark.asyncio
+async def test_andika_listens_only_between_wakeword_and_final_transcription() -> None:
+  component = AndikaComponent(_make_context())
+  component._wakeword_event = asyncio.Event()  # noqa: SLF001
+  listening = asyncio.Event()
+
+  class AudioListenerStub:
+    def __init__(self) -> None:
+      self.call_count = 0
+
+    async def listening(self) -> None:
+      self.call_count += 1
+      listening.set()
+      await asyncio.Event().wait()
+
+  audio_listener = AudioListenerStub()
+  component.audio_listener = audio_listener
+  activation_task = asyncio.create_task(component._activate_on_wakeword({"stream": MagicMock()}))  # noqa: SLF001
+
+  await asyncio.sleep(0)
+  assert audio_listener.call_count == 0
+
+  component._wakeword_event.set()  # noqa: SLF001
+  await asyncio.wait_for(listening.wait(), timeout=1)
+  assert audio_listener.call_count == 1
+  assert component._listening_task is not None  # noqa: SLF001
+  assert not component._listening_task.done()  # noqa: SLF001
+
+  component._transcription_complete_event.set()  # noqa: SLF001
+
+  async def wait_until_stopped() -> None:
+    while component._transcription_active:  # noqa: SLF001
+      await asyncio.sleep(0)
+
+  await asyncio.wait_for(wait_until_stopped(), timeout=1)
+  assert component._listening_task.done()  # noqa: SLF001
+
+  activation_task.cancel()
+
+  with pytest.raises(asyncio.CancelledError):
+    await activation_task
 
 
 @pytest.mark.asyncio

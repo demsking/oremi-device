@@ -35,12 +35,14 @@ class SoundDetector:
     *,
     delay: int,
     threshold: float,
+    wakeword_event: asyncio.Event | None = None,
   ):
     self.mqtt_client = mqtt_client
     self.websocket = websocket
     self.audio_stream: Audio | None = audio_stream
     self.delay = delay
     self.threshold = threshold
+    self.wakeword_event = wakeword_event
     self.published_sound_sentinel: dict[str, tuple[DetectedSoundType, asyncio.Task]] = {}
 
   async def clear_sound_after_delay(self, data: DetectedSound) -> None:
@@ -90,6 +92,9 @@ class SoundDetector:
     if data["type"] == "wakeword":
       self.mqtt_client.publish(data["type"], payload)
       self.schedule_clearing_task(data)
+
+      if self.wakeword_event:
+        self.wakeword_event.set()
     elif current_sound not in self.published_sound_sentinel:
       self.mqtt_client.publish(data["type"], payload)
       self.schedule_clearing_task(data)

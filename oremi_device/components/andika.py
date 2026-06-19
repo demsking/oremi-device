@@ -46,10 +46,17 @@ class AndikaSupportedModel(BaseModel):
 
 
 class AndikaTranscriber:
-  def __init__(self, context: DeviceContext, mqtt_client: MQTTClient, websocket) -> None:
+  def __init__(
+    self,
+    context: DeviceContext,
+    mqtt_client: MQTTClient,
+    websocket,
+    transcription_complete_event: asyncio.Event | None = None,
+  ) -> None:
     self.context = context
     self.mqtt_client = mqtt_client
     self.websocket = websocket
+    self.transcription_complete_event = transcription_complete_event
 
   def parse_transcription(self, payload: dict) -> tuple[Literal["partial", "text"] | None, str]:
     if "partial" in payload:
@@ -74,6 +81,9 @@ class AndikaTranscriber:
             self.mqtt_client.publish("transcription/partial", transcription, qos=1, retain=False, props=props)
           else:
             self.mqtt_client.publish("transcription/text", transcription, qos=1, retain=False, props=props)
+
+            if self.transcription_complete_event:
+              self.transcription_complete_event.set()
       else:
         logger.debug(f"Ignoring unknown Andika result payload: {payload}")
 
@@ -89,6 +99,9 @@ class AndikaComponent(AudioStreamComponent):
     self.audio_listener = None
     self._listening_task: asyncio.Task | None = None
     self._handle_task_done = None
+    self._wakeword_event: asyncio.Event | None = None
+    self._transcription_complete_event = asyncio.Event()
+    self._transcription_active = False
 
   @property
   def name(self) -> str:
@@ -100,7 +113,9 @@ class AndikaComponent(AudioStreamComponent):
 
   @property
   def listening_task(self) -> asyncio.Task | None:
-    return self._listening_task
+    # This task stops intentionally after each final transcription. Ohunerin's
+    # continuous listener remains responsible for microphone health checks.
+    return None
 
   def _get_supported_models(self) -> list[AndikaSupportedModel]:
     endpoint = (
@@ -207,15 +222,58 @@ class AndikaComponent(AudioStreamComponent):
 
       try:
         await self._listening_task
-      except (asyncio.CancelledError, Exception):
+      except asyncio.CancelledError:
+        if asyncio.current_task().cancelling():
+          raise
+      except Exception:
         pass
 
-    if new_stream is not None and self.audio_listener:
-      loop = asyncio.get_running_loop()
-      self._listening_task = loop.create_task(self.audio_listener.listening(), name="Andika Listening Task")
+    if self._transcription_active and new_stream is not None:
+      self._start_listening()
 
-      if self._handle_task_done:
-        self._listening_task.add_done_callback(self._handle_task_done)
+  def _start_listening(self) -> None:
+    if not self.audio_listener or (self._listening_task and not self._listening_task.done()):
+      return
+
+    loop = asyncio.get_running_loop()
+    self._listening_task = loop.create_task(self.audio_listener.listening(), name="Andika Listening Task")
+
+    if self._handle_task_done:
+      self._listening_task.add_done_callback(self._handle_task_done)
+
+  async def _stop_listening(self) -> None:
+    if self._listening_task and not self._listening_task.done():
+      self._listening_task.cancel()
+
+      try:
+        await self._listening_task
+      except asyncio.CancelledError:
+        if asyncio.current_task().cancelling():
+          raise
+      except Exception:
+        pass
+
+  async def _activate_on_wakeword(self, active_stream_container: dict) -> None:
+    if self._wakeword_event is None:
+      return
+
+    while True:
+      await self._wakeword_event.wait()
+      self._wakeword_event.clear()
+      self._transcription_complete_event.clear()
+      self._transcription_active = True
+
+      try:
+        if active_stream_container["stream"] is not None:
+          self._start_listening()
+
+        await self._transcription_complete_event.wait()
+      finally:
+        try:
+          await self._stop_listening()
+        finally:
+          self._transcription_active = False
+          self._wakeword_event.clear()
 
   async def _run(
     self,
@@ -225,6 +283,7 @@ class AndikaComponent(AudioStreamComponent):
   ) -> None:
     loop = asyncio.get_running_loop()
     active_stream_container = shared_resources["active_stream_container"]
+    self._wakeword_event = shared_resources["wakeword_event"]
     andika_uri = self.build_connection_uri(config)
 
     logger.info(f"Andika Connection URI: {andika_uri}")
@@ -238,6 +297,8 @@ class AndikaComponent(AudioStreamComponent):
     retry_delay = 2.0
 
     while True:
+      activation_task: asyncio.Task | None = None
+
       try:
         async with connect(
           andika_uri, ssl=ssl_context, user_agent_header=f"{APP_NAME}/{APP_VERSION}/{self.context.node_id}"
@@ -246,18 +307,21 @@ class AndikaComponent(AudioStreamComponent):
           retry_delay = 2.0
           logger.info(f"Connected to Oremi Andika server at {self.context.andika_host}:{self.context.andika_port}")
 
-          transcriber = AndikaTranscriber(self.context, mqtt_client, websocket)
+          transcriber = AndikaTranscriber(
+            self.context,
+            mqtt_client,
+            websocket,
+            self._transcription_complete_event,
+          )
           self.audio_listener = AudioListener(active_stream_container["stream"], websocket, mqtt_client)
           transcribing_task = loop.create_task(transcriber.transcribing(), name="Andika Transcription Task")
+          activation_task = loop.create_task(
+            self._activate_on_wakeword(active_stream_container),
+            name="Andika Wakeword Activation Task",
+          )
 
           if self._handle_task_done:
             transcribing_task.add_done_callback(self._handle_task_done)
-
-          if active_stream_container["stream"] is not None:
-            self._listening_task = loop.create_task(self.audio_listener.listening(), name="Andika Listening Task")
-
-            if self._handle_task_done:
-              self._listening_task.add_done_callback(self._handle_task_done)
 
           await transcribing_task
       except asyncio.CancelledError:
@@ -266,13 +330,15 @@ class AndikaComponent(AudioStreamComponent):
       except Exception as error:
         logger.error(f"Andika component error: {error}")
       finally:
-        if self._listening_task and not self._listening_task.done():
-          self._listening_task.cancel()
+        if activation_task and not activation_task.done():
+          activation_task.cancel()
 
           try:
-            await self._listening_task
-          except (asyncio.CancelledError, Exception):
+            await activation_task
+          except asyncio.CancelledError:
             pass
+
+        await self._stop_listening()
 
         self._websocket = None
 

@@ -178,6 +178,7 @@ async def start() -> None:
   device_enable_queue: asyncio.Queue = asyncio.Queue()
   # Queue to receive HA language-select commands
   language_change_queue: asyncio.Queue = asyncio.Queue()
+  wakeword_event = asyncio.Event()
   device_state: dict = {"enabled": True}
   language_state: dict = {"language": args.language}
 
@@ -313,6 +314,7 @@ async def start() -> None:
     "device_change_queue": device_change_queue,
     "device_enable_queue": device_enable_queue,
     "language_change_queue": language_change_queue,
+    "wakeword_event": wakeword_event,
     "device_state": device_state,
     "language_state": language_state,
     "change_audio_device": change_audio_device,

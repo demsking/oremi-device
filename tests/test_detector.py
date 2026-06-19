@@ -118,8 +118,9 @@ async def test_detector_cooldown_normal_sound() -> None:
 async def test_detector_wakeword_no_cooldown() -> None:
   mock_mqtt = MagicMock()
   mock_ws = MagicMock()
+  wakeword_event = asyncio.Event()
 
-  detector = SoundDetector(mock_mqtt, mock_ws, None, delay=1, threshold=0.8)
+  detector = SoundDetector(mock_mqtt, mock_ws, None, delay=1, threshold=0.8, wakeword_event=wakeword_event)
 
   wakeword: DetectedSound = {
     "type": "wakeword",
@@ -132,6 +133,7 @@ async def test_detector_wakeword_no_cooldown() -> None:
   await detector.process_detected_sound(wakeword)
   assert "hey-assistant" in detector.published_sound_sentinel
   assert mock_mqtt.publish.call_count == 1
+  assert wakeword_event.is_set()
 
   # Second occurrence should publish immediately (no cooldown for wakeword)
   mock_mqtt.publish.reset_mock()

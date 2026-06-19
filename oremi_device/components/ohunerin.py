@@ -256,6 +256,7 @@ class OhunerinComponent(AudioStreamComponent):
             active_stream_container["stream"],
             delay=self.context.delay,
             threshold=config.threshold,
+            wakeword_event=shared_resources["wakeword_event"],
           )
 
           self.audio_listener = AudioListener(
