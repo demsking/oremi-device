@@ -63,6 +63,7 @@ async def test_main_audio_device_error() -> None:
     node_id="test-node",
     language="fr",
     delay=3,
+    conversation_timeout=15,
     ohunerin_host="localhost",
     ohunerin_port=5023,
     andika_host="localhost",
@@ -136,5 +137,5 @@ def test_sound_detector_terminate_with_no_stream() -> None:
   detector = SoundDetector(mock_mqtt, mock_ws, None, delay=3, threshold=0.8)
   # Should not raise AttributeError when audio_stream is None
   detector.terminate()
-  mock_mqtt.set_availability.assert_called_once_with(False)
-  mock_mqtt.disconnect.assert_called_once()
+  mock_mqtt.set_availability.assert_not_called()
+  mock_mqtt.disconnect.assert_not_called()

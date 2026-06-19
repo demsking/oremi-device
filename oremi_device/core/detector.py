@@ -108,8 +108,7 @@ class SoundDetector:
     self.published_sound_sentinel[data["sound"]] = (data["type"], task)
 
   def terminate(self) -> None:
-    if self.audio_stream:
-      self.audio_stream.stop()
+    for _, task in self.published_sound_sentinel.values():
+      task.cancel()
 
-    self.mqtt_client.set_availability(False)
-    self.mqtt_client.disconnect()
+    self.published_sound_sentinel.clear()

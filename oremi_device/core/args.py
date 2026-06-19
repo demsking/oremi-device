@@ -19,6 +19,15 @@ from .package import APP_NAME
 from .package import APP_VERSION
 
 
+def positive_float(value: str) -> float:
+  parsed = float(value)
+
+  if parsed <= 0:
+    raise argparse.ArgumentTypeError("must be greater than zero")
+
+  return parsed
+
+
 def parse_arguments() -> argparse.Namespace:
   parser = argparse.ArgumentParser(prog=APP_NAME, description=APP_DESCRIPTION)
   subparsers = parser.add_subparsers(dest="command")
@@ -35,6 +44,7 @@ def parse_arguments() -> argparse.Namespace:
     "-l",
     "--language",
     type=str,
+    choices=("fr", "en"),
     default="fr",
     help='The language to use for wake word detection and audio processing. Default is "fr" (French).',
   )
@@ -74,6 +84,13 @@ def parse_arguments() -> argparse.Namespace:
     type=int,
     default=3,
     help="The cooldown period (in seconds) to wait before sending the same sound event again (default: 3).",
+  )
+
+  command.add_argument(
+    "--conversation-timeout",
+    type=positive_float,
+    default=15.0,
+    help="Maximum seconds to capture speech after a wake word (default: 15).",
   )
 
   command.add_argument("--config", type=str, help="Path to the Oremi Device configuration file.")

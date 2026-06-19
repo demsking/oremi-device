@@ -76,14 +76,15 @@ class AndikaTranscriber:
       field, transcription = self.parse_transcription(payload)
 
       if field:
-        if transcription:
-          if field == "partial":
+        if field == "partial":
+          if transcription:
             self.mqtt_client.publish("transcription/partial", transcription, qos=1, retain=False, props=props)
-          else:
+        else:
+          if transcription:
             self.mqtt_client.publish("transcription/text", transcription, qos=1, retain=False, props=props)
 
-            if self.transcription_complete_event:
-              self.transcription_complete_event.set()
+          if self.transcription_complete_event:
+            self.transcription_complete_event.set()
       else:
         logger.debug(f"Ignoring unknown Andika result payload: {payload}")
 
@@ -137,12 +138,10 @@ class AndikaComponent(AudioStreamComponent):
     payload: dict = {
       "name": "Transcription",
       "unique_id": f"{node_id}_transcription",
-      "state_topic": f"{topic}/transcription",
-      "value_template": "{{ value_json.text | truncate(255, True, '') }}",
+      "state_topic": f"{topic}/transcription/text",
       "availability_topic": f"{topic}/available",
       "payload_available": "online",
       "payload_not_available": "offline",
-      "json_attributes_topic": f"{topic}/transcription",
       "icon": "mdi:subtitles",
       "device": device,
     }
@@ -278,7 +277,13 @@ class AndikaComponent(AudioStreamComponent):
         ):
           self._start_listening()
 
-        await self._transcription_complete_event.wait()
+        try:
+          await asyncio.wait_for(
+            self._transcription_complete_event.wait(),
+            timeout=self.context.conversation_timeout,
+          )
+        except TimeoutError:
+          logger.info(f"Andika conversation timed out after {self.context.conversation_timeout:g}s")
       finally:
         try:
           await self._stop_listening()

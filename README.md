@@ -107,6 +107,7 @@ oremi-device start [options]
 | `--no-microphone`                | No       | Microphone enabled   | Disable microphone initialization and audio capture.                                                                                           |
 | `--no-speaker`                   | No       | Speaker enabled      | Disable speaker initialization and speaker MQTT controls.                                                                                      |
 | `--delay SECONDS`                | No       | `3`                  | Suppress duplicate sound events for this period and then publish a clearing event. It is also used as the Andika MQTT message expiry interval. |
+| `--conversation-timeout SECONDS` | No       | `15`                 | Stop capturing speech and return to wake-word mode when Andika does not return a final result within this period.                              |
 | `--config PATH`                  | No       | Built-in defaults    | JSON component configuration file.                                                                                                             |
 | `--cert-file PATH`               | No       | Insecure connections | CA certificate used for TLS connections to both services. This changes their WebSocket and HTTP URLs to `wss` and `https`.                     |
 | `--no-mqtt-discovery`            | No       | Discovery enabled    | Disable Home Assistant MQTT discovery.                                                                                                         |
@@ -124,7 +125,7 @@ At startup, Oremi Device:
 4. Starts the Ohunerin and Andika components.
 5. Streams microphone audio continuously to Ohunerin.
 6. Starts streaming audio to Andika after a wake-word event and stops after
-   Andika returns a final transcription.
+   Andika returns a final transcription or the conversation timeout expires.
 
 Ohunerin and Andika reconnect with exponential backoff when their WebSocket
 connections fail. The application also polls for audio-device changes and
@@ -132,8 +133,7 @@ updates Home Assistant discovery options when devices appear or disappear.
 
 The device enable and microphone mute controls pause audio streaming without
 stopping the service connections. A language command updates the retained MQTT
-state and restarts the audio feeds. The service connection context retains the
-language selected at startup.
+state and reconnects Ohunerin with the newly selected language.
 
 ## Configuration File
 
@@ -196,7 +196,7 @@ Examples below use the default base topic `oremi/device` and a node ID of
 | `sound`                 | JSON detection event      | Environmental sounds accepted by the configured threshold. Duplicate labels are suppressed during `--delay`. |
 | `wakeword`              | JSON detection event      | Wake-word events also activate Andika transcription.                                                         |
 | `transcription/partial` | UTF-8 text                | Non-retained partial Andika result, QoS 1.                                                                   |
-| `transcription/text`    | UTF-8 text                | Non-retained final Andika result, QoS 1.                                                                     |
+| `transcription/text`    | UTF-8 text                | Non-retained final Andika result, QoS 1. This is also the Home Assistant transcription sensor state topic.   |
 | `microphone/state`      | Microphone name or `None` | Retained active microphone state.                                                                            |
 
 Ohunerin detection messages use this shape. The `sound` value is converted to a

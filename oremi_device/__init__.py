@@ -64,6 +64,7 @@ async def start() -> None:
     node_id=args.node_id,
     language=args.language,
     delay=args.delay,
+    conversation_timeout=args.conversation_timeout,
     ohunerin_host=args.ohunerin_host,
     ohunerin_port=args.ohunerin_port,
     andika_host=args.andika_host,
@@ -289,7 +290,11 @@ async def start() -> None:
       try:
         new_language = message.payload.decode("utf-8").strip().lower()
         logger.info(f"Received language set command: {new_language}")
-        loop.call_soon_threadsafe(language_change_queue.put_nowait, new_language)
+
+        if new_language in ("fr", "en"):
+          loop.call_soon_threadsafe(language_change_queue.put_nowait, new_language)
+        else:
+          logger.warning(f"Ignoring unsupported language command: {new_language}")
       except Exception as error:
         logger.error(f"Error decoding or handling MQTT language command: {error}")
 
@@ -712,7 +717,7 @@ async def start() -> None:
       elif language_change_task is not None and language_change_task in done:
         new_language = language_change_task.result()
         language_state["language"] = new_language
-        args.language = new_language
+        context.language = new_language
         logger.info(f"Language switched to: {new_language}")
 
         # Publish the new language state for HA
@@ -745,15 +750,11 @@ async def start() -> None:
           except Exception as error:
             logger.error(f"Failed to republish discovery after language change: {error}")
 
-        # Restart audio components to reconnect to ohunerin with the new language
-        if needs_audio:
-          curr_stream = active_stream_container["stream"]
-
-          for component, _ in started_components:
-            if isinstance(component, AudioStreamComponent):
-              await component.on_device_changed(None)
-              if curr_stream is not None and device_state["enabled"] and not device_state["microphone_muted"]:
-                await component.on_device_changed(curr_stream)
+        # Ohunerin reads the language when opening its WebSocket, so reconnect it.
+        for component, comp_config in started_components:
+          if component.name == "ohunerin":
+            await component.stop()
+            await component.start(comp_config, mqtt_client, shared_resources)
       else:
         is_listening_done = any(t in listening_tasks for t in done)
         is_main_done = any(t in component_tasks for t in done)
@@ -772,3 +773,11 @@ async def start() -> None:
     # Ensure all components are stopped
     for component, _ in started_components:
       await component.stop()
+
+    current_stream = active_stream_container["stream"]
+
+    if current_stream is not None:
+      current_stream.stop()
+
+    mqtt_client.set_availability(False)
+    mqtt_client.disconnect()

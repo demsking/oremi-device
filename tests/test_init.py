@@ -25,6 +25,7 @@ def _make_context(**kwargs) -> DeviceContext:
     "node_id": "test-node",
     "language": "fr",
     "delay": 3,
+    "conversation_timeout": 15,
     "ohunerin_host": "localhost",
     "ohunerin_port": 5023,
     "andika_host": "localhost",
@@ -159,5 +160,6 @@ def test_andika_ha_entities() -> None:
   assert entity_slug == "transcription"
   assert payload["name"] == "Transcription"
   assert payload["unique_id"] == "oremi-device-test-node_transcription"
-  assert payload["state_topic"] == "oremi/device/test-node/transcription"
-  assert payload["value_template"] == "{{ value_json.text | truncate(255, True, '') }}"
+  assert payload["state_topic"] == "oremi/device/test-node/transcription/text"
+  assert "value_template" not in payload
+  assert "json_attributes_topic" not in payload

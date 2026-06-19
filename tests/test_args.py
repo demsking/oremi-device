@@ -53,3 +53,15 @@ def test_debug_option_is_rejected() -> None:
   with patch("sys.argv", [*BASE_ARGS, "--debug"]):
     with pytest.raises(SystemExit, match="2"):
       parse_arguments()
+
+
+def test_conversation_timeout_must_be_positive() -> None:
+  with patch("sys.argv", [*BASE_ARGS, "--conversation-timeout", "0"]):
+    with pytest.raises(SystemExit, match="2"):
+      parse_arguments()
+
+
+def test_language_must_be_supported() -> None:
+  with patch("sys.argv", [*BASE_ARGS, "--language", "de"]):
+    with pytest.raises(SystemExit, match="2"):
+      parse_arguments()

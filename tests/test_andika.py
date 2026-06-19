@@ -51,6 +51,7 @@ def _make_context(**kwargs) -> DeviceContext:
     "node_id": "test-node",
     "language": "fr",
     "delay": 3,
+    "conversation_timeout": 15,
     "ohunerin_host": "localhost",
     "ohunerin_port": 5023,
     "andika_host": "andika",
@@ -106,6 +107,23 @@ async def test_andika_transcriber_publishes_final_results() -> None:
 
 
 @pytest.mark.asyncio
+async def test_andika_empty_final_result_completes_conversation() -> None:
+  mqtt_client = MagicMock()
+  transcription_complete_event = asyncio.Event()
+  transcriber = AndikaTranscriber(
+    _make_context(),
+    mqtt_client,
+    AsyncMessages([json.dumps({"text": ""})]),
+    transcription_complete_event,
+  )
+
+  await transcriber.transcribing()
+
+  mqtt_client.publish.assert_not_called()
+  assert transcription_complete_event.is_set()
+
+
+@pytest.mark.asyncio
 async def test_andika_listens_only_between_wakeword_and_final_transcription() -> None:
   component = AndikaComponent(_make_context())
   component._wakeword_event = asyncio.Event()  # noqa: SLF001
@@ -144,6 +162,31 @@ async def test_andika_listens_only_between_wakeword_and_final_transcription() ->
 
   activation_task.cancel()
 
+  with pytest.raises(asyncio.CancelledError):
+    await activation_task
+
+
+@pytest.mark.asyncio
+async def test_andika_stops_listening_when_conversation_times_out() -> None:
+  component = AndikaComponent(_make_context(conversation_timeout=0.01))
+  component._wakeword_event = asyncio.Event()  # noqa: SLF001
+
+  class AudioListenerStub:
+    async def listening(self) -> None:
+      await asyncio.Event().wait()
+
+  component.audio_listener = AudioListenerStub()
+  activation_task = asyncio.create_task(component._activate_on_wakeword({"stream": MagicMock()}))  # noqa: SLF001
+  component._wakeword_event.set()  # noqa: SLF001
+
+  async def wait_until_stopped() -> None:
+    while component._transcription_active or component._listening_task is None:  # noqa: SLF001
+      await asyncio.sleep(0)
+
+  await asyncio.wait_for(wait_until_stopped(), timeout=1)
+  assert component._listening_task.done()  # noqa: SLF001
+
+  activation_task.cancel()
   with pytest.raises(asyncio.CancelledError):
     await activation_task
 

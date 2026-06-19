@@ -33,6 +33,9 @@ class DeviceContext(BaseModel):
   delay: int
   """The cooldown period (in seconds) after a sound event is detected during which subsequent events are ignored to prevent rapid retriggering."""
 
+  conversation_timeout: float = Field(gt=0)
+  """Maximum time to capture speech after a wake word before returning to idle."""
+
   ohunerin_host: str
   """The hostname or IP address of the Ohunerin service."""
 
