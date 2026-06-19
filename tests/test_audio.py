@@ -78,6 +78,8 @@ async def test_main_audio_device_error() -> None:
     mqtt_password=None,
     mqtt_discovery_prefix=None,
     mqtt_discovery=False,
+    microphone_enabled=True,
+    speaker_enabled=True,
   )
 
   with patch('oremi_device.parse_arguments', return_value=fake_args), \

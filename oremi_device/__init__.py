@@ -48,6 +48,10 @@ async def start() -> None:
   logger.info(f"Configuration Andika Host: {args.andika_host}")
   logger.info(f"Configuration Andika Port: {args.andika_port}")
   logger.info(f"Configuration Secure Connection: {'Enabled' if args.cert_file else 'Disabled'}")
+  microphone_enabled = args.microphone_enabled
+  speaker_enabled = args.speaker_enabled
+  logger.info(f"Configuration Microphone: {'Enabled' if microphone_enabled else 'Disabled'}")
+  logger.info(f"Configuration Speaker: {'Enabled' if speaker_enabled else 'Disabled'}")
 
   if args.cert_file:
     logger.info(f"Configuration Certificate File: {args.cert_file}")
@@ -94,7 +98,7 @@ async def start() -> None:
   # ── Audio stream (only for AudioStreamComponents) ────────────────────────────
   # Check whether any active component actually needs the microphone so that
   # HTTP-only components (e.g. Injini) can run without any audio hardware.
-  needs_audio = any(isinstance(c, AudioStreamComponent) for c, _ in active_components)
+  needs_audio = microphone_enabled and any(isinstance(c, AudioStreamComponent) for c, _ in active_components)
 
   audio_stream: Audio | None = None
 
@@ -108,18 +112,23 @@ async def start() -> None:
     logger.info(f"Active Microphone Device: {audio_stream.device_name}")
     compatible_devices = Audio.get_compatible_input_devices(current_device=audio_stream.device_name)
     logger.info(f"Compatible Input Devices: {', '.join(compatible_devices) if compatible_devices else 'None'}")
-  else:
+  elif microphone_enabled:
     logger.info("No AudioStreamComponent active — skipping audio initialisation.")
+  else:
+    logger.info("Microphone disabled — skipping audio initialisation.")
 
   active_stream_container: dict = {"stream": audio_stream}
 
   speaker: Speaker | None = None
 
-  try:
-    speaker = Speaker()
-    logger.info(f"Active Speaker Device: {speaker.device_name}")
-  except SpeakerDeviceError as error:
-    logger.warning(str(error))
+  if speaker_enabled:
+    try:
+      speaker = Speaker()
+      logger.info(f"Active Speaker Device: {speaker.device_name}")
+    except SpeakerDeviceError as error:
+      logger.warning(str(error))
+  else:
+    logger.info("Speaker disabled — skipping speaker initialisation.")
 
   # ── MQTT client ──────────────────────────────────────────────────────────────
   mqtt_client = MQTTClient(
@@ -161,9 +170,10 @@ async def start() -> None:
       client.subscribe(mqtt_client.get_microphone_command_topic())
       client.subscribe(mqtt_client.get_mute_command_topic())
 
-    client.subscribe(mqtt_client.get_speaker_command_topic())
-    client.subscribe(mqtt_client.get_speaker_mute_cmd_topic())
-    client.subscribe(mqtt_client.get_speaker_volume_cmd_topic())
+    if speaker_enabled:
+      client.subscribe(mqtt_client.get_speaker_command_topic())
+      client.subscribe(mqtt_client.get_speaker_mute_cmd_topic())
+      client.subscribe(mqtt_client.get_speaker_volume_cmd_topic())
 
     # Subscribe to the instance-scoped enable/disable switch command topic.
     client.subscribe(mqtt_client.get_switch_command_topic())
@@ -183,16 +193,18 @@ async def start() -> None:
         ]
 
         mqtt_client.publish_discovery_configs(
-          input_devices=Audio.get_compatible_input_devices(current_device=curr_name),
+          input_devices=Audio.get_compatible_input_devices(current_device=curr_name) if needs_audio else [],
           current_device=curr_name,
           entities=ha_entities,
           enabled=device_state["enabled"],
           microphone_muted=device_state["microphone_muted"],
-          output_devices=Speaker.get_compatible_output_devices(),
+          output_devices=Speaker.get_compatible_output_devices() if speaker_enabled else [],
           current_output=speaker_state["device"],
           speaker_muted=speaker_state["muted"],
           speaker_volume=speaker_state["volume"],
           current_language=language_state["language"],
+          microphone_enabled=microphone_enabled,
+          speaker_enabled=speaker_enabled,
         )
       except Exception as error:
         logger.error(f"Failed to publish MQTT discovery configs: {error}")
@@ -244,7 +256,7 @@ async def start() -> None:
       except Exception as error:
         logger.error(f"Error decoding or handling MQTT microphone mute command: {error}")
 
-    elif topic == mqtt_client.get_speaker_command_topic():
+    elif speaker_enabled and topic == mqtt_client.get_speaker_command_topic():
       try:
         new_speaker = message.payload.decode("utf-8").strip()
         logger.info(f"Received speaker set command: {new_speaker}")
@@ -252,7 +264,7 @@ async def start() -> None:
       except Exception as error:
         logger.error(f"Error decoding or handling MQTT speaker command: {error}")
 
-    elif topic == mqtt_client.get_speaker_mute_cmd_topic():
+    elif speaker_enabled and topic == mqtt_client.get_speaker_mute_cmd_topic():
       try:
         payload = message.payload.decode("utf-8").strip().upper()
         logger.info(f"Received speaker mute command: {payload}")
@@ -262,7 +274,7 @@ async def start() -> None:
       except Exception as error:
         logger.error(f"Error decoding or handling MQTT speaker mute command: {error}")
 
-    elif topic == mqtt_client.get_speaker_volume_cmd_topic():
+    elif speaker_enabled and topic == mqtt_client.get_speaker_volume_cmd_topic():
       try:
         volume = float(message.payload.decode("utf-8").strip()) / 100
         logger.info(f"Received speaker volume command: {volume:.0%}")
@@ -351,11 +363,13 @@ async def start() -> None:
           entities=ha_entities,
           enabled=device_state["enabled"],
           microphone_muted=device_state["microphone_muted"],
-          output_devices=Speaker.get_compatible_output_devices(),
+          output_devices=Speaker.get_compatible_output_devices() if speaker_enabled else [],
           current_output=speaker_state["device"],
           speaker_muted=speaker_state["muted"],
           speaker_volume=speaker_state["volume"],
           current_language=language_state["language"],
+          microphone_enabled=microphone_enabled,
+          speaker_enabled=speaker_enabled,
         )
 
       logger.info(f"Successfully switched to microphone: {new_stream.device_name}")
@@ -473,11 +487,13 @@ async def start() -> None:
             entities=ha_entities,
             enabled=device_state["enabled"],
             microphone_muted=device_state["microphone_muted"],
-            output_devices=Speaker.get_compatible_output_devices(),
+            output_devices=Speaker.get_compatible_output_devices() if speaker_enabled else [],
             current_output=speaker_state["device"],
             speaker_muted=speaker_state["muted"],
             speaker_volume=speaker_state["volume"],
             current_language=language_state["language"],
+            microphone_enabled=microphone_enabled,
+            speaker_enabled=speaker_enabled,
           )
         except Exception as error:
           logger.error(f"Failed to publish MQTT discovery configs on device change: {error}")
@@ -548,10 +564,12 @@ async def start() -> None:
       if microphone_mute_task is not None:
         tasks.append(microphone_mute_task)
 
-      speaker_change_task = loop.create_task(speaker_change_queue.get())
-      speaker_mute_task = loop.create_task(speaker_mute_queue.get())
-      speaker_volume_task = loop.create_task(speaker_volume_queue.get())
-      tasks.extend((speaker_change_task, speaker_mute_task, speaker_volume_task))
+      speaker_change_task = loop.create_task(speaker_change_queue.get()) if speaker_enabled else None
+      speaker_mute_task = loop.create_task(speaker_mute_queue.get()) if speaker_enabled else None
+      speaker_volume_task = loop.create_task(speaker_volume_queue.get()) if speaker_enabled else None
+
+      if speaker_enabled:
+        tasks.extend((speaker_change_task, speaker_mute_task, speaker_volume_task))
 
       language_change_task = loop.create_task(language_change_queue.get())
       tasks.append(language_change_task)
@@ -652,7 +670,7 @@ async def start() -> None:
                 await component.on_device_changed(curr_stream)
           else:
             loop.call_soon_threadsafe(device_change_queue.put_nowait, "__auto_select__")
-      elif speaker_change_task in done:
+      elif speaker_change_task is not None and speaker_change_task in done:
         requested_speaker = speaker_change_task.result()
 
         try:
@@ -672,7 +690,7 @@ async def start() -> None:
         except SpeakerDeviceError as error:
           logger.error(error)
           mqtt_client.set_speaker_state(speaker_state["device"])
-      elif speaker_mute_task in done:
+      elif speaker_mute_task is not None and speaker_mute_task in done:
         muted = speaker_mute_task.result()
         speaker_state["muted"] = muted
 
@@ -681,7 +699,7 @@ async def start() -> None:
 
         mqtt_client.set_speaker_mute_state(muted)
         logger.info(f"Speaker {'muted' if muted else 'unmuted'}")
-      elif speaker_volume_task in done:
+      elif speaker_volume_task is not None and speaker_volume_task in done:
         volume = speaker_volume_task.result()
         speaker_state["volume"] = volume
 
@@ -710,16 +728,18 @@ async def start() -> None:
               entity for component, _ in started_components for entity in component.ha_entities(node_id, mqtt_client.topic, device)
             ]
             mqtt_client.publish_discovery_configs(
-              input_devices=Audio.get_compatible_input_devices(current_device=curr_name),
+              input_devices=Audio.get_compatible_input_devices(current_device=curr_name) if needs_audio else [],
               current_device=curr_name,
               entities=ha_entities,
               enabled=device_state["enabled"],
               microphone_muted=device_state["microphone_muted"],
-              output_devices=Speaker.get_compatible_output_devices(),
+              output_devices=Speaker.get_compatible_output_devices() if speaker_enabled else [],
               current_output=speaker_state["device"],
               speaker_muted=speaker_state["muted"],
               speaker_volume=speaker_state["volume"],
               current_language=new_language,
+              microphone_enabled=microphone_enabled,
+              speaker_enabled=speaker_enabled,
             )
           except Exception as error:
             logger.error(f"Failed to republish discovery after language change: {error}")

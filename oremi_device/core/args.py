@@ -48,6 +48,20 @@ def parse_arguments() -> argparse.Namespace:
   )
 
   command.add_argument(
+    "--no-microphone",
+    action="store_false",
+    dest="microphone_enabled",
+    help="Disable microphone capture, sound detection, and wake word detection.",
+  )
+
+  command.add_argument(
+    "--no-speaker",
+    action="store_false",
+    dest="speaker_enabled",
+    help="Disable speaker output.",
+  )
+
+  command.add_argument(
     "-d",
     "--device",
     type=str,

@@ -107,7 +107,7 @@ async def test_detector_cooldown_normal_sound() -> None:
     args = call[0]
     topic = args[0]
     payload = args[1]
-    retain = args[2] if len(args) > 2 else False
+    retain = call.kwargs.get("retain", False)
     data = json.loads(payload)
     if topic == "sound" and data["sound"] == "..." and retain is True:
       clearing_sent = True
@@ -200,7 +200,7 @@ async def test_detector_multiple_active_sounds_clearing() -> None:
     args = call[0]
     topic = args[0]
     payload = args[1]
-    retain = args[2] if len(args) > 2 else False
+    retain = call.kwargs.get("retain", False)
     data = json.loads(payload)
     if topic == "sound" and data["sound"] == "..." and retain is True:
       clearing_sent = True

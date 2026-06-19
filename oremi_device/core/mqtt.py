@@ -162,6 +162,8 @@ class MQTTClient:  # pylint: disable=too-many-public-methods
     speaker_volume: float = 1.0,
     current_language: str = "fr",
     supported_languages: list[str] | None = None,
+    microphone_enabled: bool = True,
+    speaker_enabled: bool = True,
   ) -> None:
     """Publish Home Assistant MQTT discovery configs.
 
@@ -184,6 +186,8 @@ class MQTTClient:  # pylint: disable=too-many-public-methods
       current_language: The currently active language code (e.g. ``'fr'``).
       supported_languages: List of language codes to present in the HA select.
         Defaults to ``['fr', 'en']`` when not provided.
+      microphone_enabled: Whether microphone controls should be advertised.
+      speaker_enabled: Whether speaker controls should be advertised.
     """
     if not self.discovery_prefix:
       return
@@ -262,8 +266,10 @@ class MQTTClient:  # pylint: disable=too-many-public-methods
     }
 
     mute_topic = f"{self.discovery_prefix}/switch/{node_id}/microphone_muted/config"
-    self.client.publish(mute_topic, json.dumps(mute_payload), retain=True)
-    self.set_mute_state(microphone_muted)
+    self.client.publish(mute_topic, json.dumps(mute_payload) if microphone_enabled else "", retain=True)
+
+    if microphone_enabled:
+      self.set_mute_state(microphone_muted)
 
     # ── Device-level: microphone select ─────────────────────────────────────
     # See https://www.home-assistant.io/integrations/select.mqtt/
@@ -283,10 +289,11 @@ class MQTTClient:  # pylint: disable=too-many-public-methods
     select_topic = f"{self.discovery_prefix}/select/{node_id}/microphone_device/config"
 
     logger.info(f"Publishing MQTT Discovery configurations to {self.discovery_prefix}...")
-    self.client.publish(select_topic, json.dumps(select_payload), retain=True)
+    self.client.publish(select_topic, json.dumps(select_payload) if microphone_enabled else "", retain=True)
 
     # Publish currently active device state
-    self.publish("microphone/state", current_device, retain=True)
+    if microphone_enabled:
+      self.publish("microphone/state", current_device, retain=True)
 
     # ── Device-level: speaker output select ──────────────────────────────────
     speaker_payload = {
@@ -302,8 +309,10 @@ class MQTTClient:  # pylint: disable=too-many-public-methods
       "device": device,
     }
     speaker_topic = f"{self.discovery_prefix}/select/{node_id}/speaker_device/config"
-    self.client.publish(speaker_topic, json.dumps(speaker_payload), retain=True)
-    self.set_speaker_state(current_output)
+    self.client.publish(speaker_topic, json.dumps(speaker_payload) if speaker_enabled else "", retain=True)
+
+    if speaker_enabled:
+      self.set_speaker_state(current_output)
 
     # ── Device-level: speaker mute switch ────────────────────────────────────
     speaker_mute_payload = {
@@ -322,8 +331,10 @@ class MQTTClient:  # pylint: disable=too-many-public-methods
       "device": device,
     }
     speaker_mute_topic = f"{self.discovery_prefix}/switch/{node_id}/speaker_muted/config"
-    self.client.publish(speaker_mute_topic, json.dumps(speaker_mute_payload), retain=True)
-    self.set_speaker_mute_state(speaker_muted)
+    self.client.publish(speaker_mute_topic, json.dumps(speaker_mute_payload) if speaker_enabled else "", retain=True)
+
+    if speaker_enabled:
+      self.set_speaker_mute_state(speaker_muted)
 
     # ── Device-level: speaker volume number ──────────────────────────────────
     speaker_volume_payload = {
@@ -343,8 +354,10 @@ class MQTTClient:  # pylint: disable=too-many-public-methods
       "device": device,
     }
     speaker_volume_topic = f"{self.discovery_prefix}/number/{node_id}/speaker_volume/config"
-    self.client.publish(speaker_volume_topic, json.dumps(speaker_volume_payload), retain=True)
-    self.set_speaker_volume_state(speaker_volume)
+    self.client.publish(speaker_volume_topic, json.dumps(speaker_volume_payload) if speaker_enabled else "", retain=True)
+
+    if speaker_enabled:
+      self.set_speaker_volume_state(speaker_volume)
 
   def publish_language_state(self, language: str) -> None:
     """Publish the current language state to the instance-scoped topic."""

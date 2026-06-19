@@ -169,6 +169,42 @@ def test_publish_discovery_configs_no_entities(mock_mqtt_class) -> None:
   assert calls[13][0][1] == "42"
 
 
+@patch("paho.mqtt.client.Client")
+def test_disabled_audio_discovery(mock_mqtt_class) -> None:
+  client = MQTTClient(
+    broker="localhost",
+    port=1883,
+    topic="oremi/device",
+    node_id="test-node",
+    discovery_prefix="homeassistant",
+  )
+  mock_client = mock_mqtt_class.return_value
+
+  client.publish_discovery_configs(
+    input_devices=[],
+    current_device="",
+    microphone_enabled=False,
+    speaker_enabled=False,
+  )
+
+  audio_config_payloads = {
+    call.args[0]: call.args[1]
+    for call in mock_client.publish.call_args_list
+    if call.args[0].endswith(
+      (
+        "/microphone_muted/config",
+        "/microphone_device/config",
+        "/speaker_device/config",
+        "/speaker_muted/config",
+        "/speaker_volume/config",
+      )
+    )
+  }
+
+  assert len(audio_config_payloads) == 5
+  assert all(payload == "" for payload in audio_config_payloads.values())
+
+
 @patch('paho.mqtt.client.Client')
 def test_publish_discovery_configs_with_entities(mock_mqtt_class) -> None:
   """Component-provided entities are published before the device-level select."""
