@@ -55,10 +55,18 @@ def test_publish_discovery_configs_no_entities(mock_mqtt_class) -> None:
 
   devices = ["Mic 1", "Mic 2"]
   current = "Mic 1"
-  client.publish_discovery_configs(input_devices=devices, current_device=current)
+  speakers = ["Built-in Audio", "USB Speaker"]
+  client.publish_discovery_configs(
+    input_devices=devices,
+    current_device=current,
+    output_devices=speakers,
+    current_output="USB Speaker",
+    speaker_muted=True,
+    speaker_volume=0.42,
+  )
 
-  # Device-level language, enabled, mute, and microphone-select configs/states.
-  assert mock_client_instance.publish.call_count == 8
+  # Seven device-level configs and their retained states.
+  assert mock_client_instance.publish.call_count == 14
 
   calls = mock_client_instance.publish.call_args_list
 
@@ -132,6 +140,34 @@ def test_publish_discovery_configs_no_entities(mock_mqtt_class) -> None:
   assert payload_mic_state == current
   assert kwargs_mic_state.get("retain") is True
 
+  # Speaker output select config and state
+  topic_speaker, payload_speaker = calls[8][0]
+  assert topic_speaker == "homeassistant/select/oremi-device-oremi-ohunerin-custom/speaker_device/config"
+  data_speaker = json.loads(payload_speaker)
+  assert data_speaker["command_topic"] == "oremi/ohunerin/custom/device/oremi-ohunerin-custom/speaker/set"
+  assert data_speaker["state_topic"] == "oremi/ohunerin/custom/device/oremi-ohunerin-custom/speaker/state"
+  assert data_speaker["options"] == speakers
+  assert calls[9][0] == (
+    "oremi/ohunerin/custom/device/oremi-ohunerin-custom/speaker/state",
+    "USB Speaker",
+  )
+
+  # Speaker mute config and state
+  topic_speaker_mute, payload_speaker_mute = calls[10][0]
+  assert topic_speaker_mute == "homeassistant/switch/oremi-device-oremi-ohunerin-custom/speaker_muted/config"
+  data_speaker_mute = json.loads(payload_speaker_mute)
+  assert data_speaker_mute["command_topic"].endswith("/speaker/mute/set")
+  assert calls[11][0][1] == "ON"
+
+  # Speaker volume config and percentage state
+  topic_volume, payload_volume = calls[12][0]
+  assert topic_volume == "homeassistant/number/oremi-device-oremi-ohunerin-custom/speaker_volume/config"
+  data_volume = json.loads(payload_volume)
+  assert data_volume["min"] == 0
+  assert data_volume["max"] == 100
+  assert data_volume["command_topic"].endswith("/speaker/volume/set")
+  assert calls[13][0][1] == "42"
+
 
 @patch('paho.mqtt.client.Client')
 def test_publish_discovery_configs_with_entities(mock_mqtt_class) -> None:
@@ -178,8 +214,8 @@ def test_publish_discovery_configs_with_entities(mock_mqtt_class) -> None:
   current = "Mic 1"
   client.publish_discovery_configs(input_devices=devices, current_device=current, entities=entities)
 
-  # 2 component entities + 4 device-level configs and their states = 10 calls
-  assert mock_client_instance.publish.call_count == 10
+  # 2 component entities + 7 device-level configs and their states = 16 calls
+  assert mock_client_instance.publish.call_count == 16
 
   calls = mock_client_instance.publish.call_args_list
 

@@ -29,6 +29,8 @@ from .core.models import DeviceContext
 from .core.mqtt import MQTTClient
 from .core.package import APP_NAME
 from .core.package import APP_VERSION
+from .core.speaker import Speaker
+from .core.speaker import SpeakerDeviceError
 from .utils.logger import LOG_LEVEL_STR
 from .utils.logger import logger
 
@@ -111,6 +113,14 @@ async def start() -> None:
 
   active_stream_container: dict = {"stream": audio_stream}
 
+  speaker: Speaker | None = None
+
+  try:
+    speaker = Speaker()
+    logger.info(f"Active Speaker Device: {speaker.device_name}")
+  except SpeakerDeviceError as error:
+    logger.warning(str(error))
+
   # ── MQTT client ──────────────────────────────────────────────────────────────
   mqtt_client = MQTTClient(
     broker=args.mqtt_broker,
@@ -127,9 +137,17 @@ async def start() -> None:
   device_change_queue: asyncio.Queue = asyncio.Queue()
   device_enable_queue: asyncio.Queue = asyncio.Queue()
   microphone_mute_queue: asyncio.Queue = asyncio.Queue()
+  speaker_change_queue: asyncio.Queue = asyncio.Queue()
+  speaker_mute_queue: asyncio.Queue = asyncio.Queue()
+  speaker_volume_queue: asyncio.Queue = asyncio.Queue()
   language_change_queue: asyncio.Queue = asyncio.Queue()
   wakeword_event = asyncio.Event()
   device_state: dict = {"enabled": True, "microphone_muted": False}
+  speaker_state: dict = {
+    "device": speaker.device_name if speaker else "",
+    "muted": speaker.muted if speaker else False,
+    "volume": speaker.volume if speaker else 1.0,
+  }
   language_state: dict = {"language": args.language}
 
   @mqtt_client.client.connect_callback()
@@ -142,6 +160,10 @@ async def start() -> None:
       # multiple oremi-device instances share the same base MQTT topic.
       client.subscribe(mqtt_client.get_microphone_command_topic())
       client.subscribe(mqtt_client.get_mute_command_topic())
+
+    client.subscribe(mqtt_client.get_speaker_command_topic())
+    client.subscribe(mqtt_client.get_speaker_mute_cmd_topic())
+    client.subscribe(mqtt_client.get_speaker_volume_cmd_topic())
 
     # Subscribe to the instance-scoped enable/disable switch command topic.
     client.subscribe(mqtt_client.get_switch_command_topic())
@@ -166,6 +188,10 @@ async def start() -> None:
           entities=ha_entities,
           enabled=device_state["enabled"],
           microphone_muted=device_state["microphone_muted"],
+          output_devices=Speaker.get_compatible_output_devices(),
+          current_output=speaker_state["device"],
+          speaker_muted=speaker_state["muted"],
+          speaker_volume=speaker_state["volume"],
           current_language=language_state["language"],
         )
       except Exception as error:
@@ -217,6 +243,34 @@ async def start() -> None:
           loop.call_soon_threadsafe(microphone_mute_queue.put_nowait, muted)
       except Exception as error:
         logger.error(f"Error decoding or handling MQTT microphone mute command: {error}")
+
+    elif topic == mqtt_client.get_speaker_command_topic():
+      try:
+        new_speaker = message.payload.decode("utf-8").strip()
+        logger.info(f"Received speaker set command: {new_speaker}")
+        loop.call_soon_threadsafe(speaker_change_queue.put_nowait, new_speaker)
+      except Exception as error:
+        logger.error(f"Error decoding or handling MQTT speaker command: {error}")
+
+    elif topic == mqtt_client.get_speaker_mute_cmd_topic():
+      try:
+        payload = message.payload.decode("utf-8").strip().upper()
+        logger.info(f"Received speaker mute command: {payload}")
+
+        if payload in ("ON", "OFF"):
+          loop.call_soon_threadsafe(speaker_mute_queue.put_nowait, payload == "ON")
+      except Exception as error:
+        logger.error(f"Error decoding or handling MQTT speaker mute command: {error}")
+
+    elif topic == mqtt_client.get_speaker_volume_cmd_topic():
+      try:
+        volume = float(message.payload.decode("utf-8").strip()) / 100
+        logger.info(f"Received speaker volume command: {volume:.0%}")
+
+        if 0.0 <= volume <= 1.0:
+          loop.call_soon_threadsafe(speaker_volume_queue.put_nowait, volume)
+      except (UnicodeDecodeError, ValueError) as error:
+        logger.error(f"Error decoding or handling MQTT speaker volume command: {error}")
 
     elif topic == mqtt_client.get_language_command_topic():
       try:
@@ -297,6 +351,10 @@ async def start() -> None:
           entities=ha_entities,
           enabled=device_state["enabled"],
           microphone_muted=device_state["microphone_muted"],
+          output_devices=Speaker.get_compatible_output_devices(),
+          current_output=speaker_state["device"],
+          speaker_muted=speaker_state["muted"],
+          speaker_volume=speaker_state["volume"],
           current_language=language_state["language"],
         )
 
@@ -330,6 +388,8 @@ async def start() -> None:
     "device_change_queue": device_change_queue,
     "device_enable_queue": device_enable_queue,
     "microphone_mute_queue": microphone_mute_queue,
+    "speaker": speaker,
+    "speaker_state": speaker_state,
     "language_change_queue": language_change_queue,
     "wakeword_event": wakeword_event,
     "device_state": device_state,
@@ -413,6 +473,10 @@ async def start() -> None:
             entities=ha_entities,
             enabled=device_state["enabled"],
             microphone_muted=device_state["microphone_muted"],
+            output_devices=Speaker.get_compatible_output_devices(),
+            current_output=speaker_state["device"],
+            speaker_muted=speaker_state["muted"],
+            speaker_volume=speaker_state["volume"],
             current_language=language_state["language"],
           )
         except Exception as error:
@@ -484,6 +548,11 @@ async def start() -> None:
       if microphone_mute_task is not None:
         tasks.append(microphone_mute_task)
 
+      speaker_change_task = loop.create_task(speaker_change_queue.get())
+      speaker_mute_task = loop.create_task(speaker_mute_queue.get())
+      speaker_volume_task = loop.create_task(speaker_volume_queue.get())
+      tasks.extend((speaker_change_task, speaker_mute_task, speaker_volume_task))
+
       language_change_task = loop.create_task(language_change_queue.get())
       tasks.append(language_change_task)
 
@@ -491,7 +560,15 @@ async def start() -> None:
 
       # Queue reads are recreated on each iteration. Cancel the pending ones so
       # they cannot consume a later command behind the active iteration's task.
-      command_tasks = [device_change_task, device_enable_task, microphone_mute_task, language_change_task]
+      command_tasks = [
+        device_change_task,
+        device_enable_task,
+        microphone_mute_task,
+        speaker_change_task,
+        speaker_mute_task,
+        speaker_volume_task,
+        language_change_task,
+      ]
 
       for command_task in command_tasks:
         if command_task is not None and command_task not in done:
@@ -575,6 +652,44 @@ async def start() -> None:
                 await component.on_device_changed(curr_stream)
           else:
             loop.call_soon_threadsafe(device_change_queue.put_nowait, "__auto_select__")
+      elif speaker_change_task in done:
+        requested_speaker = speaker_change_task.result()
+
+        try:
+          if speaker is None:
+            speaker = Speaker(
+              requested_speaker,
+              volume=speaker_state["volume"],
+              muted=speaker_state["muted"],
+            )
+            shared_resources["speaker"] = speaker
+          else:
+            speaker.select_device(requested_speaker)
+
+          speaker_state["device"] = speaker.device_name
+          mqtt_client.set_speaker_state(speaker.device_name)
+          logger.info(f"Speaker switched to: {speaker.device_name}")
+        except SpeakerDeviceError as error:
+          logger.error(error)
+          mqtt_client.set_speaker_state(speaker_state["device"])
+      elif speaker_mute_task in done:
+        muted = speaker_mute_task.result()
+        speaker_state["muted"] = muted
+
+        if speaker:
+          speaker.set_muted(muted)
+
+        mqtt_client.set_speaker_mute_state(muted)
+        logger.info(f"Speaker {'muted' if muted else 'unmuted'}")
+      elif speaker_volume_task in done:
+        volume = speaker_volume_task.result()
+        speaker_state["volume"] = volume
+
+        if speaker:
+          speaker.set_volume(volume)
+
+        mqtt_client.set_speaker_volume_state(volume)
+        logger.info(f"Speaker volume set to {volume:.0%}")
       elif language_change_task is not None and language_change_task in done:
         new_language = language_change_task.result()
         language_state["language"] = new_language
@@ -600,6 +715,10 @@ async def start() -> None:
               entities=ha_entities,
               enabled=device_state["enabled"],
               microphone_muted=device_state["microphone_muted"],
+              output_devices=Speaker.get_compatible_output_devices(),
+              current_output=speaker_state["device"],
+              speaker_muted=speaker_state["muted"],
+              speaker_volume=speaker_state["volume"],
               current_language=new_language,
             )
           except Exception as error:

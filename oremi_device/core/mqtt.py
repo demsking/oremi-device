@@ -29,7 +29,7 @@ from .package import APP_VERSION
 HAEntity = tuple[str, str, dict]
 
 
-class MQTTClient:
+class MQTTClient:  # pylint: disable=too-many-public-methods
   # pylint: disable=too-many-arguments
   def __init__(
     self,
@@ -90,6 +90,30 @@ class MQTTClient:
     """Return the instance-scoped topic for microphone mute state."""
     return f"{self.topic}/device/{self.node_id}/microphone/mute/state"
 
+  def get_speaker_command_topic(self) -> str:
+    """Return the instance-scoped topic for speaker selection commands."""
+    return f"{self.topic}/device/{self.node_id}/speaker/set"
+
+  def get_speaker_state_topic(self) -> str:
+    """Return the instance-scoped topic for the selected speaker."""
+    return f"{self.topic}/device/{self.node_id}/speaker/state"
+
+  def get_speaker_mute_cmd_topic(self) -> str:
+    """Return the instance-scoped topic for speaker mute commands."""
+    return f"{self.topic}/device/{self.node_id}/speaker/mute/set"
+
+  def get_speaker_mute_state_topic(self) -> str:
+    """Return the instance-scoped topic for speaker mute state."""
+    return f"{self.topic}/device/{self.node_id}/speaker/mute/state"
+
+  def get_speaker_volume_cmd_topic(self) -> str:
+    """Return the instance-scoped topic for speaker volume commands."""
+    return f"{self.topic}/device/{self.node_id}/speaker/volume/set"
+
+  def get_speaker_volume_state_topic(self) -> str:
+    """Return the instance-scoped topic for speaker volume state."""
+    return f"{self.topic}/device/{self.node_id}/speaker/volume/state"
+
   def get_language_command_topic(self) -> str:
     """Return the instance-scoped MQTT topic for language-select commands."""
     return f"{self.topic}/device/{self.node_id}/language/set"
@@ -132,6 +156,10 @@ class MQTTClient:
     entities: list["HAEntity"] | None = None,
     enabled: bool = True,
     microphone_muted: bool = False,
+    output_devices: list[str] | None = None,
+    current_output: str = "",
+    speaker_muted: bool = False,
+    speaker_volume: float = 1.0,
     current_language: str = "fr",
     supported_languages: list[str] | None = None,
   ) -> None:
@@ -149,6 +177,10 @@ class MQTTClient:
         the ``"device"`` key.
       enabled: Whether the device is currently enabled (switch initial state).
       microphone_muted: Whether microphone audio capture is currently muted.
+      output_devices: Available speaker output names for the HA select entity.
+      current_output: Currently selected speaker output name.
+      speaker_muted: Whether speaker playback is currently muted.
+      speaker_volume: Current speaker gain, between 0.0 and 1.0.
       current_language: The currently active language code (e.g. ``'fr'``).
       supported_languages: List of language codes to present in the HA select.
         Defaults to ``['fr', 'en']`` when not provided.
@@ -256,6 +288,64 @@ class MQTTClient:
     # Publish currently active device state
     self.publish("microphone/state", current_device, retain=True)
 
+    # ── Device-level: speaker output select ──────────────────────────────────
+    speaker_payload = {
+      "name": "Speaker Device",
+      "unique_id": f"{node_id}_speaker_device",
+      "state_topic": self.get_speaker_state_topic(),
+      "command_topic": self.get_speaker_command_topic(),
+      "availability_topic": f"{self.topic}/available",
+      "payload_available": "online",
+      "payload_not_available": "offline",
+      "options": output_devices or [],
+      "icon": "mdi:speaker",
+      "device": device,
+    }
+    speaker_topic = f"{self.discovery_prefix}/select/{node_id}/speaker_device/config"
+    self.client.publish(speaker_topic, json.dumps(speaker_payload), retain=True)
+    self.set_speaker_state(current_output)
+
+    # ── Device-level: speaker mute switch ────────────────────────────────────
+    speaker_mute_payload = {
+      "name": "Speaker muted",
+      "unique_id": f"{node_id}_speaker_muted",
+      "state_topic": self.get_speaker_mute_state_topic(),
+      "command_topic": self.get_speaker_mute_cmd_topic(),
+      "payload_on": "ON",
+      "payload_off": "OFF",
+      "state_on": "ON",
+      "state_off": "OFF",
+      "availability_topic": f"{self.topic}/available",
+      "payload_available": "online",
+      "payload_not_available": "offline",
+      "icon": "mdi:volume-off",
+      "device": device,
+    }
+    speaker_mute_topic = f"{self.discovery_prefix}/switch/{node_id}/speaker_muted/config"
+    self.client.publish(speaker_mute_topic, json.dumps(speaker_mute_payload), retain=True)
+    self.set_speaker_mute_state(speaker_muted)
+
+    # ── Device-level: speaker volume number ──────────────────────────────────
+    speaker_volume_payload = {
+      "name": "Speaker volume",
+      "unique_id": f"{node_id}_speaker_volume",
+      "state_topic": self.get_speaker_volume_state_topic(),
+      "command_topic": self.get_speaker_volume_cmd_topic(),
+      "availability_topic": f"{self.topic}/available",
+      "payload_available": "online",
+      "payload_not_available": "offline",
+      "min": 0,
+      "max": 100,
+      "step": 1,
+      "mode": "slider",
+      "unit_of_measurement": "%",
+      "icon": "mdi:volume-high",
+      "device": device,
+    }
+    speaker_volume_topic = f"{self.discovery_prefix}/number/{node_id}/speaker_volume/config"
+    self.client.publish(speaker_volume_topic, json.dumps(speaker_volume_payload), retain=True)
+    self.set_speaker_volume_state(speaker_volume)
+
   def publish_language_state(self, language: str) -> None:
     """Publish the current language state to the instance-scoped topic."""
     logger.debug(f"Publishing language state: {language}")
@@ -276,6 +366,19 @@ class MQTTClient:
     state = "ON" if muted else "OFF"
     logger.debug(f"Publishing microphone mute state: {state}")
     self.client.publish(self.get_mute_state_topic(), state, retain=True)
+
+  def set_speaker_state(self, device_name: str) -> None:
+    """Publish the selected speaker output."""
+    self.client.publish(self.get_speaker_state_topic(), device_name, retain=True)
+
+  def set_speaker_mute_state(self, muted: bool) -> None:
+    """Publish the speaker mute state."""
+    state = "ON" if muted else "OFF"
+    self.client.publish(self.get_speaker_mute_state_topic(), state, retain=True)
+
+  def set_speaker_volume_state(self, volume: float) -> None:
+    """Publish speaker volume as a Home Assistant percentage."""
+    self.client.publish(self.get_speaker_volume_state_topic(), str(round(volume * 100)), retain=True)
 
   def disconnect(self) -> None:
     self.client.disconnect()
