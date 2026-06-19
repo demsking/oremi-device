@@ -2,552 +2,296 @@
 
 [![Buy me a beer](https://img.shields.io/badge/Buy%20me-a%20beer-1f425f.svg)](https://www.buymeacoffee.com/demsking)
 
-Oremi Device is an implementation of **[Oremi Ohunerin](https://gitlab.com/demsking/oremi-ohunerin)**,
-the real-time audio detection component of the **Oremi Personal Assistant**
-project. It connects to the Oremi Ohunerin WebSocket server, detects
-environmental sounds and wake words, and publishes the results to an MQTT
-broker.
+Oremi Device captures microphone audio and connects it to Oremi services:
 
-This project is designed to integrate seamlessly with home automation systems
-like **Home Assistant**, IoT platforms, or any application that uses MQTT for
-communication. It is available as a Docker image for both `linux/amd64` and
-`linux/arm64` architectures.
+- **Ohunerin** detects wake words and environmental sounds.
+- **Andika** transcribes speech after Ohunerin detects a wake word.
+- **MQTT** exposes events, device controls, availability, and Home Assistant
+  discovery entities.
+
+The application monitors audio hardware while it runs. It can switch to another
+compatible microphone when the active device disappears and switch back when a
+preferred device becomes available again.
 
 ## Table of Contents
 
-- [Overview](#overview)
-  * [What is Oremi Ohunerin?](#what-is-oremi-ohunerin)
-  * [What is Oremi Device?](#what-is-oremi-device)
-- [Features](#features)
+- [Requirements](#requirements)
 - [Quick Start](#quick-start)
-  * [Prerequisites](#prerequisites)
-  * [Docker Compose Example](#docker-compose-example)
-  * [Explanation](#explanation)
-- [Command-Line Arguments](#command-line-arguments)
-  * [General Usage](#general-usage)
-  * [Start Command](#start-command)
+- [Command Line](#command-line)
+  * [`start`](#start)
+- [Runtime Behavior](#runtime-behavior)
+- [Configuration File](#configuration-file)
+- [MQTT](#mqtt)
+  * [Events](#events)
+  * [Device Controls](#device-controls)
+- [Home Assistant](#home-assistant)
 - [Logging](#logging)
-- [MQTT Topics](#mqtt-topics)
-- [Customizing Detection with `ohunerin.json`](#customizing-detection-with-ohunerinjson)
-- [Home Assistant Integration](#home-assistant-integration)
-  * [Example Use Case](#example-use-case)
-  * [Home Assistant Configuration](#home-assistant-configuration)
-    + [`configuration.yaml`](#configurationyaml)
-  * [Example Automations](#example-automations)
-    + [1. Snoring Detection](#1-snoring-detection)
-    + [2. Baby Cry Alert](#2-baby-cry-alert)
-    + [3. Cough Detection](#3-cough-detection)
-    + [4. Wake Word Activation](#4-wake-word-activation)
-  * [Benefits of This Integration](#benefits-of-this-integration)
-- [Contribute](#contribute)
+- [Development](#development)
 - [Versioning](#versioning)
 - [License](#license)
 
-## Overview
+## Requirements
 
-### What is Oremi Ohunerin?
-
-[Oremi Ohunerin](https://gitlab.com/demsking/oremi-ohunerin) is the real-time
-audio detection component of the **Oremi Personal Assistant** project. It
-operates as a WebSocket server and is capable of identifying environmental
-sounds and specific wake words to activate Oremi. It leverages cutting-edge
-technologies such as:
-
-- **Tensorflow YAMNet**: For comprehensive audio detection.
-- **PocketSphinx**: For precise wake word identification.
-
-It can recognize various sound categories, including but not limited to:
-
-- Shouts
-- Laughter
-- Crying
-- Snoring
-- Coughing
-- And more.
-
-### What is Oremi Device?
-
-Oremi Device bridges the gap between Oremi Ohunerin and MQTT-based
-systems. It:
-
-1. Connects to the Oremi Ohunerin WebSocket server.
-2. Listens for detected sounds and wake words.
-3. Publishes the results to an MQTT topic.
-
-This allows you to integrate Oremi Ohunerin's audio detection capabilities into
-your MQTT-enabled ecosystem, such as **Home Assistant**, for advanced home
-automation and monitoring.
-
-## Features
-
-- **Real-Time Audio Detection**: Detects environmental sounds and wake words in
-  real time.
-- **Customizable Detection**: Configure specific wake words and sounds to detect
-  using a `ohunerin.json` file.
-- **MQTT Integration**: Publishes detected sounds and wake words to an MQTT
-  broker.
-- **Home Assistant Compatibility**: Easily integrates with Home Assistant for
-  automations, notifications, and dashboards.
-- **Customizable Threshold**: Set a confidence score threshold for sound
-  detection.
-- **Cooldown Period**: Avoids publishing the same sound repeatedly within a
-  specified delay.
-- **Docker Support**: Available as a Docker image for easy deployment.
-- **Cross-Platform**: Supports both `linux/amd64` and `linux/arm64`
-  architectures.
+- Python 3.12, or Docker
+- An MQTT broker
+- Running Ohunerin and Andika servers
+- A microphone unless `--no-microphone` is used
+- Optional speaker hardware for the MQTT speaker controls
 
 ## Quick Start
 
-### Prerequisites
-
-1. **Docker**: Ensure Docker is installed on your system.
-2. **MQTT Broker**: An MQTT broker (e.g., Mosquitto) must be running and
-   accessible.
-3. **Home Assistant**: For integration and automation (optional but
-   recommended).
-
-### Docker Compose Example
-
-Here’s a quick example of how to use Oremi Device with Docker Compose:
-
-```yaml
-services:
-  detector:
-    image: demsking/oremi-ohunerin
-
-  listener:
-    image: demsking/oremi-device
-    devices:
-      - /dev/snd:/dev/snd # Mount the microphone device
-    volumes:
-      - $XDG_RUNTIME_DIR/pulse/native:/var/config/pulse/native
-      - ~/.config/pulse/cookie:/var/config/pulse/cookie
-    environment:
-      LOG_LEVEL: info
-    command: start --host detector --mqtt-broker mqtt.eclipseprojects.io --mqtt-port 1883
-```
-
-### Explanation
-
-- **`detector`**: The Oremi Ohunerin WebSocket server.
-- **`listener`**: The Oremi Device client.
-  - Mounts the microphone device for audio input.
-  - Connects to the MQTT broker at `mqtt.eclipseprojects.io:1883`.
-  - Publishes detected sounds and wake words to the MQTT topic `oremi/ohunerin`.
-
-## Command-Line Arguments
-
-### General Usage
-
-To see the general usage and available commands, run:
+The `start` command requires a node ID and the addresses of the Ohunerin,
+Andika, and MQTT services:
 
 ```bash
-docker run -it --rm demsking/oremi-device -h
+docker run --rm -it \
+  --network host \
+  --device /dev/snd:/dev/snd \
+  demsking/oremi-device start \
+  --node-id living-room \
+  --ohunerin-host 127.0.0.1 \
+  --andika-host 127.0.0.1 \
+  --mqtt-broker 127.0.0.1
 ```
 
-Output:
+`--network host` is used here so the container can reach services bound to the
+host. Use Docker service names instead when all services share a Docker
+network. PulseAudio installations may also need the PulseAudio socket and
+cookie mounted into the container.
+
+To run from a source checkout:
 
 ```bash
-usage: oremi-device [-h] [-v] {start} ...
-
-Real-time ambient sound and wake word detection
-
-positional arguments:
-  {start}
-    start        Start listening
-
-options:
-  -h, --help     show this help message and exit
-  -v, --version  Show the version of the application.
-  --list-devices List available input devices.
+uv sync
+uv run python -m oremi_device start \
+  --node-id living-room \
+  --ohunerin-host localhost \
+  --andika-host localhost \
+  --mqtt-broker localhost
 ```
 
-### Start Command
+## Command Line
 
-To see the options for the `start` command, run:
-
-```bash
-docker run -it --rm demsking/oremi-device start -h
-```
-
-Output:
-
-```bash
-usage: oremi-device start [-h] [-l LANGUAGE] [-i DEVICE_INDEX] [-d DEVICE] [-t THRESHOLD] [--delay DELAY]
-                                      [--config OHUNERIN_CONFIG] [--host HOST] [-p PORT] [--cert-file CERT_FILE] --mqtt-broker
-                                      MQTT_BROKER [--mqtt-port MQTT_PORT] [--mqtt-username MQTT_USERNAME]
-                                      [--mqtt-password MQTT_PASSWORD] [--mqtt-topic MQTT_TOPIC]
-
-options:
-  -h, --help            show this help message and exit
-  -l LANGUAGE, --language LANGUAGE
-                        The language to use for wake word detection and audio processing. Default is "fr" (French).
-  -i DEVICE_INDEX, --device-index DEVICE_INDEX
-                        Index of the audio device to be used for recording audio.
-  -d DEVICE, --device DEVICE
-                        Name of the device.
-  -t THRESHOLD, --threshold THRESHOLD
-                        The minimum confidence score required to process a sound event (default: 0.85).
-  --delay DELAY         The cooldown period (in seconds) to wait before sending the same sound event again (default: 3).
-  --config OHUNERIN_CONFIG
-                        Path to the ohunerin.json configuration file.
-  --host HOST           Host address to connect to.
-  -p PORT, --port PORT  Port number to connect to (default: 5023).
-  --cert-file CERT_FILE
-                        Path to the certificate file for secure connection.
-  --mqtt-broker MQTT_BROKER
-                        The address of the MQTT broker.
-  --mqtt-port MQTT_PORT
-                        The port of the MQTT broker. Default is 1883.
-  --mqtt-username MQTT_USERNAME
-                        The username for authenticating with the MQTT broker. Default is None.
-  --mqtt-password MQTT_PASSWORD
-                        The password for authenticating with the MQTT broker. Default is None.
-  --mqtt-topic MQTT_TOPIC
-                        The MQTT topic to publish audio detection events to. Default is "oremi/ohunerin".
-```
-
-## Logging
-
-Configure the log level with the `LOG_LEVEL` environment variable. Supported
-values are `DEBUG`, `INFO`, `WARNING`, `ERROR`, and `CRITICAL`; the default is
-`INFO`.
-
-```bash
-docker run -it --rm -e LOG_LEVEL=DEBUG demsking/oremi-device start [options]
-```
-
-Log messages use the following format:
+General syntax:
 
 ```text
-2026-06-19 12:04:10 - oremi-device - INFO - Starting oremi-device
+oremi-device [-h] [-v] {start} ...
 ```
 
-## MQTT Topics
+| Option            | Description                   |
+| ----------------- | ----------------------------- |
+| `-h`, `--help`    | Show help.                    |
+| `-v`, `--version` | Show the application version. |
 
-Oremi Device publishes detected sounds and wake words to the following MQTT topics:
+### `start`
 
-- **`oremi/ohunerin/sound`**: For environmental sound detection events.
-- **`oremi/ohunerin/wakeword`**: For wake word detection events.
-- **`oremi/ohunerin/available`**: For availability status (`online` or `offline`).
+```text
+oremi-device start [options]
+```
 
-Each message is published as a JSON object with the following structure:
+| Option                           | Required | Default              | Description                                                                                                                                    |
+| -------------------------------- | -------- | -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| `-n`, `--node-id ID`             | Yes      |                      | Unique node identifier. It scopes the MQTT client and device control topics.                                                                   |
+| `--ohunerin-host HOST`           | Yes      |                      | Ohunerin server host.                                                                                                                          |
+| `--ohunerin-port PORT`           | No       | `5023`               | Ohunerin server port.                                                                                                                          |
+| `--andika-host HOST`             | Yes      |                      | Andika server host.                                                                                                                            |
+| `--andika-port PORT`             | No       | `5315`               | Andika server port.                                                                                                                            |
+| `--mqtt-broker HOST`             | Yes      |                      | MQTT broker host.                                                                                                                              |
+| `--mqtt-port PORT`               | No       | `1883`               | MQTT broker port.                                                                                                                              |
+| `--mqtt-username USER`           | No       |                      | MQTT username.                                                                                                                                 |
+| `--mqtt-password PASSWORD`       | No       |                      | MQTT password.                                                                                                                                 |
+| `--mqtt-topic TOPIC`             | No       | `oremi/device`       | Base topic for events, availability, and controls.                                                                                             |
+| `-l`, `--language LANGUAGE`      | No       | `fr`                 | Language sent to Ohunerin when the service connection is created.                                                                              |
+| `-i`, `--device-index INDEX`     | No       | Auto                 | Preferred microphone index.                                                                                                                    |
+| `-d`, `--device NAME`            | No       | Auto                 | Preferred microphone name. This takes precedence over `--device-index`.                                                                        |
+| `--no-microphone`                | No       | Microphone enabled   | Disable microphone initialization and audio capture.                                                                                           |
+| `--no-speaker`                   | No       | Speaker enabled      | Disable speaker initialization and speaker MQTT controls.                                                                                      |
+| `--delay SECONDS`                | No       | `3`                  | Suppress duplicate sound events for this period and then publish a clearing event. It is also used as the Andika MQTT message expiry interval. |
+| `--config PATH`                  | No       | Built-in defaults    | JSON component configuration file.                                                                                                             |
+| `--cert-file PATH`               | No       | Insecure connections | CA certificate used for TLS connections to both services. This changes their WebSocket and HTTP URLs to `wss` and `https`.                     |
+| `--no-mqtt-discovery`            | No       | Discovery enabled    | Disable Home Assistant MQTT discovery.                                                                                                         |
+| `--mqtt-discovery-prefix PREFIX` | No       | `homeassistant`      | Home Assistant discovery topic prefix.                                                                                                         |
+
+Run `oremi-device start -h` for the help generated by the installed version.
+
+## Runtime Behavior
+
+At startup, Oremi Device:
+
+1. Validates the optional JSON configuration.
+2. Initializes the preferred microphone and speaker when enabled.
+3. Connects to MQTT and subscribes to this node's control topics.
+4. Starts the Ohunerin and Andika components.
+5. Streams microphone audio continuously to Ohunerin.
+6. Starts streaming audio to Andika after a wake-word event and stops after
+   Andika returns a final transcription.
+
+Ohunerin and Andika reconnect with exponential backoff when their WebSocket
+connections fail. The application also polls for audio-device changes and
+updates Home Assistant discovery options when devices appear or disappear.
+
+The device enable and microphone mute controls pause audio streaming without
+stopping the service connections. A language command updates the retained MQTT
+state and restarts the audio feeds. The service connection context retains the
+language selected at startup.
+
+## Configuration File
+
+The file passed to `--config` is a JSON object with component settings nested
+under `components`:
 
 ```json
 {
-  "type": "sound" | "wakeword",
-  "sound": "detected_sound",
-  "score": 0.85,
-  "date": "2023-10-05T12:34:56Z"
+  "components": {
+    "ohunerin": {
+      "threshold": 0.85
+    },
+    "andika": {
+      "model": "vosk-model-small-fr-0.22",
+      "samplerate": 16000
+    }
+  }
 }
 ```
 
-## Customizing Detection with `ohunerin.json`
+| Setting                         | Default                    | Description                                                                                                        |
+| ------------------------------- | -------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `components.ohunerin.threshold` | `0.85`                     | Minimum confidence score accepted for Ohunerin sound and wake-word events.                                         |
+| `components.andika.model`       | `vosk-model-small-fr-0.22` | Vosk model identifier sent to Andika. The value must be one of the models supported by the application and server. |
+| `components.andika.samplerate`  | `16000`                    | Audio sample rate sent to Andika.                                                                                  |
 
-The `--config` argument allows you to specify a JSON file that
-configures the behavior of the **Oremi Device**. This file defines
-the features for **wake word detection** and **sound detection**, enabling you
-to customize which sounds and wake words the listener should detect.
+Both components start even when their sections are omitted, using the defaults
+above. Invalid JSON, invalid types, or an unsupported Andika model cause startup
+to exit with an error.
 
-**Example `ohunerin.json` File**
+The schema currently accepts a top-level `language` field, but startup language
+is taken from `--language`; the configuration field does not override the CLI
+value.
 
-```json
-[
-  {
-    "name": "wakeword-detection",
-    "language": "fr",
-    "wakewords": [
-      { "word": "alexa", "phones": ["aa ll ei kk ss aa"] },
-      { "word": "ok google", "phones": ["oh k eh g uw g ah l"] }
-    ],
-    "discriminants": [
-      { "word": "alex", "phones": ["aa ll ai kk ss"] },
-      { "word": "google", "phones": ["g uw g ah l"] }
-    ]
-  },
-  {
-    "name": "sound-detection",
-    "allowlist": [
-      "Shout",
-      "Bellows",
-      "Children shouting",
-      "Laughter",
-      "Baby laughter",
-      "Crying, sobbing",
-      "Baby cry, infant cry",
-      "Whistling",
-      "Wheeze",
-      "Snoring",
-      "Cough",
-      "Sneeze",
-      "Burping",
-      "Hiccup"
-    ]
-  }
-]
-```
-
-**Key Features**
-
-1. **Wake Word Detection**:
-   - Defines the wake words and their phonetic representations (e.g., `"alexa"`,
-     `"ok google"`).
-   - Includes discriminants to reduce false positives (e.g., distinguishing
-     between `"alexa"` and `"alex"`).
-
-2. **Sound Detection**:
-   - Specifies an `allowlist` of sounds to detect (e.g., `"Baby cry"`,
-     `"Snoring"`, `"Cough"`).
-   - If no `allowlist` is provided, the listener will detect all sounds by
-     default.
-
-**Schema**
-
-The JSON file must adhere to the schema defined in the
-[InitMessage.json](https://gitlab.com/demsking/oremi-ohunerin/-/blob/main/schemas/InitMessage.json)
-schema file. This ensures compatibility with the **Oremi Ohunerin** WebSocket
-server.
-
-**Building a Phonetic Dictionary**
-
-To create custom phonetic representations for wake words, you can refer to the
-[CMU Sphinx tutorial on building a phonetic dictionary](https://cmusphinx.github.io/wiki/tutorialdict).
-This guide provides step-by-step instructions for generating accurate phonetic
-spellings, which are essential for effective wake word detection.
-
-**Usage**
-
-To use the `--config` argument, provide the path to your JSON
-configuration file when starting the listener:
+Mount a configuration file into the Docker container before referencing it:
 
 ```bash
-docker run -it --rm demsking/oremi-device start \
-  --config /path/to/ohunerin.json \
-  --mqtt-broker mqtt.eclipseprojects.io
+docker run --rm -it \
+  --network host \
+  --device /dev/snd:/dev/snd \
+  -v "$PWD/config/device.json:/config/device.json:ro" \
+  demsking/oremi-device start \
+  --config /config/device.json \
+  --node-id living-room \
+  --ohunerin-host 127.0.0.1 \
+  --andika-host 127.0.0.1 \
+  --mqtt-broker 127.0.0.1
 ```
 
-**Benefits**
+## MQTT
 
-- **Customization**: Tailor the listener to detect specific wake words and
-  sounds relevant to your use case.
-- **Efficiency**: Reduce unnecessary processing by limiting detection to only
-  the sounds and wake words you care about.
-- **Integration**: Seamlessly integrate with home automation systems like
-  **Home Assistant** by publishing only relevant events to MQTT.
+Examples below use the default base topic `oremi/device` and a node ID of
+`living-room`.
 
-By using the `--config` argument, you can configure the
-**Oremi Device** to meet your specific needs, making it a powerful
-tool for real-time audio detection and automation.
+### Events
 
-## Home Assistant Integration
+| Topic suffix            | Payload                   | Notes                                                                                                        |
+| ----------------------- | ------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| `available`             | `online` or `offline`     | Retained availability state.                                                                                 |
+| `sound`                 | JSON detection event      | Environmental sounds accepted by the configured threshold. Duplicate labels are suppressed during `--delay`. |
+| `wakeword`              | JSON detection event      | Wake-word events also activate Andika transcription.                                                         |
+| `transcription/partial` | UTF-8 text                | Non-retained partial Andika result, QoS 1.                                                                   |
+| `transcription/text`    | UTF-8 text                | Non-retained final Andika result, QoS 1.                                                                     |
+| `microphone/state`      | Microphone name or `None` | Retained active microphone state.                                                                            |
 
-Oremi Device is an excellent tool for integrating real-time audio
-detection into **Home Assistant**. By publishing detected sounds and wake words
-to MQTT topics, you can create automations, notifications, and dashboards in
-Home Assistant based on audio events.
+Ohunerin detection messages use this shape. The `sound` value is converted to a
+lowercase slug before publication:
 
-### Example Use Case
-
-Imagine you want to:
-
-1. Detect when someone is snoring in a room.
-2. Trigger a notification if a baby is crying.
-3. Activate a wake word to start a specific automation.
-
-With Oremi Device and Home Assistant, you can achieve this seamlessly.
-
-### Home Assistant Configuration
-
-Here’s an example of how to configure Home Assistant to work with Oremi Ohunerin
-MQTT:
-
-#### `configuration.yaml`
-
-```yaml
-mqtt:
-  sensor:
-    - name: "Wakeword"
-      unique_id: "oremi_ohunerin_wakeword"
-      state_topic: "oremi/ohunerin/wakeword"
-      enabled_by_default: true
-      icon: "mdi:waveform"
-      device_class: "enum"
-      options:
-        - detected
-        - 💤
-      value_template: >-
-        {% if value_json.sound == '...' %}
-          💤
-        {% else %}
-          detected
-        {% endif %}
-      availability: &oremi-ohunerin-availability
-        - topic: "oremi/ohunerin/available"
-          payload_available: "online"
-          payload_not_available: "offline"
-      device: &oremi-ohunerin-device
-        name: "Oremi Ohunerin"
-        manufacturer: "Sébastien Demanou"
-        configuration_url: "https://gitlab.com/demsking/oremi-ohunerin"
-        identifiers: "oremi-ohunerin-1.0.0"
-        sw_version: "1.0.0"
-
-    - name: "Sound Detector"
-      unique_id: "oremi_ohunerin_sound"
-      state_topic: "oremi/ohunerin/sound"
-      enabled_by_default: true
-      icon: "mdi:waveform"
-      device_class: "enum"
-      options:
-        - shout
-        - bellows
-        - children-shouting
-        - laughter
-        - baby-laughter
-        - crying-sobbing
-        - baby-cry-infant-cry
-        - whistling
-        - wheeze
-        - snoring
-        - cough
-        - sneeze
-        - burping
-        - hiccup
-        - 💤
-      value_template: >-
-        {% if value_json.sound == '...' %}
-          💤
-        {% else %}
-          {{ value_json.sound }}
-        {% endif %}
-      availability: *oremi-ohunerin-availability
-      device: *oremi-ohunerin-device
+```json
+{
+  "type": "sound",
+  "sound": "baby-cry-infant-cry",
+  "score": 0.91,
+  "date": "2026-06-19T12:04:10.123456"
+}
 ```
 
-### Example Automations
+After the delay expires, the service publishes a retained clearing message with
+`"sound": "..."` when no event of that type remains active.
 
-#### 1. Snoring Detection
+### Device Controls
 
-Send a notification when snoring is detected:
+| Command topic                                         | State topic                                             | Payload                                                  |
+| ----------------------------------------------------- | ------------------------------------------------------- | -------------------------------------------------------- |
+| `oremi/device/device/living-room/switch/set`          | `oremi/device/device/living-room/switch/state`          | `ON` enables audio processing; `OFF` disables it.        |
+| `oremi/device/device/living-room/language/set`        | `oremi/device/device/living-room/language/state`        | A UTF-8 language string. Discovery offers `fr` and `en`. |
+| `oremi/device/device/living-room/microphone/set`      | `oremi/device/microphone/state`                         | A microphone name exposed by discovery.                  |
+| `oremi/device/device/living-room/microphone/mute/set` | `oremi/device/device/living-room/microphone/mute/state` | `ON` mutes capture; `OFF` unmutes it.                    |
+| `oremi/device/device/living-room/speaker/set`         | `oremi/device/device/living-room/speaker/state`         | A speaker name exposed by discovery.                     |
+| `oremi/device/device/living-room/speaker/mute/set`    | `oremi/device/device/living-room/speaker/mute/state`    | `ON` mutes the speaker; `OFF` unmutes it.                |
+| `oremi/device/device/living-room/speaker/volume/set`  | `oremi/device/device/living-room/speaker/volume/state`  | Integer percentage from `0` to `100`.                    |
 
-```yaml
-automation:
-  - alias: "Notify on Snoring"
-    description: Sends a notification with advice when snoring is detected.
-    triggers:
-      - trigger: state
-        entity_id:
-          - sensor.oremi_ohunerin_snoring_detector
-    action:
-      service: notify.notify
-      data:
-        title: "Snoring Detected"
-        message: >
-          Snoring detected! Consider elevating your head while sleeping,
-          avoiding alcohol before bed, or trying nasal strips to improve airflow.
-          Consult a healthcare professional if snoring persists.
-    mode: single
+The microphone state topic is `oremi/device/microphone/state`; unlike the other
+control states, it is not nested below the node-specific prefix.
+
+For example, disable processing for this node with:
+
+```bash
+mosquitto_pub \
+  -t oremi/device/device/living-room/switch/set \
+  -m OFF
 ```
 
-#### 2. Baby Cry Alert
+## Home Assistant
 
-Send an urgent notification when a baby cry is detected:
+MQTT discovery is enabled by default. On MQTT connection, Oremi Device publishes
+retained discovery configurations below `homeassistant` for:
 
-```yaml
-automation:
-  - alias: Notify on Baby Cry
-    description: Sends an urgent notification with soothing tips when a baby cry is detected.
-    triggers:
-      - trigger: state
-        entity_id:
-          - sensor.oremi_ohunerin_baby_cry_infant_cry_detector
-    actions:
-      - action: notify.notify
-        data:
-          title: "Baby Cry Detected"
-          message: >
-            Baby is crying! Check immediately. Try soothing techniques like
-            gentle rocking, singing, or offering a pacifier. Ensure the baby
-            is fed, dry, and comfortable.
-    mode: single
+- enabled state and language
+- microphone selection and mute state
+- speaker selection, mute state, and volume
+- Ohunerin wake-word and sound sensors
+- Andika transcription sensor
+
+The entities share one device identifier derived from `--node-id`. Available
+microphones and speakers are included as select options. When microphone or
+speaker support is disabled, the corresponding retained discovery configs are
+cleared.
+
+Use `--no-mqtt-discovery` to disable discovery or
+`--mqtt-discovery-prefix` when Home Assistant uses a custom prefix.
+
+## Logging
+
+Logging is configured only through environment variables:
+
+| Variable    | Default        | Description                                                                                    |
+| ----------- | -------------- | ---------------------------------------------------------------------------------------------- |
+| `LOG_LEVEL` | `INFO`         | One of `DEBUG`, `INFO`, `WARNING`, `ERROR`, or `CRITICAL`. Invalid values fall back to `INFO`. |
+| `LOG_FILE`  | Standard error | File receiving logs. The path must be writable by the process.                                 |
+
+```bash
+docker run --rm -it \
+  -e LOG_LEVEL=DEBUG \
+  demsking/oremi-device start [options]
 ```
 
-#### 3. Cough Detection
+Log messages use this format:
 
-Send a notification with naturopathic advice when a cough is detected:
-
-```yaml
-automation:
-  - alias: Notify on Cough
-    description: Sends a notification with naturopathic advice when a cough is detected.
-    triggers:
-      - trigger: state
-        entity_id:
-          - sensor.oremi_ohunerin_cough_detector
-    actions:
-      - action: notify.notify
-        data:
-          title: "Cough Detected"
-          message: >
-            Cough detected! Consider drinking warm water with honey and lemon,
-            or try herbal teas like thyme or ginger to soothe your throat.
-            Rest and stay hydrated!
-    mode: single
+```text
+2026-06-19 12:04:10 - oremi-device - INFO - Starting oremi-device/1.0.0b1
 ```
 
-#### 4. Wake Word Activation
+## Development
 
-Trigger an automation when the wake word is detected:
+Install dependencies and run the test suite with:
 
-```yaml
-automation:
-  - alias: Wake Word Detected
-    description: Triggered when the wake word is detected. Activates the Oremi Assistant script.
-    triggers:
-      - trigger: state
-        entity_id:
-          - sensor.oremi_ohunerin_wake_word
-        to: detected
-    actions:
-      - target:
-          entity_id: script.start_oremi_assistant
-        action: script.turn_on
-        data: {}
-    mode: single
+```bash
+uv sync
+uv run pytest
 ```
 
-### Benefits of This Integration
-
-- **Real-Time Alerts**: Get instant notifications for specific sounds.
-- **Automations**: Trigger actions based on detected sounds or wake words.
-- **Dashboards**: Display sound detection states on your Home Assistant
-  dashboard.
-- **Customizable**: Easily adapt to your specific needs by modifying the
-  configuration.
-
-This integration makes Oremi Device a powerful tool for enhancing your
-smart home with advanced audio detection capabilities.
-
-## Contribute
-
-Please follow [CONTRIBUTING.md](https://gitlab.com/demsking/oremi-device/blob/main/CONTRIBUTING.md).
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the development workflow.
 
 ## Versioning
 
-Given a version number `MAJOR.MINOR.PATCH`, increment the:
-
-- `MAJOR` version when you make incompatible API changes,
-- `MINOR` version when you add functionality in a backwards-compatible manner,
-  and
-- `PATCH` version when you make backwards-compatible bug fixes.
-
-Additional labels for pre-release and build metadata are available as extensions
-to the `MAJOR.MINOR.PATCH` format.
-
-See [SemVer.org](https://semver.org/) for more details.
+The project follows [Semantic Versioning](https://semver.org/).
 
 ## License
 
-Licensed under the Apache License, Version 2.0 (the "License"); you may not use
-this file except in compliance with the License.
-You may obtain a copy of the License at [LICENSE](https://gitlab.com/demsking/oremi-device/blob/main/LICENSE).
+Licensed under the Apache License, Version 2.0. See [LICENSE](LICENSE).
