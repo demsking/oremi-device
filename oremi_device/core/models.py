@@ -16,7 +16,6 @@ from typing import Literal
 from typing import TypedDict
 
 from pydantic import BaseModel
-from pydantic import ConfigDict
 from pydantic import Field
 
 
@@ -69,59 +68,16 @@ class DetectedSound(TypedDict):
   date: str
 
 
-class Discriminant(BaseModel):
-  """
-  A word/phoneme combo used as a discriminant to prevent false activation
-  of a wakeword (e.g. if the wakeword is 'alexa', a discriminant might be 'alex').
-  """
-
-  word: str = Field(..., description="The discriminant word that could be confused with the wakeword.")
-  phones: list[str] = Field(..., description="The phonetic pronunciation mapping for the discriminant word.")
-
-
 SupportedLanguage = Literal[
   "en",  # English
   "fr",  # French
 ]
 
 
-class Wakeword(BaseModel):
-  """
-  A wakeword configuration for the listener.
-  """
-
-  language: SupportedLanguage | None = Field(
-    default=None,
-    description="The language code for this specific wakeword. Overrides the device-level language.",
-  )
-  word: str = Field(..., description="The target wakeword to detect (e.g., 'ok google').")
-  phones: list[str] = Field(..., description="The phonetic pronunciation mapping for the target wakeword.")
-  discriminants: list[Discriminant] = Field(
-    default_factory=list, description="A list of similar-sounding words to be ignored or treated as false positives."
-  )
-
-
-class SoundDetectionConfig(BaseModel):
-  """Configuration for the sound-detection feature."""
-
-  allowlist: list[str] = Field(default_factory=list, description="The list of allowed sound labels to detect.")
-
-
-class WakewordDetectionConfig(BaseModel):
-  """Configuration for the wakeword-detection feature."""
-
-  model_config = ConfigDict(populate_by_name=True)
-
-  language: str = Field(default="fr", description="The language code for wakeword detection.")
-  wakewords: list["Wakeword"] = Field(default_factory=list, description="The list of wakeword configurations.")
-
-
 class OhunerinConfig(BaseModel):
   """
   The configuration schema for the Ohunerin component.
   """
-
-  model_config = ConfigDict(populate_by_name=True)
 
   threshold: float = Field(
     default=0.85, description="The minimum confidence score required to trigger a sound event detection. Defaults to 0.85."
@@ -166,8 +122,6 @@ class AndikaConfig(BaseModel):
   """
   The configuration schema for the Andika speech-recognition component.
   """
-
-  model_config = ConfigDict(populate_by_name=True)
 
   model: AndikaModel = Field(default="vosk-model-small-fr-0.22", description="The Andika speech-to-text model identifier.")
   samplerate: int = Field(default=16000, description="The audio sample rate in Hz.")
