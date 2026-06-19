@@ -1,0 +1,287 @@
+# Copyright 2026 Sébastien Demanou. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+# Andika and Ohunerin intentionally share WebSocket/audio lifecycle behavior.
+# pylint: disable=duplicate-code
+import asyncio
+import json
+import ssl
+import urllib.parse
+from typing import Any
+from typing import Literal
+
+import httpx
+from paho.mqtt.packettypes import PacketTypes
+from paho.mqtt.properties import Properties
+from pydantic import BaseModel
+from websockets.asyncio.client import connect
+
+from ..core.audio import Audio
+from ..core.listener import AudioListener
+from ..core.models import AndikaConfig
+from ..core.models import DeviceContext
+from ..core.mqtt import MQTTClient
+from ..core.package import APP_NAME
+from ..core.package import APP_VERSION
+from ..utils.logger import logger
+from .base import AudioStreamComponent
+from .base import HAEntity
+
+
+class AndikaSupportedModel(BaseModel):
+  id: str  # pylint: disable=invalid-name
+  name: str
+  language: str
+
+
+class AndikaTranscriber:
+  def __init__(self, context: DeviceContext, mqtt_client: MQTTClient, websocket) -> None:
+    self.context = context
+    self.mqtt_client = mqtt_client
+    self.websocket = websocket
+
+  def parse_transcription(self, payload: dict) -> tuple[Literal["partial", "text"] | None, str]:
+    if "partial" in payload:
+      return "partial", payload["partial"]
+
+    if "text" in payload:
+      return "text", payload["text"]
+
+    return None, ""
+
+  async def transcribing(self) -> None:
+    props = Properties(PacketTypes.PUBLISH)
+    props.MessageExpiryInterval = self.context.delay
+
+    async for message in self.websocket:
+      payload = json.loads(message)
+      field, transcription = self.parse_transcription(payload)
+
+      if field:
+        if transcription:
+          if field == "partial":
+            self.mqtt_client.publish("transcription/partial", transcription, qos=1, retain=False, props=props)
+          else:
+            self.mqtt_client.publish("transcription/text", transcription, qos=1, retain=False, props=props)
+      else:
+        logger.debug(f"Ignoring unknown Andika result payload: {payload}")
+
+
+class AndikaComponent(AudioStreamComponent):
+  """Andika speech-recognition component (WebSocket + audio stream)."""
+
+  def __init__(self, context: DeviceContext) -> None:
+    super().__init__(context)
+
+    self._task: asyncio.Task | None = None
+    self._websocket = None
+    self.audio_listener = None
+    self._listening_task: asyncio.Task | None = None
+    self._handle_task_done = None
+
+  @property
+  def name(self) -> str:
+    return "andika"
+
+  @property
+  def task(self) -> asyncio.Task | None:
+    return self._task
+
+  @property
+  def listening_task(self) -> asyncio.Task | None:
+    return self._listening_task
+
+  def _get_supported_models(self) -> list[AndikaSupportedModel]:
+    endpoint = (
+      f"https://{self.context.andika_host}:{self.context.andika_port}/api/models"
+      if self.context.cert_file
+      else f"http://{self.context.andika_host}:{self.context.andika_port}/api/models"
+    )
+
+    try:
+      response = httpx.get(endpoint)
+      response.raise_for_status()
+      return [AndikaSupportedModel.model_validate(item) for item in response.json()]
+    except Exception as error:
+      logger.warning(f"Failed to fetch Andika supported models: {error}")
+
+    return []
+
+  def ha_entities(self, node_id: str, topic: str, device: dict) -> list[HAEntity]:
+    payload: dict = {
+      "name": "Transcription",
+      "unique_id": f"{node_id}_transcription",
+      "state_topic": f"{topic}/transcription",
+      "value_template": "{{ value_json.text | truncate(255, True, '') }}",
+      "availability_topic": f"{topic}/available",
+      "payload_available": "online",
+      "payload_not_available": "offline",
+      "json_attributes_topic": f"{topic}/transcription",
+      "icon": "mdi:subtitles",
+      "device": device,
+    }
+
+    return [("sensor", "transcription", payload)]
+
+  def build_connection_uri(self, config: AndikaConfig | None = None) -> str:
+    config = config or AndikaConfig()
+    query_string = urllib.parse.urlencode(
+      {
+        "model": config.model,
+        "samplerate": config.samplerate,
+        "show-words": False,
+        "max-alternatives": 0,
+      }
+    )
+
+    if self.context.cert_file:
+      return f"wss://{self.context.andika_host}:{self.context.andika_port}/ws?{query_string}"
+
+    return f"ws://{self.context.andika_host}:{self.context.andika_port}/ws?{query_string}"
+
+  async def start(
+    self,
+    config: AndikaConfig | None,
+    mqtt_client: MQTTClient,
+    shared_resources: dict[str, Any],
+  ) -> None:
+    if config is None:
+      logger.warning("Andika component started without configuration; using defaults.")
+      config = AndikaConfig()
+
+    logger.info(f"Andika Server Host: {self.context.andika_host}")
+    logger.info(f"Andika Server Port: {self.context.andika_port}")
+    logger.info(f"Andika Model: {config.model}")
+    logger.info(f"Andika Samplerate: {config.samplerate}")
+
+    supported_models = self._get_supported_models()
+
+    if supported_models:
+      supported_model_ids = ", ".join(model.id for model in supported_models)
+      logger.info(f"Andika Supported Models: {supported_model_ids}")
+
+    loop = asyncio.get_running_loop()
+    self._handle_task_done = shared_resources["handle_task_done"]
+    self._task = loop.create_task(self._run(config, mqtt_client, shared_resources), name="Andika Task")
+
+  async def stop(self) -> None:
+    if self._websocket:
+      try:
+        await self._websocket.close()
+      except Exception:
+        pass
+
+    if self._listening_task and not self._listening_task.done():
+      self._listening_task.cancel()
+
+      try:
+        await self._listening_task
+      except asyncio.CancelledError:
+        pass
+
+    if self._task and not self._task.done():
+      self._task.cancel()
+
+      try:
+        await self._task
+      except asyncio.CancelledError:
+        pass
+
+  async def on_device_changed(self, new_stream: Audio | None) -> None:
+    if new_stream and self.audio_listener:
+      self.audio_listener.audio_stream = new_stream
+
+    if self._listening_task and not self._listening_task.done():
+      self._listening_task.cancel()
+
+      try:
+        await self._listening_task
+      except (asyncio.CancelledError, Exception):
+        pass
+
+    if new_stream is not None and self.audio_listener:
+      loop = asyncio.get_running_loop()
+      self._listening_task = loop.create_task(self.audio_listener.listening(), name="Andika Listening Task")
+
+      if self._handle_task_done:
+        self._listening_task.add_done_callback(self._handle_task_done)
+
+  async def _run(
+    self,
+    config: AndikaConfig,
+    mqtt_client: MQTTClient,
+    shared_resources: dict[str, Any],
+  ) -> None:
+    loop = asyncio.get_running_loop()
+    active_stream_container = shared_resources["active_stream_container"]
+    andika_uri = self.build_connection_uri(config)
+
+    logger.info(f"Andika Connection URI: {andika_uri}")
+
+    if self.context.cert_file:
+      ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+      ssl_context.load_verify_locations(self.context.cert_file)
+    else:
+      ssl_context = None
+
+    retry_delay = 2.0
+
+    while True:
+      try:
+        async with connect(
+          andika_uri, ssl=ssl_context, user_agent_header=f"{APP_NAME}/{APP_VERSION}/{self.context.node_id}"
+        ) as websocket:
+          self._websocket = websocket
+          retry_delay = 2.0
+          logger.info(f"Connected to Oremi Andika server at {self.context.andika_host}:{self.context.andika_port}")
+
+          transcriber = AndikaTranscriber(self.context, mqtt_client, websocket)
+          self.audio_listener = AudioListener(active_stream_container["stream"], websocket, mqtt_client)
+          transcribing_task = loop.create_task(transcriber.transcribing(), name="Andika Transcription Task")
+
+          if self._handle_task_done:
+            transcribing_task.add_done_callback(self._handle_task_done)
+
+          if active_stream_container["stream"] is not None:
+            self._listening_task = loop.create_task(self.audio_listener.listening(), name="Andika Listening Task")
+
+            if self._handle_task_done:
+              self._listening_task.add_done_callback(self._handle_task_done)
+
+          await transcribing_task
+      except asyncio.CancelledError:
+        logger.info("Andika component cancelled")
+        break
+      except Exception as error:
+        logger.error(f"Andika component error: {error}")
+      finally:
+        if self._listening_task and not self._listening_task.done():
+          self._listening_task.cancel()
+
+          try:
+            await self._listening_task
+          except (asyncio.CancelledError, Exception):
+            pass
+
+        self._websocket = None
+
+      logger.info(f"Reconnecting to Andika server in {retry_delay:.0f}s...")
+
+      try:
+        await asyncio.sleep(retry_delay)
+      except asyncio.CancelledError:
+        logger.info("Andika component cancelled during reconnect wait")
+        break
+
+      retry_delay = min(retry_delay * 2, 60.0)

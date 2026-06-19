@@ -55,22 +55,46 @@ def test_audio_initialize_fails() -> None:
 
 @pytest.mark.asyncio
 async def test_main_audio_device_error() -> None:
-  # Mock parse_arguments to return namespace
-  # Mock Audio to raise AudioDeviceError
-  with patch('oremi_device.parse_arguments') as mock_args, \
+  # Mock parse_arguments to return a fully-populated namespace so that
+  # start() can build DeviceContext / MQTTClient before reaching Audio().
+  import argparse
+
+  fake_args = argparse.Namespace(
+    node_id="test-node",
+    language="fr",
+    delay=3,
+    ohunerin_host="localhost",
+    ohunerin_port=5023,
+    andika_host="localhost",
+    andika_port=5315,
+    cert_file=None,
+    config=None,
+    device_index=None,
+    device=None,
+    mqtt_broker="localhost",
+    mqtt_port=1883,
+    mqtt_topic="oremi/test",
+    mqtt_username=None,
+    mqtt_password=None,
+    mqtt_discovery_prefix=None,
+    mqtt_discovery=False,
+  )
+
+  with patch('oremi_device.parse_arguments', return_value=fake_args), \
        patch('oremi_device.Audio', side_effect=AudioDeviceError("No device")), \
-       patch('sys.exit', side_effect=SystemExit(1)) as mock_exit:
+       patch('sys.exit', side_effect=SystemExit(1)) as mock_exit, \
+       patch('oremi_device.MQTTClient') as mock_mqtt_cls:
+    mock_mqtt_cls.return_value.connect = MagicMock()
+    mock_mqtt_cls.return_value.set_availability = MagicMock()
+    mock_mqtt_cls.return_value.client.connect_callback = MagicMock(return_value=lambda f: f)
+    mock_mqtt_cls.return_value.client.disconnect_callback = MagicMock(return_value=lambda f: f)
+    mock_mqtt_cls.return_value.client.message_callback = MagicMock(return_value=lambda f: f)
 
-    mock_args.return_value = MagicMock(device_index=None, device=None)
+    with pytest.raises(SystemExit) as exc_info:
+      await start()
 
-    with patch('argparse.ArgumentParser.parse_known_args') as mock_known:
-      mock_known.return_value = (MagicMock(list_devices=False), [])
-
-      with pytest.raises(SystemExit) as exc_info:
-        await start()
-
-      assert exc_info.value.code == 1
-      mock_exit.assert_called_once_with(1)
+    assert exc_info.value.code == 1
+    mock_exit.assert_called_once_with(1)
 
 
 def test_get_compatible_input_devices() -> None:

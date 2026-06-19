@@ -30,20 +30,24 @@ class AudioListener:
   async def listening(self) -> None:
     self.mqtt_client.set_availability(True)
     logger.info(f"Listening from {self.audio_stream.device_name} device...")
+    audio_queue = self.audio_stream.subscribe()
 
-    async with self.audio_stream:
-      while self.audio_stream.is_active():
-        try:
-          data = await self.audio_stream.data()
-          await self.websocket.send(data)
-        except websockets.exceptions.ConnectionClosedOK:
-          logger.info('Connection closed')
-          break
-        except websockets.exceptions.ConnectionClosedError as error:
-          logger.error(error)
-          break
-        except sd.PortAudioError as error:
-          logger.error(f"Audio stream error: {error}")
-          break
+    try:
+      async with self.audio_stream:
+        while self.audio_stream.is_active():
+          try:
+            data = await self.audio_stream.data(audio_queue)
+            await self.websocket.send(data)
+          except websockets.exceptions.ConnectionClosedOK:
+            logger.info('Connection closed')
+            break
+          except websockets.exceptions.ConnectionClosedError as error:
+            logger.error(error)
+            break
+          except sd.PortAudioError as error:
+            logger.error(f"Audio stream error: {error}")
+            break
+    finally:
+      self.audio_stream.unsubscribe(audio_queue)
 
     logger.info('Audio stream closed')

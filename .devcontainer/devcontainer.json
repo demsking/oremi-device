@@ -1,12 +1,12 @@
 {
   "name": "Oremi Device",
   "dockerComposeFile": [
-    "../compose.yaml",
     "workspace.yaml"
   ],
   "service": "devcontainer",
   "workspaceFolder": "/workspaces",
   "runServices": [
+    "andika",
     "detector",
     "mosquitto"
   ],
@@ -50,6 +50,12 @@
           "editor.defaultFormatter": "charliermarsh.ruff"
         }
       }
+    }
+  },
+  "features": {
+    "ghcr.io/ait-assistive-autonomous-systems/devcontainer_features/add-groups:0": {
+      "addGroups": "file://.devcontainers/host_groups",
+      "excludeGroups": "()"
     }
   }
 }

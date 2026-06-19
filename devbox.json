@@ -11,7 +11,9 @@
     "shellcheck": "latest",
     "ruff": "latest",
     "skjold": "latest",
-    "yamllint": "latest"
+    "yamllint": "latest",
+    "portaudio": "latest",
+    "python312Packages.pyaudio": "latest"
   },
   "env": {
     "UV_MANAGED_PYTHON": "1",

@@ -12,25 +12,33 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-import argparse
-import json
-from unittest.mock import patch
 import urllib.parse
 
+from oremi_device.components.andika import AndikaComponent
 from oremi_device.components.ohunerin import OhunerinComponent
-from oremi_device.core.models import DeviceConfig, OhunerinConfig
+from oremi_device.core.models import AndikaConfig, DeviceConfig, DeviceContext, OhunerinConfig
+
+
+def _make_context(**kwargs) -> DeviceContext:
+  """Helper to create a DeviceContext with sensible defaults."""
+  defaults = {
+    "node_id": "test-node",
+    "language": "fr",
+    "delay": 3,
+    "ohunerin_host": "localhost",
+    "ohunerin_port": 5023,
+    "andika_host": "localhost",
+    "andika_port": 5315,
+    "cert_file": None,
+  }
+  defaults.update(kwargs)
+  return DeviceContext(**defaults)
 
 
 def test_build_connection_uri_default() -> None:
-  args = argparse.Namespace(
-    device_config=None,
-    language="fr",
-    ohunerin_host="localhost",
-    ohunerin_port=5023,
-    cert_file=None,
-  )
-  component = OhunerinComponent()
-  uri = component.build_connection_uri(args)
+  context = _make_context(language="fr", ohunerin_host="localhost", ohunerin_port=5023)
+  component = OhunerinComponent(context)
+  uri = component.build_connection_uri()
   assert uri.startswith("ws://localhost:5023/ws?")
 
   # Parse the query params to verify
@@ -41,15 +49,14 @@ def test_build_connection_uri_default() -> None:
 
 
 def test_build_connection_uri_secure() -> None:
-  args = argparse.Namespace(
-    device_config=None,
+  context = _make_context(
     language="en",
     ohunerin_host="127.0.0.1",
     ohunerin_port=8000,
     cert_file="cert.pem",
   )
-  component = OhunerinComponent()
-  uri = component.build_connection_uri(args)
+  component = OhunerinComponent(context)
+  uri = component.build_connection_uri()
   assert uri.startswith("wss://127.0.0.1:8000/ws?")
 
   parsed = urllib.parse.urlparse(uri)
@@ -58,101 +65,99 @@ def test_build_connection_uri_secure() -> None:
   assert params["language"] == ["en"]
 
 
-def test_build_connection_uri_with_ohunerin_config(tmp_path) -> None:
-  features_content = {
-    "wakeword-detection": {
-      "language": "en",
-      "wakewords": [
-        {
-          "word": "hey assistant",
-          "phones": ["hh ey aa ss ih ss t ah n t"],
-          "discriminants": [{"word": "assistant", "phones": ["aa ss ih ss t ah n t"]}],
-        }
-      ],
-    },
-    "sound-detection": {"allowlist": ["Cough", "Snoring"]},
-  }
-  ohunerin_config = tmp_path / "ohunerin.json"
-  ohunerin_config.write_text(json.dumps(features_content))
-
-  args = argparse.Namespace(
-    device_config=str(ohunerin_config),
-    language="fr",  # should be overridden by features file for wakeword-detection
-    ohunerin_host="localhost",
-    ohunerin_port=5023,
-    cert_file=None,
-  )
-  component = OhunerinComponent()
+def test_build_connection_uri_with_ohunerin_config() -> None:
+  features_content = {}
+  context = _make_context(language="fr", ohunerin_host="localhost", ohunerin_port=5023)
+  component = OhunerinComponent(context)
   config = OhunerinConfig.model_validate(features_content)
-  uri = component.build_connection_uri(args, config)
+  uri = component.build_connection_uri(config)
   assert uri.startswith("ws://localhost:5023/ws?")
 
   parsed = urllib.parse.urlparse(uri)
   params = urllib.parse.parse_qs(parsed.query)
   assert params["features"] == ["wakeword-detection,sound-detection"]
-  assert params["language"] == ["en"]
-
-  wakewords = json.loads(params["wakewords"][0])
-  assert wakewords[0]["word"] == "hey assistant"
-
-  discriminants = json.loads(params["discriminants"][0])
-  assert discriminants[0]["word"] == "assistant"
-
-  assert params["allowlist"] == ["Cough,Snoring"]
-
-
-def test_log_ohunerin_config_details_valid() -> None:
-  features_content = {
-    "wakeword-detection": {
-      "language": "en",
-      "wakewords": [
-        {
-          "word": "hey assistant",
-          "phones": ["hh ey aa ss ih ss t ah n t"],
-          "discriminants": [{"word": "assistant", "phones": ["aa ss ih ss t ah n t"]}],
-        }
-      ],
-    },
-    "sound-detection": {"allowlist": ["Cough", "Snoring"]},
-  }
-
-  config = OhunerinConfig.model_validate(features_content)
-  component = OhunerinComponent()
-
-  with patch("oremi_device.utils.logger.logger.info") as mock_info:
-    component.log_ohunerin_config_details(config, "fr")
-
-  logged_messages = [call[0][0] for call in mock_info.call_args_list]
-
-  assert "Ohunerin Config Content Details:" in logged_messages
-  assert "  - Feature: wakeword-detection" in logged_messages
-  assert "    Default Language: en" in logged_messages
-  assert "    Wake words [en]: hey assistant" in logged_messages
-  assert "    Discriminants: assistant" in logged_messages
-  assert "  - Feature: sound-detection" in logged_messages
-  assert "    Allowlist: Cough, Snoring" in logged_messages
+  assert params["language"] == ["fr"]
+  assert "wakewords" not in params
+  assert "discriminants" not in params
+  assert "allowlist" not in params
 
 
 def test_ohunerin_config_with_threshold() -> None:
   # With explicit threshold
-  features_content = {"threshold": 0.75, "sound-detection": {"allowlist": ["Cough", "Snoring"]}}
+  features_content = {"threshold": 0.75}
   config = OhunerinConfig.model_validate(features_content)
   assert config.threshold == 0.75
-  assert config.sound_detection is not None
-  assert config.sound_detection.allowlist == ["Cough", "Snoring"]
 
   # Default threshold
-  features_content_default = {"sound-detection": {"allowlist": ["Cough", "Snoring"]}}
+  features_content_default = {}
   config_default = OhunerinConfig.model_validate(features_content_default)
   assert config_default.threshold == 0.85
 
 
 def test_device_config_nested() -> None:
-  """DeviceConfig expects ohunerin config nested under the 'components.ohunerin' key."""
-  nested_data = {"language": "fr", "components": {"ohunerin": {"threshold": 0.75, "sound-detection": {"allowlist": ["Cough"]}}}}
+  """DeviceConfig expects component configs nested under the 'components' key."""
+  nested_data = {
+    "language": "fr",
+    "components": {
+      "ohunerin": {"threshold": 0.75},
+      "andika": {"model": "vosk-model-small-en-us-0.15", "samplerate": 16000},
+    },
+  }
   config = DeviceConfig.model_validate(nested_data)
   assert config.language == "fr"
   assert config.components.ohunerin is not None
   assert config.components.ohunerin.threshold == 0.75
-  assert config.components.ohunerin.sound_detection is not None
-  assert config.components.ohunerin.sound_detection.allowlist == ["Cough"]
+  assert config.components.andika is not None
+  assert config.components.andika.model == "vosk-model-small-en-us-0.15"
+  assert config.components.andika.samplerate == 16000
+
+
+def test_build_andika_connection_uri_default() -> None:
+  context = _make_context(andika_host="andika", andika_port=5315)
+  component = AndikaComponent(context)
+  uri = component.build_connection_uri()
+  assert uri.startswith("ws://andika:5315/ws?")
+
+  parsed = urllib.parse.urlparse(uri)
+  params = urllib.parse.parse_qs(parsed.query)
+  assert params["model"] == ["vosk-model-small-fr-0.22"]
+  assert params["samplerate"] == ["16000"]
+
+
+def test_build_andika_connection_uri_with_config() -> None:
+  context = _make_context(andika_host="127.0.0.1", andika_port=8080, cert_file="cert.pem")
+  component = AndikaComponent(context)
+  config = AndikaConfig.model_validate(
+    {
+      "model": "vosk-model-small-en-us-0.15",
+      "samplerate": 16000,
+    }
+  )
+  uri = component.build_connection_uri(config)
+  assert uri.startswith("wss://127.0.0.1:8080/ws?")
+
+  parsed = urllib.parse.urlparse(uri)
+  params = urllib.parse.parse_qs(parsed.query)
+  assert params["model"] == ["vosk-model-small-en-us-0.15"]
+  assert params["samplerate"] == ["16000"]
+  assert params["show-words"] == ["False"]
+  assert params["max-alternatives"] == ["0"]
+
+
+def test_andika_ha_entities() -> None:
+  context = _make_context()
+  component = AndikaComponent(context)
+  entities = component.ha_entities(
+    "oremi-device-test-node",
+    "oremi/device/test-node",
+    {"identifiers": ["oremi-device-test-node"]},
+  )
+
+  assert len(entities) == 1
+  ha_domain, entity_slug, payload = entities[0]
+  assert ha_domain == "sensor"
+  assert entity_slug == "transcription"
+  assert payload["name"] == "Transcription"
+  assert payload["unique_id"] == "oremi-device-test-node_transcription"
+  assert payload["state_topic"] == "oremi/device/test-node/transcription"
+  assert payload["value_template"] == "{{ value_json.text | truncate(255, True, '') }}"

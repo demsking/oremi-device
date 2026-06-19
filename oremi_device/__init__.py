@@ -43,6 +43,8 @@ async def start() -> None:
   logger.info(f"Configuration Node ID: {args.node_id}")
   logger.info(f"Configuration Ohunerin Host: {args.ohunerin_host}")
   logger.info(f"Configuration Ohunerin Port: {args.ohunerin_port}")
+  logger.info(f"Configuration Andika Host: {args.andika_host}")
+  logger.info(f"Configuration Andika Port: {args.andika_port}")
   logger.info(f"Configuration Secure Connection: {'Enabled' if args.cert_file else 'Disabled'}")
 
   if args.cert_file:
@@ -57,6 +59,8 @@ async def start() -> None:
     delay=args.delay,
     ohunerin_host=args.ohunerin_host,
     ohunerin_port=args.ohunerin_port,
+    andika_host=args.andika_host,
+    andika_port=args.andika_port,
     cert_file=args.cert_file,
   )
 
@@ -75,9 +79,6 @@ async def start() -> None:
   logger.info(f"Configuration Language: {context.language}")
 
   # ── Resolve active components ────────────────────────────────────────────────
-  # A component is activated when:
-  #   - its key matches "ohunerin" (default/built-in), or
-  #   - an explicit config block for it exists in the device config.
   active_components: list[tuple] = []
 
   for comp_name, (load_config, create_component) in COMPONENTS.items():

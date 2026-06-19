@@ -4,18 +4,24 @@ name: oremi-device-dev
 services:
   devcontainer:
     build:
-      context: .devcontainer
       dockerfile: Dockerfile
     devices:
       - /dev/snd:/dev/snd # Mount the microphone device
     volumes:
-      - .:/workspaces:cached
+      - ..:/workspaces:cached
     command: sleep infinity
 
   detector:
     image: demsking/oremi-ohunerin
     ports:
       - 45023:5023
+
+  andika:
+    image: demsking/oremi-andika
+    ports:
+      - 45315:5315
+    volumes:
+      - ~/.cache/vosk/models:/usr/share/vosk
 
   mosquitto:
     image: eclipse-mosquitto:2.0.18

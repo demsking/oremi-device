@@ -75,7 +75,11 @@ class OhunerinComponent(AudioStreamComponent):
     return None
 
   def ha_entities(self, node_id: str, topic: str, device: dict) -> list[HAEntity]:
-    """Register Wakeword and Sound Detector HA sensor entities."""
+    """
+    Register Wakeword and Sound Detector HA sensor entities.
+
+    See https://www.home-assistant.io/integrations/sensor.mqtt/
+    """
     server_info = self._get_server_info(self.context.ohunerin_host, self.context.ohunerin_port)
 
     wakeword_payload: dict = {

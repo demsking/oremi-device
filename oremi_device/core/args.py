@@ -67,6 +67,7 @@ def parse_arguments() -> argparse.Namespace:
   command.add_argument(
     "--ohunerin-host",
     type=str,
+    required=True,
     help="Host address of the Ohunerin server to connect to.",
   )
 
@@ -75,6 +76,20 @@ def parse_arguments() -> argparse.Namespace:
     type=int,
     default=5023,
     help="Port number of the Ohunerin server to connect to (default: 5023).",
+  )
+
+  command.add_argument(
+    "--andika-host",
+    type=str,
+    required=True,
+    help="Host address of the Andika server to connect to.",
+  )
+
+  command.add_argument(
+    "--andika-port",
+    type=int,
+    default=5315,
+    help="Port number of the Andika server to connect to (default: 5315).",
   )
 
   command.add_argument(
@@ -112,8 +127,8 @@ def parse_arguments() -> argparse.Namespace:
   command.add_argument(
     "--mqtt-topic",
     type=str,
-    default="oremi/ohunerin",
-    help='The MQTT topic to publish audio detection events to. Default is "oremi/ohunerin".',
+    default="oremi/device",
+    help='The MQTT topic to publish audio detection events to. Default is "oremi/device".',
   )
 
   # MQTT Discovery

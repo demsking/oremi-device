@@ -16,6 +16,7 @@ import json
 from typing import Literal
 
 import paho.mqtt.client as mqtt
+import paho.mqtt.properties as mqtt_properties
 
 from ..utils.logger import logger
 from ..utils.string import sluggify
@@ -57,7 +58,11 @@ class MQTTClient:
     return sluggify(f"oremi-device-{self.node_id}")
 
   def get_device_descriptor(self) -> dict:
-    """Return the HA device descriptor dict shared across all entities."""
+    """
+    Return the HA device descriptor dict shared across all entities.
+
+    See https://www.home-assistant.io/integrations/mqtt/
+    """
     node_id = self.get_node_id()
 
     return {
@@ -100,9 +105,17 @@ class MQTTClient:
     self.client.connect(self.broker, self.port, keepalive=0)
     self.client.loop_start()
 
-  def publish(self, topic: DetectedSoundType | str, message: str, retain: bool = False) -> None:
+  def publish(
+    self,
+    topic: DetectedSoundType | str,
+    message: str,
+    *,
+    qos: int = 0,
+    props: mqtt_properties.Properties | None = None,
+    retain: bool = False,
+  ) -> None:
     logger.debug(f"Publishing #{self.topic}/{topic}: {message} with retain {retain}")
-    self.client.publish(f"{self.topic}/{topic}", message, retain=retain)
+    self.client.publish(f"{self.topic}/{topic}", message, qos=qos, retain=retain, properties=props)
 
   def publish_discovery_configs(
     self,
@@ -137,13 +150,14 @@ class MQTTClient:
     device = self.get_device_descriptor()
 
     # ── Component-provided entities ──────────────────────────────────────────
-    for ha_domain, entity_slug, payload in (entities or []):
+    for ha_domain, entity_slug, payload in entities or []:
       discovery_topic = f"{self.discovery_prefix}/{ha_domain}/{node_id}/{entity_slug}/config"
 
       logger.debug(f"Publishing HA entity discovery: {discovery_topic}")
       self.client.publish(discovery_topic, json.dumps(payload), retain=True)
 
     # ── Device-level: language select ────────────────────────────────────────
+    # See https://www.home-assistant.io/integrations/select.mqtt/
     languages = supported_languages or ["fr", "en"]
     language_payload = {
       "name": "Language",
@@ -165,6 +179,7 @@ class MQTTClient:
     self.client.publish(self.get_language_state_topic(), current_language, retain=True)
 
     # ── Device-level: enable/disable switch ──────────────────────────────────
+    # See https://www.home-assistant.io/integrations/switch.mqtt/
     switch_payload = {
       "name": "Enabled",
       "unique_id": f"{node_id}_enabled",
@@ -188,6 +203,7 @@ class MQTTClient:
     self.client.publish(self.get_switch_state_topic(), "ON" if enabled else "OFF", retain=True)
 
     # ── Device-level: microphone select ─────────────────────────────────────
+    # See https://www.home-assistant.io/integrations/select.mqtt/
     select_payload = {
       "name": "Microphone Device",
       "unique_id": f"{node_id}_microphone_device",

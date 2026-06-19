@@ -48,8 +48,14 @@ class Audio:
     device_index: int | None = None,
     device_name: str | None = None,
   ) -> None:
-    loop = asyncio.get_event_loop()
+    try:
+      loop = asyncio.get_running_loop()
+    except RuntimeError:
+      loop = asyncio.new_event_loop()
+      asyncio.set_event_loop(loop)
     self.audio_queue = asyncio.Queue[bytes]()
+    self._subscribers: set[asyncio.Queue[bytes]] = set()
+    self._active_users = 0
     self.samplerate = samplerate
     self.blocksize = blocksize
 
@@ -99,21 +105,24 @@ class Audio:
         blocksize=blocksize,
         device=device,
         channels=1,
-        callback=lambda indata, frames, time, status: loop.call_soon_threadsafe(
-          self.audio_queue.put_nowait,
-          bytes(indata),
-        ),
+        callback=lambda indata, frames, time, status: loop.call_soon_threadsafe(self._publish_audio_data, bytes(indata)),
       )
     except sd.PortAudioError as error:
       raise AudioDeviceError(f"Failed to initialize audio device: {error}") from error
 
   async def __aenter__(self):
-    self.stream.start()
+    self._active_users += 1
+
+    if not self.stream.active:
+      self.stream.start()
+
     return self
 
   async def __aexit__(self, exc_type, exc, tb):
-    self.stream.stop()
-    self.stream.close()
+    self._active_users = max(0, self._active_users - 1)
+
+    if self._active_users == 0 and self.stream.active:
+      self.stream.stop()
 
   def __str__(self) -> str:
     return f"{self.device_name} with samplerate {self.samplerate}, blocksize {self.blocksize}, channels {self.stream.channels}"
@@ -175,10 +184,27 @@ class Audio:
 
     return None
 
-  async def data(self):
-    return await self.audio_queue.get()
+  def _publish_audio_data(self, data: bytes) -> None:
+    if self._subscribers:
+      for queue in tuple(self._subscribers):
+        queue.put_nowait(data)
+    else:
+      self.audio_queue.put_nowait(data)
+
+  def subscribe(self) -> asyncio.Queue[bytes]:
+    queue: asyncio.Queue[bytes] = asyncio.Queue()
+    self._subscribers.add(queue)
+    return queue
+
+  def unsubscribe(self, queue: asyncio.Queue[bytes]) -> None:
+    self._subscribers.discard(queue)
+
+  async def data(self, queue: asyncio.Queue[bytes] | None = None):
+    return await (queue or self.audio_queue).get()
 
   def stop(self) -> None:
+    self._active_users = 0
+
     if self.stream.active:
       self.stream.stop()
 

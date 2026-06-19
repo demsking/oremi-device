@@ -16,6 +16,7 @@ from typing import Literal
 from typing import TypedDict
 
 from pydantic import BaseModel
+from pydantic import ConfigDict
 from pydantic import Field
 
 
@@ -37,6 +38,12 @@ class DeviceContext(BaseModel):
 
   ohunerin_port: int
   """The port number on which the Ohunerin service is listening."""
+
+  andika_host: str
+  """The hostname or IP address of the Andika service."""
+
+  andika_port: int
+  """The port number on which the Andika service is listening."""
 
   cert_file: str | None
   """The path to the SSL certificate file for secure WebSocket connections. If None, an insecure connection will be used."""
@@ -91,14 +98,76 @@ class Wakeword(BaseModel):
   )
 
 
+class SoundDetectionConfig(BaseModel):
+  """Configuration for the sound-detection feature."""
+
+  allowlist: list[str] = Field(default_factory=list, description="The list of allowed sound labels to detect.")
+
+
+class WakewordDetectionConfig(BaseModel):
+  """Configuration for the wakeword-detection feature."""
+
+  model_config = ConfigDict(populate_by_name=True)
+
+  language: str = Field(default="fr", description="The language code for wakeword detection.")
+  wakewords: list["Wakeword"] = Field(default_factory=list, description="The list of wakeword configurations.")
+
+
 class OhunerinConfig(BaseModel):
   """
-  The configuration schema for the Oremi Device.
+  The configuration schema for the Ohunerin component.
   """
+
+  model_config = ConfigDict(populate_by_name=True)
 
   threshold: float = Field(
     default=0.85, description="The minimum confidence score required to trigger a sound event detection. Defaults to 0.85."
   )
+
+
+AndikaModel = Literal[
+  "vosk-model-small-en-us-0.15",
+  "vosk-model-small-en-in-0.4",
+  "vosk-model-small-cn-0.22",
+  "vosk-model-small-ru-0.22",
+  "vosk-model-small-fr-0.22",
+  "vosk-model-small-de-0.15",
+  "vosk-model-small-es-0.42",
+  "vosk-model-small-pt-0.3",
+  "vosk-model-small-tr-0.3",
+  "vosk-model-small-vn-0.4",
+  "vosk-model-small-it-0.22",
+  "vosk-model-small-nl-0.22",
+  "vosk-model-small-ca-0.4",
+  "vosk-model-small-ar-tn-0.1-linto",
+  "vosk-model-small-fa-0.42",
+  "vosk-model-small-uk-v3-small",
+  "vosk-model-small-kz-0.42",
+  "vosk-model-small-sv-rhasspy-0.15",
+  "vosk-model-small-ja-0.22",
+  "vosk-model-small-eo-0.42",
+  "vosk-model-small-hi-0.22",
+  "vosk-model-small-cs-0.4-rhasspy",
+  "vosk-model-small-pl-0.22",
+  "vosk-model-small-uz-0.22",
+  "vosk-model-small-ko-0.22",
+  "vosk-model-small-gu-0.42",
+  "vosk-model-small-tg-0.22",
+  "vosk-model-small-te-0.42",
+  "vosk-model-small-ky-0.42",
+  "vosk-model-small-ka-0.42",
+]
+
+
+class AndikaConfig(BaseModel):
+  """
+  The configuration schema for the Andika speech-recognition component.
+  """
+
+  model_config = ConfigDict(populate_by_name=True)
+
+  model: AndikaModel = Field(default="vosk-model-small-fr-0.22", description="The Andika speech-to-text model identifier.")
+  samplerate: int = Field(default=16000, description="The audio sample rate in Hz.")
 
 
 class ComponentsConfig(BaseModel):
@@ -111,6 +180,7 @@ class ComponentsConfig(BaseModel):
   ohunerin: OhunerinConfig | None = Field(
     default=None, description="Configuration settings for the Ohunerin integration component."
   )
+  andika: AndikaConfig | None = Field(default=None, description="Configuration settings for the Andika integration component.")
 
 
 class DeviceConfig(BaseModel):

@@ -2,7 +2,7 @@ APP_NAME := $(shell python metadata.py name)
 APP_VERSION := $(shell python metadata.py version)
 IMAGE_NAME := demsking/$(APP_NAME)
 
-COMPOSE_SERVICES := detector mosquitto
+COMPOSE_SERVICES := andika detector mosquitto
 
 .PHONY: all clean build dist
 
@@ -38,6 +38,8 @@ clean:
 	rm -rf dist/ build/
 
 install:
+	rm -rf .venv
+	uv venv --python 3.12
 	uv sync
 
 # Show outdated dependencies using uv
