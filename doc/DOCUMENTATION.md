@@ -326,11 +326,17 @@ Oremi as a real `media_player` with the `speaker` device class, install the
 bundled integration by copying `custom_components/oremi_device` into the Home
 Assistant configuration directory and restart Home Assistant:
 
-```text
-config/
-└── custom_components/
-    └── oremi_device/
-```
+1. **Download the archive**: Download the latest pre-packaged integration from [here](https://demsking.gitlab.io/oremi-device/oremi-device-homeassistant.zip).
+
+2. Extract the archive and copy the `oremi_device` folder to your Home Assistant configuration directory under `custom_components/oremi_device` (ensure the target folder uses an underscore, not a hyphen).
+
+   Alternatively, you can copy it manually from the cloned repository:
+
+   ```bash
+   cp -r integrations/home-assistant/oremi-device /path/to/your/homeassistant/config/custom_components/oremi_device
+   ```
+
+3. Restart Home Assistant.
 
 With the default `oremi/device` MQTT topic, the integration discovers each
 running node and Home Assistant offers it for setup. For a custom base topic,
