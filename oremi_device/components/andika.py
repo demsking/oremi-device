@@ -257,9 +257,12 @@ class AndikaComponent(AudioStreamComponent):
       except Exception:
         pass
 
-  async def _activate_on_wakeword(self, active_stream_container: dict) -> None:
+  async def _activate_on_wakeword(self, active_stream_container: dict, device_state: dict | None = None) -> None:
     if self._wakeword_event is None:
       return
+
+    if device_state is None:
+      device_state = {"enabled": True, "microphone_muted": False}
 
     while True:
       await self._wakeword_event.wait()
@@ -268,7 +271,11 @@ class AndikaComponent(AudioStreamComponent):
       self._transcription_active = True
 
       try:
-        if active_stream_container["stream"] is not None:
+        if (
+          active_stream_container["stream"] is not None
+          and device_state["enabled"]
+          and not device_state["microphone_muted"]
+        ):
           self._start_listening()
 
         await self._transcription_complete_event.wait()
@@ -318,9 +325,10 @@ class AndikaComponent(AudioStreamComponent):
             self._transcription_complete_event,
           )
           self.audio_listener = AudioListener(active_stream_container["stream"], websocket, mqtt_client)
+          device_state = shared_resources["device_state"]
           transcribing_task = loop.create_task(transcriber.transcribing(), name="Andika Transcription Task")
           activation_task = loop.create_task(
-            self._activate_on_wakeword(active_stream_container),
+            self._activate_on_wakeword(active_stream_container, device_state),
             name="Andika Wakeword Activation Task",
           )
 

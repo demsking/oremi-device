@@ -270,7 +270,13 @@ class OhunerinComponent(AudioStreamComponent):
           if self._handle_task_done:
             detecting_task.add_done_callback(self._handle_task_done)
 
-          if active_stream_container["stream"] is not None:
+          device_state = shared_resources["device_state"]
+
+          if (
+            active_stream_container["stream"] is not None
+            and device_state["enabled"]
+            and not device_state["microphone_muted"]
+          ):
             self._listening_task = loop.create_task(self.audio_listener.listening(), name="Listening Task")
 
             if self._handle_task_done:

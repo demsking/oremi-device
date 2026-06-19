@@ -82,6 +82,14 @@ class MQTTClient:
     """
     return f"{self.topic}/device/{self.node_id}/microphone/set"
 
+  def get_mute_command_topic(self) -> str:
+    """Return the instance-scoped topic for microphone mute commands."""
+    return f"{self.topic}/device/{self.node_id}/microphone/mute/set"
+
+  def get_mute_state_topic(self) -> str:
+    """Return the instance-scoped topic for microphone mute state."""
+    return f"{self.topic}/device/{self.node_id}/microphone/mute/state"
+
   def get_language_command_topic(self) -> str:
     """Return the instance-scoped MQTT topic for language-select commands."""
     return f"{self.topic}/device/{self.node_id}/language/set"
@@ -123,6 +131,7 @@ class MQTTClient:
     current_device: str,
     entities: list["HAEntity"] | None = None,
     enabled: bool = True,
+    microphone_muted: bool = False,
     current_language: str = "fr",
     supported_languages: list[str] | None = None,
   ) -> None:
@@ -139,6 +148,7 @@ class MQTTClient:
         collected from active components. Each payload should already contain
         the ``"device"`` key.
       enabled: Whether the device is currently enabled (switch initial state).
+      microphone_muted: Whether microphone audio capture is currently muted.
       current_language: The currently active language code (e.g. ``'fr'``).
       supported_languages: List of language codes to present in the HA select.
         Defaults to ``['fr', 'en']`` when not provided.
@@ -202,6 +212,27 @@ class MQTTClient:
     # Publish initial switch state
     self.client.publish(self.get_switch_state_topic(), "ON" if enabled else "OFF", retain=True)
 
+    # ── Device-level: microphone mute switch ─────────────────────────────────
+    mute_payload = {
+      "name": "Microphone muted",
+      "unique_id": f"{node_id}_microphone_muted",
+      "state_topic": self.get_mute_state_topic(),
+      "command_topic": self.get_mute_command_topic(),
+      "payload_on": "ON",
+      "payload_off": "OFF",
+      "state_on": "ON",
+      "state_off": "OFF",
+      "availability_topic": f"{self.topic}/available",
+      "payload_available": "online",
+      "payload_not_available": "offline",
+      "icon": "mdi:microphone-off",
+      "device": device,
+    }
+
+    mute_topic = f"{self.discovery_prefix}/switch/{node_id}/microphone_muted/config"
+    self.client.publish(mute_topic, json.dumps(mute_payload), retain=True)
+    self.set_mute_state(microphone_muted)
+
     # ── Device-level: microphone select ─────────────────────────────────────
     # See https://www.home-assistant.io/integrations/select.mqtt/
     select_payload = {
@@ -239,6 +270,12 @@ class MQTTClient:
     state = "ON" if enabled else "OFF"
     logger.debug(f"Publishing switch state: {state}")
     self.client.publish(self.get_switch_state_topic(), state, retain=True)
+
+  def set_mute_state(self, muted: bool) -> None:
+    """Publish the microphone mute state to the instance-scoped topic."""
+    state = "ON" if muted else "OFF"
+    logger.debug(f"Publishing microphone mute state: {state}")
+    self.client.publish(self.get_mute_state_topic(), state, retain=True)
 
   def disconnect(self) -> None:
     self.client.disconnect()

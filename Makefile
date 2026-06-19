@@ -16,6 +16,9 @@ stop:
 up: pull
 	docker compose -f .devcontainer/workspace.yaml up -d $(COMPOSE_SERVICES) --remove-orphans
 
+ps:
+	docker compose -f .devcontainer/workspace.yaml ps $(COMPOSE_SERVICES)
+
 logs:
 	docker compose -f .devcontainer/workspace.yaml logs -f
 

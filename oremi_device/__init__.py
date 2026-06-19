@@ -122,6 +122,16 @@ async def start() -> None:
     discovery_prefix=args.mqtt_discovery_prefix if args.mqtt_discovery else None,
   )
 
+  # MQTT callbacks run on the client thread, so command state must exist
+  # before connecting and subscribing to retained command topics.
+  device_change_queue: asyncio.Queue = asyncio.Queue()
+  device_enable_queue: asyncio.Queue = asyncio.Queue()
+  microphone_mute_queue: asyncio.Queue = asyncio.Queue()
+  language_change_queue: asyncio.Queue = asyncio.Queue()
+  wakeword_event = asyncio.Event()
+  device_state: dict = {"enabled": True, "microphone_muted": False}
+  language_state: dict = {"language": args.language}
+
   @mqtt_client.client.connect_callback()
   def mqtt_on_connect(client, userdata, flags, reason_code, properties) -> None:
     logger.info(f"Connected to MQTT broker with result code {reason_code}")
@@ -131,6 +141,7 @@ async def start() -> None:
       # Using node_id in the topic prevents cross-instance interference when
       # multiple oremi-device instances share the same base MQTT topic.
       client.subscribe(mqtt_client.get_microphone_command_topic())
+      client.subscribe(mqtt_client.get_mute_command_topic())
 
     # Subscribe to the instance-scoped enable/disable switch command topic.
     client.subscribe(mqtt_client.get_switch_command_topic())
@@ -154,6 +165,7 @@ async def start() -> None:
           current_device=curr_name,
           entities=ha_entities,
           enabled=device_state["enabled"],
+          microphone_muted=device_state["microphone_muted"],
           current_language=language_state["language"],
         )
       except Exception as error:
@@ -171,16 +183,6 @@ async def start() -> None:
 
   mqtt_client.connect()
   mqtt_client.set_availability(False)
-
-  # Queue to receive audio device-change requests (used only when needs_audio)
-  device_change_queue: asyncio.Queue = asyncio.Queue()
-  # Queue to receive HA enable/disable switch commands
-  device_enable_queue: asyncio.Queue = asyncio.Queue()
-  # Queue to receive HA language-select commands
-  language_change_queue: asyncio.Queue = asyncio.Queue()
-  wakeword_event = asyncio.Event()
-  device_state: dict = {"enabled": True}
-  language_state: dict = {"language": args.language}
 
   @mqtt_client.client.message_callback()
   def mqtt_on_message(client, userdata, message) -> None:
@@ -203,6 +205,18 @@ async def start() -> None:
           loop.call_soon_threadsafe(device_enable_queue.put_nowait, payload == "ON")
       except Exception as error:
         logger.error(f"Error decoding or handling MQTT switch command: {error}")
+
+    elif needs_audio and topic == mqtt_client.get_mute_command_topic():
+      try:
+        payload = message.payload.decode("utf-8").strip().upper()
+        logger.info(f"Received microphone mute command: {payload}")
+
+        if payload in ("ON", "OFF"):
+          muted = payload == "ON"
+          device_state["microphone_muted"] = muted
+          loop.call_soon_threadsafe(microphone_mute_queue.put_nowait, muted)
+      except Exception as error:
+        logger.error(f"Error decoding or handling MQTT microphone mute command: {error}")
 
     elif topic == mqtt_client.get_language_command_topic():
       try:
@@ -259,10 +273,11 @@ async def start() -> None:
 
       active_stream_container["stream"] = new_stream
 
-      # Signal components that a new stream is ready
-      for component, _ in started_components:
-        if isinstance(component, AudioStreamComponent):
-          await component.on_device_changed(new_stream)
+      # Signal components only when microphone capture should be active.
+      if device_state["enabled"] and not device_state["microphone_muted"]:
+        for component, _ in started_components:
+          if isinstance(component, AudioStreamComponent):
+            await component.on_device_changed(new_stream)
 
       # Publish microphone state
       mqtt_client.publish("microphone/state", new_stream.device_name, retain=True)
@@ -281,6 +296,7 @@ async def start() -> None:
           current_device=new_stream.device_name,
           entities=ha_entities,
           enabled=device_state["enabled"],
+          microphone_muted=device_state["microphone_muted"],
           current_language=language_state["language"],
         )
 
@@ -313,6 +329,7 @@ async def start() -> None:
     "active_stream_container": active_stream_container,
     "device_change_queue": device_change_queue,
     "device_enable_queue": device_enable_queue,
+    "microphone_mute_queue": microphone_mute_queue,
     "language_change_queue": language_change_queue,
     "wakeword_event": wakeword_event,
     "device_state": device_state,
@@ -395,6 +412,7 @@ async def start() -> None:
             current_device=curr_name or "",
             entities=ha_entities,
             enabled=device_state["enabled"],
+            microphone_muted=device_state["microphone_muted"],
             current_language=language_state["language"],
           )
         except Exception as error:
@@ -461,10 +479,23 @@ async def start() -> None:
       device_enable_task = loop.create_task(device_enable_queue.get())
       tasks.append(device_enable_task)
 
+      microphone_mute_task = loop.create_task(microphone_mute_queue.get()) if needs_audio else None
+
+      if microphone_mute_task is not None:
+        tasks.append(microphone_mute_task)
+
       language_change_task = loop.create_task(language_change_queue.get())
       tasks.append(language_change_task)
 
       done, _ = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+
+      # Queue reads are recreated on each iteration. Cancel the pending ones so
+      # they cannot consume a later command behind the active iteration's task.
+      command_tasks = [device_change_task, device_enable_task, microphone_mute_task, language_change_task]
+
+      for command_task in command_tasks:
+        if command_task is not None and command_task not in done:
+          command_task.cancel()
 
       if device_change_task is not None and device_change_task in done:
         new_device = device_change_task.result()
@@ -504,7 +535,7 @@ async def start() -> None:
           if needs_audio:
             curr_stream = active_stream_container["stream"]
 
-            if curr_stream is not None:
+            if curr_stream is not None and not device_state["microphone_muted"]:
               for component, _ in started_components:
                 if isinstance(component, AudioStreamComponent):
                   await component.on_device_changed(curr_stream)
@@ -523,6 +554,27 @@ async def start() -> None:
                 await component.on_device_changed(None)
 
           mqtt_client.set_availability(False)
+      elif microphone_mute_task is not None and microphone_mute_task in done:
+        muted = microphone_mute_task.result()
+        device_state["microphone_muted"] = muted
+        mqtt_client.set_mute_state(muted)
+
+        if muted:
+          logger.info("Microphone muted. Stopping audio capture...")
+
+          for component, _ in started_components:
+            if isinstance(component, AudioStreamComponent):
+              await component.on_device_changed(None)
+        elif device_state["enabled"]:
+          logger.info("Microphone unmuted. Resuming audio capture...")
+          curr_stream = active_stream_container["stream"]
+
+          if curr_stream is not None:
+            for component, _ in started_components:
+              if isinstance(component, AudioStreamComponent):
+                await component.on_device_changed(curr_stream)
+          else:
+            loop.call_soon_threadsafe(device_change_queue.put_nowait, "__auto_select__")
       elif language_change_task is not None and language_change_task in done:
         new_language = language_change_task.result()
         language_state["language"] = new_language
@@ -547,6 +599,7 @@ async def start() -> None:
               current_device=curr_name,
               entities=ha_entities,
               enabled=device_state["enabled"],
+              microphone_muted=device_state["microphone_muted"],
               current_language=new_language,
             )
           except Exception as error:
@@ -559,19 +612,9 @@ async def start() -> None:
           for component, _ in started_components:
             if isinstance(component, AudioStreamComponent):
               await component.on_device_changed(None)
-              if curr_stream is not None:
+              if curr_stream is not None and device_state["enabled"] and not device_state["microphone_muted"]:
                 await component.on_device_changed(curr_stream)
       else:
-        # Cancel the pending queue-wait tasks (if any) before handling task completion
-        if device_change_task is not None:
-          device_change_task.cancel()
-
-        if device_enable_task is not None:
-          device_enable_task.cancel()
-
-        if language_change_task is not None:
-          language_change_task.cancel()
-
         is_listening_done = any(t in listening_tasks for t in done)
         is_main_done = any(t in component_tasks for t in done)
 
