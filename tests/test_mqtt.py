@@ -65,8 +65,8 @@ def test_publish_discovery_configs_no_entities(mock_mqtt_class) -> None:
     speaker_volume=0.42,
   )
 
-  # Seven device-level configs and their retained states.
-  assert mock_client_instance.publish.call_count == 14
+  # Seven device-level configs, their states, and player integration discovery.
+  assert mock_client_instance.publish.call_count == 16
 
   calls = mock_client_instance.publish.call_args_list
 
@@ -168,6 +168,17 @@ def test_publish_discovery_configs_no_entities(mock_mqtt_class) -> None:
   assert data_volume["command_topic"].endswith("/speaker/volume/set")
   assert calls[13][0][1] == "42"
 
+  assert calls[14][0] == (
+    "oremi/ohunerin/custom/device/oremi-ohunerin-custom/player/state",
+    "idle",
+  )
+  topic_player, payload_player = calls[15][0]
+  assert topic_player == "oremi/ohunerin/custom/device/oremi-ohunerin-custom/player/discovery"
+  assert json.loads(payload_player) == {
+    "node_id": "oremi-ohunerin-custom",
+    "topic": "oremi/ohunerin/custom",
+  }
+
 
 @patch("paho.mqtt.client.Client")
 def test_disabled_audio_discovery(mock_mqtt_class) -> None:
@@ -203,6 +214,32 @@ def test_disabled_audio_discovery(mock_mqtt_class) -> None:
 
   assert len(audio_config_payloads) == 5
   assert all(payload == "" for payload in audio_config_payloads.values())
+  mock_client.publish.assert_any_call(
+    "oremi/device/device/test-node/player/discovery",
+    "",
+    retain=True,
+  )
+
+
+@patch("paho.mqtt.client.Client")
+def test_discovery_preserves_active_player_state(mock_mqtt_class) -> None:
+  client = MQTTClient(
+    broker="localhost",
+    port=1883,
+    topic="oremi/device",
+    node_id="test-node",
+    discovery_prefix="homeassistant",
+  )
+  client.set_player_state("playing")
+  mock_mqtt_class.return_value.publish.reset_mock()
+
+  client.publish_discovery_configs(input_devices=[], current_device="")
+
+  mock_mqtt_class.return_value.publish.assert_any_call(
+    "oremi/device/device/test-node/player/state",
+    "playing",
+    retain=True,
+  )
 
 
 @patch('paho.mqtt.client.Client')
@@ -250,8 +287,8 @@ def test_publish_discovery_configs_with_entities(mock_mqtt_class) -> None:
   current = "Mic 1"
   client.publish_discovery_configs(input_devices=devices, current_device=current, entities=entities)
 
-  # 2 component entities + 7 device-level configs and their states = 16 calls
-  assert mock_client_instance.publish.call_count == 16
+  # 2 component entities + device-level configs, states, and player discovery.
+  assert mock_client_instance.publish.call_count == 18
 
   calls = mock_client_instance.publish.call_args_list
 

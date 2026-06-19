@@ -76,6 +76,9 @@ repos:
         description: 'Lint Python code using `pylint`, focusing on error messages only.'
         entry: pylint
         language: system
+        # The HA integration shares the application package name and requires
+        # Home Assistant's Python environment, which is unavailable here.
+        exclude: ^integrations/
 
   - repo: local
     hooks:

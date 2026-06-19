@@ -25,6 +25,7 @@ SHELL ["/bin/bash", "-eo", "pipefail", "-c"]
 RUN apt-get update \
   && apt-get install -y --no-install-recommends \
     libportaudio2 \
+    ffmpeg \
     pulseaudio-utils \
   && rm -rf /var/lib/apt/lists/*
 

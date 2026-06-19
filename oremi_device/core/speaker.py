@@ -12,6 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
+import array
+import subprocess  # nosec B404
+import threading
+
 import sounddevice as sd
 
 from ..utils.logger import logger
@@ -21,6 +25,10 @@ class SpeakerDeviceError(Exception):
   """Raised when a speaker output device cannot be selected."""
 
 
+class SpeakerPlaybackError(Exception):
+  """Raised when media cannot be decoded or played."""
+
+
 class Speaker:
   """Shared output-device and playback-control state."""
 
@@ -28,6 +36,9 @@ class Speaker:
     self._device_name = ""
     self._volume = 1.0
     self._muted = muted
+    self._playback_lock = threading.Lock()
+    self._playback_process: subprocess.Popen | None = None
+    self._stop_playback = threading.Event()
     self.set_volume(volume)
 
     if device_name:
@@ -91,6 +102,98 @@ class Speaker:
       raise ValueError("Speaker volume must be between 0.0 and 1.0")
 
     self._volume = volume
+
+  def play_url(self, media_url: str) -> None:
+    """Decode and play an HTTP media URL, blocking until playback finishes."""
+    if not media_url.startswith(("http://", "https://")):
+      raise SpeakerPlaybackError("Speaker media URL must use HTTP or HTTPS")
+
+    self.stop()
+    self._stop_playback.clear()
+    command = [
+      "ffmpeg",
+      "-nostdin",
+      "-loglevel",
+      "error",
+      "-i",
+      media_url,
+      "-f",
+      "f32le",
+      "-acodec",
+      "pcm_f32le",
+      "-ac",
+      "2",
+      "-ar",
+      "48000",
+      "pipe:1",
+    ]
+
+    try:
+      # media_url is restricted to HTTP(S) above and remains one argv value.
+      process = subprocess.Popen(  # nosec B603  # pylint: disable=consider-using-with
+        command,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+        shell=False,
+      )
+    except (FileNotFoundError, OSError) as error:
+      raise SpeakerPlaybackError(f"Failed to start ffmpeg: {error}") from error
+
+    with self._playback_lock:
+      self._playback_process = process
+
+    try:
+      with sd.RawOutputStream(samplerate=48000, channels=2, dtype="float32", device=self._device_name) as stream:
+        remainder = b""
+
+        while not self._stop_playback.is_set():
+          chunk = remainder + (process.stdout.read(16384) if process.stdout else b"")
+
+          if not chunk:
+            break
+
+          complete_length = len(chunk) - (len(chunk) % 4)
+          remainder = chunk[complete_length:]
+
+          if complete_length == 0:
+            continue
+
+          samples = array.array("f")
+          samples.frombytes(chunk[:complete_length])
+          gain = self.gain
+
+          if gain != 1.0:
+            for index, sample in enumerate(samples):
+              samples[index] = sample * gain
+
+          stream.write(samples.tobytes())
+
+      return_code = process.wait()
+
+      if return_code and not self._stop_playback.is_set():
+        raise SpeakerPlaybackError(f"ffmpeg exited with status {return_code}")
+    except SpeakerPlaybackError:
+      raise
+    except Exception as error:
+      raise SpeakerPlaybackError(f"Failed to play media: {error}") from error
+    finally:
+      if process.poll() is None:
+        process.terminate()
+        process.wait()
+
+      with self._playback_lock:
+        if self._playback_process is process:
+          self._playback_process = None
+
+  def stop(self) -> None:
+    """Stop current media playback, if any."""
+    self._stop_playback.set()
+
+    with self._playback_lock:
+      process = self._playback_process
+
+    if process is not None and process.poll() is None:
+      process.terminate()
 
   @staticmethod
   def get_compatible_output_devices() -> list[str]:

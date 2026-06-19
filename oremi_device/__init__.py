@@ -32,6 +32,7 @@ from .core.package import APP_NAME
 from .core.package import APP_VERSION
 from .core.speaker import Speaker
 from .core.speaker import SpeakerDeviceError
+from .core.speaker import SpeakerPlaybackError
 from .utils.logger import logger
 
 
@@ -151,6 +152,8 @@ async def start() -> None:
   speaker_change_queue: asyncio.Queue = asyncio.Queue()
   speaker_mute_queue: asyncio.Queue = asyncio.Queue()
   speaker_volume_queue: asyncio.Queue = asyncio.Queue()
+  player_play_queue: asyncio.Queue = asyncio.Queue()
+  player_stop_queue: asyncio.Queue = asyncio.Queue()
   language_change_queue: asyncio.Queue = asyncio.Queue()
   wakeword_event = asyncio.Event()
   device_state: dict = {"enabled": True, "microphone_muted": False}
@@ -160,6 +163,21 @@ async def start() -> None:
     "volume": speaker.volume if speaker else 1.0,
   }
   language_state: dict = {"language": args.language}
+  playback_task: asyncio.Task | None = None
+
+  async def play_media(media_url: str) -> None:
+    if speaker is None:
+      logger.error("Cannot play media because no compatible speaker is available")
+      return
+
+    mqtt_client.set_player_state("playing")
+
+    try:
+      await asyncio.to_thread(speaker.play_url, media_url)
+    except SpeakerPlaybackError as error:
+      logger.error(f"Media playback failed: {error}")
+    finally:
+      mqtt_client.set_player_state("idle")
 
   @mqtt_client.client.connect_callback()
   def mqtt_on_connect(client, userdata, flags, reason_code, properties) -> None:
@@ -176,6 +194,8 @@ async def start() -> None:
       client.subscribe(mqtt_client.get_speaker_command_topic())
       client.subscribe(mqtt_client.get_speaker_mute_cmd_topic())
       client.subscribe(mqtt_client.get_speaker_volume_cmd_topic())
+      client.subscribe(mqtt_client.get_player_play_command_topic())
+      client.subscribe(mqtt_client.get_player_stop_command_topic())
 
     # Subscribe to the instance-scoped enable/disable switch command topic.
     client.subscribe(mqtt_client.get_switch_command_topic())
@@ -285,6 +305,18 @@ async def start() -> None:
           loop.call_soon_threadsafe(speaker_volume_queue.put_nowait, volume)
       except (UnicodeDecodeError, ValueError) as error:
         logger.error(f"Error decoding or handling MQTT speaker volume command: {error}")
+
+    elif speaker_enabled and topic == mqtt_client.get_player_play_command_topic():
+      try:
+        media_url = message.payload.decode("utf-8").strip()
+
+        if media_url:
+          loop.call_soon_threadsafe(player_play_queue.put_nowait, media_url)
+      except UnicodeDecodeError as error:
+        logger.error(f"Error decoding media playback command: {error}")
+
+    elif speaker_enabled and topic == mqtt_client.get_player_stop_command_topic():
+      loop.call_soon_threadsafe(player_stop_queue.put_nowait, True)
 
     elif topic == mqtt_client.get_language_command_topic():
       try:
@@ -573,9 +605,11 @@ async def start() -> None:
       speaker_change_task = loop.create_task(speaker_change_queue.get()) if speaker_enabled else None
       speaker_mute_task = loop.create_task(speaker_mute_queue.get()) if speaker_enabled else None
       speaker_volume_task = loop.create_task(speaker_volume_queue.get()) if speaker_enabled else None
+      player_play_task = loop.create_task(player_play_queue.get()) if speaker_enabled else None
+      player_stop_task = loop.create_task(player_stop_queue.get()) if speaker_enabled else None
 
       if speaker_enabled:
-        tasks.extend((speaker_change_task, speaker_mute_task, speaker_volume_task))
+        tasks.extend((speaker_change_task, speaker_mute_task, speaker_volume_task, player_play_task, player_stop_task))
 
       language_change_task = loop.create_task(language_change_queue.get())
       tasks.append(language_change_task)
@@ -591,6 +625,8 @@ async def start() -> None:
         speaker_change_task,
         speaker_mute_task,
         speaker_volume_task,
+        player_play_task,
+        player_stop_task,
         language_change_task,
       ]
 
@@ -714,6 +750,23 @@ async def start() -> None:
 
         mqtt_client.set_speaker_volume_state(volume)
         logger.info(f"Speaker volume set to {volume:.0%}")
+      elif player_play_task is not None and player_play_task in done:
+        media_url = player_play_task.result()
+
+        if speaker is not None:
+          speaker.stop()
+
+        if playback_task is not None:
+          await playback_task
+
+        playback_task = loop.create_task(play_media(media_url), name="Speaker Playback Task")
+      elif player_stop_task is not None and player_stop_task in done:
+        if speaker is not None:
+          speaker.stop()
+
+        if playback_task is not None:
+          await playback_task
+          playback_task = None
       elif language_change_task is not None and language_change_task in done:
         new_language = language_change_task.result()
         language_state["language"] = new_language
@@ -767,6 +820,12 @@ async def start() -> None:
           # A main component task finished — time to exit
           break
   finally:
+    if speaker is not None:
+      speaker.stop()
+
+    if playback_task is not None:
+      await playback_task
+
     if monitor_task is not None:
       monitor_task.cancel()
 

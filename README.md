@@ -25,6 +25,7 @@ preferred device becomes available again.
   * [Events](#events)
   * [Device Controls](#device-controls)
 - [Home Assistant](#home-assistant)
+  * [Media Player](#media-player)
 - [Logging](#logging)
 - [Development](#development)
 - [Versioning](#versioning)
@@ -89,29 +90,43 @@ oremi-device [-h] [-v] {start} ...
 oremi-device start [options]
 ```
 
-| Option                           | Required | Default              | Description                                                                                                                                    |
-| -------------------------------- | -------- | -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
-| `-n`, `--node-id ID`             | Yes      |                      | Unique node identifier. It scopes the MQTT client and device control topics.                                                                   |
-| `--ohunerin-host HOST`           | Yes      |                      | Ohunerin server host.                                                                                                                          |
-| `--ohunerin-port PORT`           | No       | `5023`               | Ohunerin server port.                                                                                                                          |
-| `--andika-host HOST`             | Yes      |                      | Andika server host.                                                                                                                            |
-| `--andika-port PORT`             | No       | `5315`               | Andika server port.                                                                                                                            |
-| `--mqtt-broker HOST`             | Yes      |                      | MQTT broker host.                                                                                                                              |
-| `--mqtt-port PORT`               | No       | `1883`               | MQTT broker port.                                                                                                                              |
-| `--mqtt-username USER`           | No       |                      | MQTT username.                                                                                                                                 |
-| `--mqtt-password PASSWORD`       | No       |                      | MQTT password.                                                                                                                                 |
-| `--mqtt-topic TOPIC`             | No       | `oremi/device`       | Base topic for events, availability, and controls.                                                                                             |
-| `-l`, `--language LANGUAGE`      | No       | `fr`                 | Language sent to Ohunerin when the service connection is created.                                                                              |
-| `-i`, `--device-index INDEX`     | No       | Auto                 | Preferred microphone index.                                                                                                                    |
-| `-d`, `--device NAME`            | No       | Auto                 | Preferred microphone name. This takes precedence over `--device-index`.                                                                        |
-| `--no-microphone`                | No       | Microphone enabled   | Disable microphone initialization and audio capture.                                                                                           |
-| `--no-speaker`                   | No       | Speaker enabled      | Disable speaker initialization and speaker MQTT controls.                                                                                      |
-| `--delay SECONDS`                | No       | `3`                  | Suppress duplicate sound events for this period and then publish a clearing event. It is also used as the Andika MQTT message expiry interval. |
-| `--conversation-timeout SECONDS` | No       | `15`                 | Stop capturing speech and return to wake-word mode when Andika does not return a final result within this period.                              |
-| `--config PATH`                  | No       | Built-in defaults    | JSON component configuration file.                                                                                                             |
-| `--cert-file PATH`               | No       | Insecure connections | CA certificate used for TLS connections to both services. This changes their WebSocket and HTTP URLs to `wss` and `https`.                     |
-| `--no-mqtt-discovery`            | No       | Discovery enabled    | Disable Home Assistant MQTT discovery.                                                                                                         |
-| `--mqtt-discovery-prefix PREFIX` | No       | `homeassistant`      | Home Assistant discovery topic prefix.                                                                                                         |
+Here are the command-line options for `oremi-device start` formatted as a list:
+
+**Required Options**
+
+- `-n, --node-id ID` (Required): Unique node identifier. It scopes the MQTT client and device control topics.
+- `--ohunerin-host HOST` (Required): Ohunerin server host.
+- `--andika-host HOST` (Required): Andika server host.
+- `--mqtt-broker HOST` (Required): MQTT broker host.
+
+**Server Connection Options**
+
+- `--ohunerin-port PORT` (Optional, default: `5023`): Ohunerin server port.
+- `--andika-port PORT` (Optional, default: `5315`): Andika server port.
+- `--mqtt-port PORT` (Optional, default: `1883`): MQTT broker port.
+- `--mqtt-username USER` (Optional): MQTT username.
+- `--mqtt-password PASSWORD` (Optional): MQTT password.
+- `--mqtt-topic TOPIC` (Optional, default: `oremi/device`): Base topic for events, availability, and controls.
+- `--cert-file PATH` (Optional, default: Insecure connections): CA certificate used for TLS connections to both services. This changes their WebSocket and HTTP URLs to `wss` and `https`.
+
+**Audio Device Options**
+
+- `-i, --device-index INDEX` (Optional, default: Auto): Preferred microphone index.
+- `-d, --device NAME` (Optional, default: Auto): Preferred microphone name. This takes precedence over `--device-index`.
+- `--no-microphone` (Optional, default: Microphone enabled): Disable microphone initialization and audio capture.
+- `--no-speaker` (Optional, default: Speaker enabled): Disable speaker initialization and speaker MQTT controls.
+
+**Behavioral Options**
+
+- `-l, --language LANGUAGE` (Optional, default: `fr`): Language sent to Ohunerin when the service connection is created.
+- `--delay SECONDS` (Optional, default: `3`): Suppress duplicate sound events for this period and then publish a clearing event. It is also used as the Andika MQTT message expiry interval.
+- `--conversation-timeout SECONDS` (Optional, default: `15`): Stop capturing speech and return to wake-word mode when Andika does not return a final result within this period.
+- `--config PATH` (Optional, default: Built-in defaults): JSON component configuration file.
+
+**Discovery Options**
+
+- `--no-mqtt-discovery` (Optional, default: Discovery enabled): Disable Home Assistant MQTT discovery.
+- `--mqtt-discovery-prefix PREFIX` (Optional, default: `homeassistant`): Home Assistant discovery topic prefix.
 
 Run `oremi-device start -h` for the help generated by the installed version.
 
@@ -137,8 +152,22 @@ state and reconnects Ohunerin with the newly selected language.
 
 ## Configuration File
 
-The file passed to `--config` is a JSON object with component settings nested
-under `components`:
+**Configuration File Overview**
+
+- The file passed to `--config` is a JSON object with component settings nested under `components`
+- Both components start even when their sections are omitted, using the defaults listed below
+- Invalid JSON, invalid types, or an unsupported Andika model cause startup to exit with an error
+
+**Ohunerin Component Settings**
+
+- `components.ohunerin.threshold` (Optional, default: `0.85`): Minimum confidence score accepted for Ohunerin sound and wake-word events.
+
+**Andika Component Settings**
+
+- `components.andika.model` (Optional, default: `vosk-model-small-fr-0.22`): Vosk model identifier sent to Andika. The value must be one of the models supported by the application and server.
+- `components.andika.samplerate` (Optional, default: `16000`): Audio sample rate sent to Andika.
+
+**Example Configuration**
 
 ```json
 {
@@ -153,12 +182,6 @@ under `components`:
   }
 }
 ```
-
-| Setting                         | Default                    | Description                                                                                                        |
-| ------------------------------- | -------------------------- | ------------------------------------------------------------------------------------------------------------------ |
-| `components.ohunerin.threshold` | `0.85`                     | Minimum confidence score accepted for Ohunerin sound and wake-word events.                                         |
-| `components.andika.model`       | `vosk-model-small-fr-0.22` | Vosk model identifier sent to Andika. The value must be one of the models supported by the application and server. |
-| `components.andika.samplerate`  | `16000`                    | Audio sample rate sent to Andika.                                                                                  |
 
 Both components start even when their sections are omitted, using the defaults
 above. Invalid JSON, invalid types, or an unsupported Andika model cause startup
@@ -216,15 +239,17 @@ After the delay expires, the service publishes a retained clearing message with
 
 ### Device Controls
 
-| Command topic                                         | State topic                                             | Payload                                                  |
-| ----------------------------------------------------- | ------------------------------------------------------- | -------------------------------------------------------- |
-| `oremi/device/device/living-room/switch/set`          | `oremi/device/device/living-room/switch/state`          | `ON` enables audio processing; `OFF` disables it.        |
-| `oremi/device/device/living-room/language/set`        | `oremi/device/device/living-room/language/state`        | A UTF-8 language string. Discovery offers `fr` and `en`. |
-| `oremi/device/device/living-room/microphone/set`      | `oremi/device/microphone/state`                         | A microphone name exposed by discovery.                  |
-| `oremi/device/device/living-room/microphone/mute/set` | `oremi/device/device/living-room/microphone/mute/state` | `ON` mutes capture; `OFF` unmutes it.                    |
-| `oremi/device/device/living-room/speaker/set`         | `oremi/device/device/living-room/speaker/state`         | A speaker name exposed by discovery.                     |
-| `oremi/device/device/living-room/speaker/mute/set`    | `oremi/device/device/living-room/speaker/mute/state`    | `ON` mutes the speaker; `OFF` unmutes it.                |
-| `oremi/device/device/living-room/speaker/volume/set`  | `oremi/device/device/living-room/speaker/volume/state`  | Integer percentage from `0` to `100`.                    |
+| Command topic                                         | State topic                                             | Payload                                                   |
+| ----------------------------------------------------- | ------------------------------------------------------- | --------------------------------------------------------- |
+| `oremi/device/device/living-room/switch/set`          | `oremi/device/device/living-room/switch/state`          | `ON` enables audio processing; `OFF` disables it.         |
+| `oremi/device/device/living-room/language/set`        | `oremi/device/device/living-room/language/state`        | A UTF-8 language string. Discovery offers `fr` and `en`.  |
+| `oremi/device/device/living-room/microphone/set`      | `oremi/device/microphone/state`                         | A microphone name exposed by discovery.                   |
+| `oremi/device/device/living-room/microphone/mute/set` | `oremi/device/device/living-room/microphone/mute/state` | `ON` mutes capture; `OFF` unmutes it.                     |
+| `oremi/device/device/living-room/speaker/set`         | `oremi/device/device/living-room/speaker/state`         | A speaker name exposed by discovery.                      |
+| `oremi/device/device/living-room/speaker/mute/set`    | `oremi/device/device/living-room/speaker/mute/state`    | `ON` mutes the speaker; `OFF` unmutes it.                 |
+| `oremi/device/device/living-room/speaker/volume/set`  | `oremi/device/device/living-room/speaker/volume/state`  | Integer percentage from `0` to `100`.                     |
+| `oremi/device/device/living-room/player/play/set`     | `oremi/device/device/living-room/player/state`          | An HTTP or HTTPS audio URL; state is `playing` or `idle`. |
+| `oremi/device/device/living-room/player/stop/set`     | `oremi/device/device/living-room/player/state`          | Any payload stops playback.                               |
 
 The microphone state topic is `oremi/device/microphone/state`; unlike the other
 control states, it is not nested below the node-specific prefix.
@@ -255,6 +280,28 @@ cleared.
 
 Use `--no-mqtt-discovery` to disable discovery or
 `--mqtt-discovery-prefix` when Home Assistant uses a custom prefix.
+
+### Media Player
+
+Home Assistant does not provide a native MQTT media-player platform. To expose
+Oremi as a real `media_player` with the `speaker` device class, install the
+bundled integration by copying `custom_components/oremi_device` into the Home
+Assistant configuration directory and restart Home Assistant:
+
+```text
+config/
+└── custom_components/
+    └── oremi_device/
+```
+
+With the default `oremi/device` MQTT topic, the integration discovers each
+running node and Home Assistant offers it for setup. For a custom base topic,
+add **Oremi Device Player** from **Settings > Devices & services**, then enter
+the node ID and MQTT base topic.
+
+The resulting `media_player` supports Home Assistant TTS and audio media-source
+URLs, stop, mute, and volume controls. Playback requires `ffmpeg`; it is included
+in the Docker image and must be installed separately when running from source.
 
 ## Logging
 

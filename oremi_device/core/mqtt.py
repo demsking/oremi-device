@@ -50,6 +50,7 @@ class MQTTClient:  # pylint: disable=too-many-public-methods
     self.username = username
     self.password = password
     self.discovery_prefix = discovery_prefix
+    self.player_state: Literal["idle", "playing"] = "idle"
 
   # ── Helpers for building HA entity payloads outside this class ──────────────
 
@@ -113,6 +114,18 @@ class MQTTClient:  # pylint: disable=too-many-public-methods
   def get_speaker_volume_state_topic(self) -> str:
     """Return the instance-scoped topic for speaker volume state."""
     return f"{self.topic}/device/{self.node_id}/speaker/volume/state"
+
+  def get_player_play_command_topic(self) -> str:
+    return f"{self.topic}/device/{self.node_id}/player/play/set"
+
+  def get_player_stop_command_topic(self) -> str:
+    return f"{self.topic}/device/{self.node_id}/player/stop/set"
+
+  def get_player_state_topic(self) -> str:
+    return f"{self.topic}/device/{self.node_id}/player/state"
+
+  def get_player_discovery_topic(self) -> str:
+    return f"{self.topic}/device/{self.node_id}/player/discovery"
 
   def get_language_command_topic(self) -> str:
     """Return the instance-scoped MQTT topic for language-select commands."""
@@ -358,6 +371,14 @@ class MQTTClient:  # pylint: disable=too-many-public-methods
 
     if speaker_enabled:
       self.set_speaker_volume_state(speaker_volume)
+      self.set_player_state(self.player_state)
+      self.client.publish(
+        self.get_player_discovery_topic(),
+        json.dumps({"node_id": self.node_id, "topic": self.topic}),
+        retain=True,
+      )
+    else:
+      self.client.publish(self.get_player_discovery_topic(), "", retain=True)
 
   def publish_language_state(self, language: str) -> None:
     """Publish the current language state to the instance-scoped topic."""
@@ -392,6 +413,11 @@ class MQTTClient:  # pylint: disable=too-many-public-methods
   def set_speaker_volume_state(self, volume: float) -> None:
     """Publish speaker volume as a Home Assistant percentage."""
     self.client.publish(self.get_speaker_volume_state_topic(), str(round(volume * 100)), retain=True)
+
+  def set_player_state(self, state: Literal["idle", "playing"]) -> None:
+    """Publish the Home Assistant player state."""
+    self.player_state = state
+    self.client.publish(self.get_player_state_topic(), state, retain=True)
 
   def disconnect(self) -> None:
     self.client.disconnect()

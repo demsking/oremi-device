@@ -34,9 +34,6 @@ down:
 stats:
 	docker compose -f .devcontainer/workspace.yaml stats
 
-exec:
-	docker compose -f .devcontainer/workspace.yaml exec detector bash
-
 clean:
 	rm -rf dist/ build/
 
@@ -50,8 +47,8 @@ outdated:
 	uv pip list --outdated
 
 # Update dev env
-update:
-	uv lock --upgrade
+update: pull
+	uv sync --upgrade
 	devbox update
 	pre-commit autoupdate
 

@@ -12,12 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
 from oremi_device.core.speaker import Speaker
 from oremi_device.core.speaker import SpeakerDeviceError
+from oremi_device.core.speaker import SpeakerPlaybackError
 
 
 @patch("sounddevice.query_devices")
@@ -77,3 +78,46 @@ def test_empty_output_rejected(mock_query_devices) -> None:
 
   with pytest.raises(SpeakerDeviceError):
     speaker.select_device("  ")
+
+
+@patch("sounddevice.query_devices", return_value={"name": "Built-in Audio", "max_output_channels": 2})
+@patch("sounddevice.RawOutputStream")
+def test_play_url_decodes_audio_to_selected_device(mock_output_stream, mock_query_devices) -> None:
+  speaker = Speaker(volume=0.5)
+  process = MagicMock()
+  process.stdout.read.side_effect = [(b"\x00\x00\x80?" * 4), b""]
+  process.wait.return_value = 0
+  process.poll.return_value = 0
+  stream = mock_output_stream.return_value.__enter__.return_value
+
+  with patch("oremi_device.core.speaker.subprocess.Popen", return_value=process) as popen:
+    speaker.play_url("https://home-assistant.local/api/tts.wav")
+
+  assert popen.call_args.args[0][0] == "ffmpeg"
+  mock_output_stream.assert_called_once_with(
+    samplerate=48000,
+    channels=2,
+    dtype="float32",
+    device="Built-in Audio",
+  )
+  assert stream.write.call_count == 1
+
+
+@patch("sounddevice.query_devices", return_value={"name": "Speaker", "max_output_channels": 2})
+def test_play_url_rejects_non_http_media(mock_query_devices) -> None:
+  speaker = Speaker()
+
+  with pytest.raises(SpeakerPlaybackError, match="HTTP or HTTPS"):
+    speaker.play_url("file:///tmp/private.wav")
+
+
+@patch("sounddevice.query_devices", return_value={"name": "Speaker", "max_output_channels": 2})
+def test_stop_terminates_active_decoder(mock_query_devices) -> None:
+  speaker = Speaker()
+  process = MagicMock()
+  process.poll.return_value = None
+  speaker._playback_process = process  # noqa: SLF001
+
+  speaker.stop()
+
+  process.terminate.assert_called_once_with()
