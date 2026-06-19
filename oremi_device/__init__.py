@@ -14,6 +14,7 @@
 # ==============================================================================
 import asyncio
 import json
+import logging
 import signal
 import sys
 
@@ -31,17 +32,17 @@ from .core.package import APP_NAME
 from .core.package import APP_VERSION
 from .core.speaker import Speaker
 from .core.speaker import SpeakerDeviceError
-from .utils.logger import LOG_LEVEL_STR
 from .utils.logger import logger
 
 
 async def start() -> None:
   args = parse_arguments()
+
   loop = asyncio.get_running_loop()
 
   # Log initial configuration
   logger.info(f"Starting {APP_NAME}/{APP_VERSION}")
-  logger.info(f"Log level: {LOG_LEVEL_STR}")
+  logger.info(f"Log level: {logging.getLevelName(logger.getEffectiveLevel())}")
   logger.info(f"Configuration Node ID: {args.node_id}")
   logger.info(f"Configuration Ohunerin Host: {args.ohunerin_host}")
   logger.info(f"Configuration Ohunerin Port: {args.ohunerin_port}")

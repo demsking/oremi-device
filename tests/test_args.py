@@ -14,6 +14,8 @@
 # ==============================================================================
 from unittest.mock import patch
 
+import pytest
+
 from oremi_device.core.args import parse_arguments
 
 
@@ -45,3 +47,9 @@ def test_audio_devices_disabled() -> None:
 
   assert args.microphone_enabled is False
   assert args.speaker_enabled is False
+
+
+def test_debug_option_is_rejected() -> None:
+  with patch("sys.argv", [*BASE_ARGS, "--debug"]):
+    with pytest.raises(SystemExit, match="2"):
+      parse_arguments()

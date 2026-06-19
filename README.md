@@ -26,6 +26,7 @@ communication. It is available as a Docker image for both `linux/amd64` and
 - [Command-Line Arguments](#command-line-arguments)
   * [General Usage](#general-usage)
   * [Start Command](#start-command)
+- [Logging](#logging)
 - [MQTT Topics](#mqtt-topics)
 - [Customizing Detection with `ohunerin.json`](#customizing-detection-with-ohunerinjson)
 - [Home Assistant Integration](#home-assistant-integration)
@@ -204,6 +205,22 @@ options:
                         The password for authenticating with the MQTT broker. Default is None.
   --mqtt-topic MQTT_TOPIC
                         The MQTT topic to publish audio detection events to. Default is "oremi/ohunerin".
+```
+
+## Logging
+
+Configure the log level with the `LOG_LEVEL` environment variable. Supported
+values are `DEBUG`, `INFO`, `WARNING`, `ERROR`, and `CRITICAL`; the default is
+`INFO`.
+
+```bash
+docker run -it --rm -e LOG_LEVEL=DEBUG demsking/oremi-device start [options]
+```
+
+Log messages use the following format:
+
+```text
+2026-06-19 12:04:10 - oremi-device - INFO - Starting oremi-device
 ```
 
 ## MQTT Topics
