@@ -223,7 +223,9 @@ class AndikaComponent(AudioStreamComponent):
       try:
         await self._listening_task
       except asyncio.CancelledError:
-        if asyncio.current_task().cancelling():
+        current_task = asyncio.current_task()
+
+        if current_task and current_task.cancelling():
           raise
       except Exception:
         pass
@@ -248,7 +250,9 @@ class AndikaComponent(AudioStreamComponent):
       try:
         await self._listening_task
       except asyncio.CancelledError:
-        if asyncio.current_task().cancelling():
+        current_task = asyncio.current_task()
+
+        if current_task and current_task.cancelling():
           raise
       except Exception:
         pass

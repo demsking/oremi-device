@@ -70,7 +70,7 @@ class SoundDetector:
       "date": datetime.now().isoformat(),
     }
     message = json.dumps(data)
-    self.mqtt_client.publish(sound_type, message, True)
+    self.mqtt_client.publish(sound_type, message, retain=True)
 
   async def detecting(self) -> None:
     try:
