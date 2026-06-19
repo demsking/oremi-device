@@ -257,54 +257,6 @@
         }
       }
     },
-    "portaudio@latest": {
-      "last_modified": "2026-05-21T08:15:18Z",
-      "resolved": "github:NixOS/nixpkgs/4a29d733e8a7d5b824c3d8c958a946a9867b3eb2#portaudio",
-      "source": "devbox-search",
-      "version": "190700_20210406",
-      "systems": {
-        "aarch64-darwin": {
-          "outputs": [
-            {
-              "name": "out",
-              "path": "/nix/store/hc4cpf128jdw9v8cq5ja870vysy5dj0a-portaudio-190700_20210406",
-              "default": true
-            }
-          ],
-          "store_path": "/nix/store/hc4cpf128jdw9v8cq5ja870vysy5dj0a-portaudio-190700_20210406"
-        },
-        "aarch64-linux": {
-          "outputs": [
-            {
-              "name": "out",
-              "path": "/nix/store/1hnw0q78dziczpyd29n7mgjkzypxbpsf-portaudio-190700_20210406",
-              "default": true
-            }
-          ],
-          "store_path": "/nix/store/1hnw0q78dziczpyd29n7mgjkzypxbpsf-portaudio-190700_20210406"
-        },
-        "x86_64-darwin": {
-          "outputs": [
-            {
-              "name": "out",
-              "path": "/nix/store/nnbrk93alnsn9kc51y3lixayqwb836yf-portaudio-190700_20210406",
-              "default": true
-            }
-          ],
-          "store_path": "/nix/store/nnbrk93alnsn9kc51y3lixayqwb836yf-portaudio-190700_20210406"
-        },
-        "x86_64-linux": {
-          "outputs": [
-            {
-              "name": "out",
-              "path": "/nix/store/6q6sd0a2dy5i6azh0dvwgypsjnkrldvi-portaudio-190700_20210406",
-              "default": true
-            }
-          ],
-          "store_path": "/nix/store/6q6sd0a2dy5i6azh0dvwgypsjnkrldvi-portaudio-190700_20210406"
-        }
-      }
-    },
     "pre-commit@latest": {
       "last_modified": "2026-05-21T08:15:18Z",
       "resolved": "github:NixOS/nixpkgs/4a29d733e8a7d5b824c3d8c958a946a9867b3eb2#pre-commit",
@@ -433,70 +385,6 @@
         }
       }
     },
-    "python312Packages.pyaudio@latest": {
-      "last_modified": "2025-11-23T21:50:36Z",
-      "resolved": "github:NixOS/nixpkgs/ee09932cedcef15aaf476f9343d1dea2cb77e261#python312Packages.pyaudio",
-      "source": "devbox-search",
-      "version": "0.2.14",
-      "systems": {
-        "aarch64-darwin": {
-          "outputs": [
-            {
-              "name": "out",
-              "path": "/nix/store/gmqd1j7x3nnzb39p7spx1133a2g9q106-python3.12-pyaudio-0.2.14",
-              "default": true
-            },
-            {
-              "name": "dist",
-              "path": "/nix/store/4fwqm8r4z0gqwc933caq5d7wdbn61dvm-python3.12-pyaudio-0.2.14-dist"
-            }
-          ],
-          "store_path": "/nix/store/gmqd1j7x3nnzb39p7spx1133a2g9q106-python3.12-pyaudio-0.2.14"
-        },
-        "aarch64-linux": {
-          "outputs": [
-            {
-              "name": "out",
-              "path": "/nix/store/8pz9gnkaa8hgxiws31lc66ns3vacdhv2-python3.12-pyaudio-0.2.14",
-              "default": true
-            },
-            {
-              "name": "dist",
-              "path": "/nix/store/2rxbbcch55f8749l8i5jnk6fm7s4knvv-python3.12-pyaudio-0.2.14-dist"
-            }
-          ],
-          "store_path": "/nix/store/8pz9gnkaa8hgxiws31lc66ns3vacdhv2-python3.12-pyaudio-0.2.14"
-        },
-        "x86_64-darwin": {
-          "outputs": [
-            {
-              "name": "out",
-              "path": "/nix/store/9njv26z14l9raihqfxb34kb4l3kdwyw0-python3.12-pyaudio-0.2.14",
-              "default": true
-            },
-            {
-              "name": "dist",
-              "path": "/nix/store/68y99na2102l1g7dd50c739m5cd5swrj-python3.12-pyaudio-0.2.14-dist"
-            }
-          ],
-          "store_path": "/nix/store/9njv26z14l9raihqfxb34kb4l3kdwyw0-python3.12-pyaudio-0.2.14"
-        },
-        "x86_64-linux": {
-          "outputs": [
-            {
-              "name": "out",
-              "path": "/nix/store/7fvz8wnwkbyxyf59a7s6ygl2mf0cz99f-python3.12-pyaudio-0.2.14",
-              "default": true
-            },
-            {
-              "name": "dist",
-              "path": "/nix/store/8kjyyp6l5ll5swqy5zjf1y5ngikv0dd4-python3.12-pyaudio-0.2.14-dist"
-            }
-          ],
-          "store_path": "/nix/store/7fvz8wnwkbyxyf59a7s6ygl2mf0cz99f-python3.12-pyaudio-0.2.14"
-        }
-      }
-    },
     "ruff@latest": {
       "last_modified": "2026-06-02T02:01:59Z",
       "resolved": "github:NixOS/nixpkgs/ffa10e26ae11d676b2db836259889f1f571cb14f#ruff",
@@ -542,6 +430,54 @@
             }
           ],
           "store_path": "/nix/store/idm9anmfqb342jn8x3yp44188j203zjv-ruff-0.15.15"
+        }
+      }
+    },
+    "serve@latest": {
+      "last_modified": "2026-06-11T01:27:03Z",
+      "resolved": "github:NixOS/nixpkgs/b503dde361500433ca25a32e8f4d218bf58fb659#serve",
+      "source": "devbox-search",
+      "version": "14.2.4",
+      "systems": {
+        "aarch64-darwin": {
+          "outputs": [
+            {
+              "name": "out",
+              "path": "/nix/store/yw774kav6whgwn4byn392sj1zhwarf2s-serve-14.2.4",
+              "default": true
+            }
+          ],
+          "store_path": "/nix/store/yw774kav6whgwn4byn392sj1zhwarf2s-serve-14.2.4"
+        },
+        "aarch64-linux": {
+          "outputs": [
+            {
+              "name": "out",
+              "path": "/nix/store/pxyb262jpv2lcrfwhw1j3yl36lw33c00-serve-14.2.4",
+              "default": true
+            }
+          ],
+          "store_path": "/nix/store/pxyb262jpv2lcrfwhw1j3yl36lw33c00-serve-14.2.4"
+        },
+        "x86_64-darwin": {
+          "outputs": [
+            {
+              "name": "out",
+              "path": "/nix/store/0xkxlp3gwpb6gcc8yp19xpgnrh5z6ahi-serve-14.2.4",
+              "default": true
+            }
+          ],
+          "store_path": "/nix/store/0xkxlp3gwpb6gcc8yp19xpgnrh5z6ahi-serve-14.2.4"
+        },
+        "x86_64-linux": {
+          "outputs": [
+            {
+              "name": "out",
+              "path": "/nix/store/3wp0zkr61dfn04ihcb376102apqkss36-serve-14.2.4",
+              "default": true
+            }
+          ],
+          "store_path": "/nix/store/3wp0zkr61dfn04ihcb376102apqkss36-serve-14.2.4"
         }
       }
     },

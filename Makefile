@@ -37,6 +37,9 @@ stats:
 clean:
 	rm -rf dist/ build/
 
+docs:
+	serve -l 9652 doc/
+
 install:
 	rm -rf .venv
 	uv venv --python 3.12
