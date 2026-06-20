@@ -7,7 +7,6 @@
       "request": "launch",
       "module": "oremi_device",
       "args": [
-        "start",
         "--node-id",
         "oremi-localhost-01",
         "--language",
@@ -23,9 +22,7 @@
         "--mqtt-broker",
         "localhost",
         "--mqtt-port",
-        "41883",
-        "--config",
-        "config/device.json"
+        "41883"
       ],
       "cwd": "${workspaceFolder}",
       "justMyCode": true
@@ -36,7 +33,6 @@
       "request": "launch",
       "module": "oremi_device",
       "args": [
-        "start",
         "--node-id",
         "oremi-docker-01",
         "--language",
@@ -52,9 +48,7 @@
         "--mqtt-broker",
         "mosquitto",
         "--mqtt-port",
-        "1883",
-        "--config",
-        "config/device.json"
+        "1883"
       ],
       "cwd": "${workspaceFolder}",
       "justMyCode": true

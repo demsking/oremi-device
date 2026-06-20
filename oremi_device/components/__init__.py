@@ -22,9 +22,9 @@ from .base import Component
 from .base import HttpComponent
 from .ohunerin import OhunerinComponent
 
-COMPONENTS: dict[str, tuple[BaseModel, type[Component]]] = {
-  "ohunerin": (OhunerinConfig, OhunerinComponent),  # type: ignore
-  "andika": (AndikaConfig, AndikaComponent),  # type: ignore
+COMPONENTS: dict[str, tuple[type[BaseModel], type[Component]]] = {
+  "ohunerin": (OhunerinConfig, OhunerinComponent),
+  "andika": (AndikaConfig, AndikaComponent),
 }
 
 __all__ = [

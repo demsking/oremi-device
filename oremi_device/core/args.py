@@ -13,7 +13,9 @@
 # limitations under the License.
 # ==============================================================================
 import argparse
+from typing import get_args
 
+from .models import AndikaModel
 from .package import APP_DESCRIPTION
 from .package import APP_NAME
 from .package import APP_VERSION
@@ -28,19 +30,19 @@ def positive_float(value: str) -> float:
   return parsed
 
 
+def positive_int(value: str) -> int:
+  parsed = int(value)
+
+  if parsed <= 0:
+    raise argparse.ArgumentTypeError("must be greater than zero")
+
+  return parsed
+
+
 def parse_arguments() -> argparse.Namespace:
   parser = argparse.ArgumentParser(prog=APP_NAME, description=APP_DESCRIPTION)
-  subparsers = parser.add_subparsers(dest="command")
 
   parser.add_argument(
-    "-v", "--version", action="version", version=f"%(prog)s {APP_VERSION}", help="Show the version of the application."
-  )
-
-  #
-  # Start
-  command = subparsers.add_parser(name="start", help="Start listening")
-
-  command.add_argument(
     "-l",
     "--language",
     type=str,
@@ -49,7 +51,7 @@ def parse_arguments() -> argparse.Namespace:
     help='The language to use for wake word detection and audio processing. Default is "fr" (French).',
   )
 
-  command.add_argument(
+  parser.add_argument(
     "-i",
     "--device-index",
     type=int,
@@ -57,21 +59,7 @@ def parse_arguments() -> argparse.Namespace:
     help="Index of the audio device to be used for recording audio.",
   )
 
-  command.add_argument(
-    "--no-microphone",
-    action="store_false",
-    dest="microphone_enabled",
-    help="Disable microphone capture, sound detection, and wake word detection.",
-  )
-
-  command.add_argument(
-    "--no-speaker",
-    action="store_false",
-    dest="speaker_enabled",
-    help="Disable speaker output.",
-  )
-
-  command.add_argument(
+  parser.add_argument(
     "-d",
     "--device",
     type=str,
@@ -79,58 +67,92 @@ def parse_arguments() -> argparse.Namespace:
     help="Name of the device.",
   )
 
-  command.add_argument(
+  parser.add_argument(
+    "--no-microphone",
+    action="store_false",
+    dest="microphone_enabled",
+    help="Disable microphone capture, sound detection, and wake word detection.",
+  )
+
+  parser.add_argument(
+    "--no-speaker",
+    action="store_false",
+    dest="speaker_enabled",
+    help="Disable speaker output.",
+  )
+
+  parser.add_argument(
     "--delay",
     type=int,
     default=3,
     help="The cooldown period (in seconds) to wait before sending the same sound event again (default: 3).",
   )
 
-  command.add_argument(
+  parser.add_argument(
     "--conversation-timeout",
     type=positive_float,
     default=15.0,
     help="Maximum seconds to capture speech after a wake word (default: 15).",
   )
 
-  command.add_argument("--config", type=str, help="Path to the Oremi Device configuration file.")
-
-  command.add_argument(
+  parser.add_argument(
     "--ohunerin-host",
     type=str,
     required=True,
     help="Host address of the Ohunerin server to connect to.",
   )
 
-  command.add_argument(
+  parser.add_argument(
     "--ohunerin-port",
     type=int,
     default=5023,
     help="Port number of the Ohunerin server to connect to (default: 5023).",
   )
 
-  command.add_argument(
+  parser.add_argument(
+    "--ohunerin-threshold",
+    type=positive_float,
+    default=0.65,
+    help="Minimum confidence score required for Ohunerin detection events (default: 0.65).",
+  )
+
+  parser.add_argument(
     "--andika-host",
     type=str,
     required=True,
     help="Host address of the Andika server to connect to.",
   )
 
-  command.add_argument(
+  parser.add_argument(
     "--andika-port",
     type=int,
     default=5315,
     help="Port number of the Andika server to connect to (default: 5315).",
   )
 
-  command.add_argument(
+  parser.add_argument(
+    "--andika-model",
+    type=str,
+    choices=get_args(AndikaModel),
+    default="vosk-model-small-fr-0.22",
+    help='Vosk model identifier sent to Andika (default: "vosk-model-small-fr-0.22").',
+  )
+
+  parser.add_argument(
+    "--andika-samplerate",
+    type=positive_int,
+    default=16000,
+    help="Audio sample rate sent to Andika (default: 16000).",
+  )
+
+  parser.add_argument(
     "--cert-file",
     type=str,
     help="Path to the certificate file for secure connection.",
   )
 
   # Node ID
-  command.add_argument(
+  parser.add_argument(
     "-n",
     "--node-id",
     type=str,
@@ -139,23 +161,23 @@ def parse_arguments() -> argparse.Namespace:
   )
 
   # MQTT Broker address
-  command.add_argument("--mqtt-broker", type=str, required=True, help="The address of the MQTT broker.")
+  parser.add_argument("--mqtt-broker", type=str, required=True, help="The address of the MQTT broker.")
 
   # MQTT Broker port
-  command.add_argument("--mqtt-port", type=int, default=1883, help="The port of the MQTT broker. Default is 1883.")
+  parser.add_argument("--mqtt-port", type=int, default=1883, help="The port of the MQTT broker. Default is 1883.")
 
   # MQTT Username
-  command.add_argument(
+  parser.add_argument(
     "--mqtt-username", type=str, default=None, help="The username for authenticating with the MQTT broker. Default is None."
   )
 
   # MQTT Password
-  command.add_argument(
+  parser.add_argument(
     "--mqtt-password", type=str, default=None, help="The password for authenticating with the MQTT broker. Default is None."
   )
 
   # MQTT Topic
-  command.add_argument(
+  parser.add_argument(
     "--mqtt-topic",
     type=str,
     default="oremi/device",
@@ -163,7 +185,7 @@ def parse_arguments() -> argparse.Namespace:
   )
 
   # MQTT Discovery
-  command.add_argument(
+  parser.add_argument(
     "--no-mqtt-discovery",
     action="store_false",
     dest="mqtt_discovery",
@@ -171,11 +193,15 @@ def parse_arguments() -> argparse.Namespace:
   )
 
   # MQTT Discovery Prefix
-  command.add_argument(
+  parser.add_argument(
     "--mqtt-discovery-prefix",
     type=str,
     default="homeassistant",
     help='Home Assistant MQTT discovery prefix. Default is "homeassistant".',
+  )
+
+  parser.add_argument(
+    "-v", "--version", action="version", version=f"%(prog)s {APP_VERSION}", help="Show the version of the application."
   )
 
   return parser.parse_args()

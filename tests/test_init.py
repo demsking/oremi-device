@@ -16,7 +16,7 @@ import urllib.parse
 
 from oremi_device.components.andika import AndikaComponent
 from oremi_device.components.ohunerin import OhunerinComponent
-from oremi_device.core.models import AndikaConfig, DeviceConfig, DeviceContext, OhunerinConfig
+from oremi_device.core.models import AndikaConfig, DeviceContext, OhunerinConfig
 
 
 def _make_context(**kwargs) -> DeviceContext:
@@ -93,24 +93,6 @@ def test_ohunerin_config_with_threshold() -> None:
   features_content_default = {}
   config_default = OhunerinConfig.model_validate(features_content_default)
   assert config_default.threshold == 0.65
-
-
-def test_device_config_nested() -> None:
-  """DeviceConfig expects component configs nested under the 'components' key."""
-  nested_data = {
-    "language": "fr",
-    "components": {
-      "ohunerin": {"threshold": 0.75},
-      "andika": {"model": "vosk-model-small-en-us-0.15", "samplerate": 16000},
-    },
-  }
-  config = DeviceConfig.model_validate(nested_data)
-  assert config.language == "fr"
-  assert config.components.ohunerin is not None
-  assert config.components.ohunerin.threshold == 0.75
-  assert config.components.andika is not None
-  assert config.components.andika.model == "vosk-model-small-en-us-0.15"
-  assert config.components.andika.samplerate == 16000
 
 
 def test_build_andika_connection_uri_default() -> None:

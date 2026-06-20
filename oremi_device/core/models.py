@@ -68,12 +68,6 @@ class DetectedSound(TypedDict):
   date: str
 
 
-SupportedLanguage = Literal[
-  "en",  # English
-  "fr",  # French
-]
-
-
 class OhunerinConfig(BaseModel):
   """
   The configuration schema for the Ohunerin component.
@@ -126,32 +120,3 @@ class AndikaConfig(BaseModel):
 
   model: AndikaModel = Field(default="vosk-model-small-fr-0.22", description="The Andika speech-to-text model identifier.")
   samplerate: int = Field(default=16000, description="The audio sample rate in Hz.")
-
-
-class ComponentsConfig(BaseModel):
-  """
-  Container for all component-level configurations.
-
-  Each field corresponds to a named integration component (e.g. ``ohunerin``).
-  """
-
-  ohunerin: OhunerinConfig | None = Field(
-    default=None, description="Configuration settings for the Ohunerin integration component."
-  )
-  andika: AndikaConfig | None = Field(default=None, description="Configuration settings for the Andika integration component.")
-
-
-class DeviceConfig(BaseModel):
-  """
-  The root configuration schema for the Oremi Device.
-  """
-
-  language: SupportedLanguage = Field(
-    default="fr",
-    description="The default language code for the device. Used as a fallback when not overridden at the component or wakeword level.",
-  )
-
-  components: ComponentsConfig = Field(
-    default_factory=ComponentsConfig,
-    description="Component-specific configuration blocks, keyed by component name.",
-  )

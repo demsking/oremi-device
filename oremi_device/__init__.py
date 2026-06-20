@@ -13,19 +13,19 @@
 # limitations under the License.
 # ==============================================================================
 import asyncio
-import json
 import logging
 import signal
 import sys
 
 import sounddevice as sd
+from pydantic import BaseModel
 
 from .components import COMPONENTS
 from .components.base import AudioStreamComponent
+from .components.base import Component
 from .core.args import parse_arguments
 from .core.audio import Audio
 from .core.audio import AudioDeviceError
-from .core.models import DeviceConfig
 from .core.models import DeviceContext
 from .core.mqtt import MQTTClient
 from .core.package import APP_NAME
@@ -58,9 +58,6 @@ async def start() -> None:
   if args.cert_file:
     logger.info(f"Configuration Certificate File: {args.cert_file}")
 
-  config_path = args.config
-  logger.info(f"Device Configuration Path: {config_path or 'None'}")
-
   context = DeviceContext(
     node_id=args.node_id,
     language=args.language,
@@ -73,27 +70,19 @@ async def start() -> None:
     cert_file=args.cert_file,
   )
 
-  device_config: DeviceConfig | None = None
-
-  if config_path:
-    try:
-      with open(config_path, "r", encoding="utf-8") as file:
-        device_config = DeviceConfig.model_validate(json.load(file))
-    except Exception as error:
-      logger.error(f"Failed to load configuration file '{config_path}': {error}")
-      sys.exit(1)
-  else:
-    device_config = DeviceConfig()
-
   logger.info(f"Configuration Language: {context.language}")
 
   # ── Resolve active components ────────────────────────────────────────────────
-  active_components: list[tuple] = []
+  active_components: list[tuple[Component, BaseModel]] = []
+  component_config = {
+    "ohunerin": {"threshold": args.ohunerin_threshold},
+    "andika": {"model": args.andika_model, "samplerate": args.andika_samplerate},
+  }
 
   for comp_name, (load_config, create_component) in COMPONENTS.items():
-    comp_config = getattr(device_config.components, comp_name, None)
-    comp_config = load_config.model_validate(comp_config) if comp_config else load_config()  # type: ignore
-
+    comp_config = (
+      load_config.model_validate(component_config.get(comp_name)) if comp_name in component_config else load_config()
+    )
     component = create_component(context)  # pylint: disable=abstract-class-instantiated
 
     active_components.append((component, comp_config))
@@ -784,7 +773,9 @@ async def start() -> None:
             node_id = mqtt_client.get_node_id()
             device = mqtt_client.get_device_descriptor()
             ha_entities = [
-              entity for component, _ in started_components for entity in component.ha_entities(node_id, mqtt_client.topic, device)
+              entity
+              for component, _ in started_components
+              for entity in component.ha_entities(node_id, mqtt_client.topic, device)
             ]
             mqtt_client.publish_discovery_configs(
               input_devices=Audio.get_compatible_input_devices(current_device=curr_name) if needs_audio else [],

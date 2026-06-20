@@ -21,7 +21,6 @@ from oremi_device.core.args import parse_arguments
 
 BASE_ARGS = [
   "oremi-device",
-  "start",
   "--node-id",
   "test-node",
   "--ohunerin-host",
@@ -63,5 +62,52 @@ def test_conversation_timeout_must_be_positive() -> None:
 
 def test_language_must_be_supported() -> None:
   with patch("sys.argv", [*BASE_ARGS, "--language", "de"]):
+    with pytest.raises(SystemExit, match="2"):
+      parse_arguments()
+
+
+def test_component_options_default() -> None:
+  with patch("sys.argv", BASE_ARGS):
+    args = parse_arguments()
+
+  assert args.ohunerin_threshold == 0.65
+  assert args.andika_model == "vosk-model-small-fr-0.22"
+  assert args.andika_samplerate == 16000
+
+
+def test_component_options_can_be_overridden() -> None:
+  with patch(
+    "sys.argv",
+    [
+      *BASE_ARGS,
+      "--ohunerin-threshold",
+      "0.75",
+      "--andika-model",
+      "vosk-model-small-en-us-0.15",
+      "--andika-samplerate",
+      "48000",
+    ],
+  ):
+    args = parse_arguments()
+
+  assert args.ohunerin_threshold == 0.75
+  assert args.andika_model == "vosk-model-small-en-us-0.15"
+  assert args.andika_samplerate == 48000
+
+
+def test_ohunerin_threshold_must_be_positive() -> None:
+  with patch("sys.argv", [*BASE_ARGS, "--ohunerin-threshold", "0"]):
+    with pytest.raises(SystemExit, match="2"):
+      parse_arguments()
+
+
+def test_andika_model_must_be_supported() -> None:
+  with patch("sys.argv", [*BASE_ARGS, "--andika-model", "unsupported"]):
+    with pytest.raises(SystemExit, match="2"):
+      parse_arguments()
+
+
+def test_andika_samplerate_must_be_positive() -> None:
+  with patch("sys.argv", [*BASE_ARGS, "--andika-samplerate", "0"]):
     with pytest.raises(SystemExit, match="2"):
       parse_arguments()
