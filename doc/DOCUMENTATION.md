@@ -351,7 +351,7 @@ in the Docker image and must be installed separately when running from source.
 
 Oremi Device is built with Python and uses `uv` for dependency management. The project follows standard Python development practices with type hints, linting, and automated testing.
 
-For detailed information on setting up your development environment, running tests, code style guidelines, and the pull request process, please refer to [CONTRIBUTING.md](https://gitlab.com/demsking/oremi-device/CONTRIBUTING.md).
+For detailed information on setting up your development environment, running tests, code style guidelines, and the pull request process, please refer to [CONTRIBUTING.md](https://gitlab.com/demsking/oremi-device/-/blob/main/CONTRIBUTING.md).
 
 ## Versioning
 
