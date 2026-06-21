@@ -24,7 +24,7 @@ from oremi_device.components import COMPONENTS
 from oremi_device.components.andika import AndikaComponent
 from oremi_device.components.andika import AndikaTranscriber
 from oremi_device.core.models import AndikaConfig
-from oremi_device.core.models import DeviceContext
+from oremi_device.core.settings import DeviceSettings
 
 
 class AsyncMessages:
@@ -46,7 +46,7 @@ class DelayedAsyncMessages:
       yield message
 
 
-def _make_context(**kwargs) -> DeviceContext:
+def _make_settings(**kwargs) -> DeviceSettings:
   defaults = {
     "node_id": "test-node",
     "language": "fr",
@@ -57,9 +57,10 @@ def _make_context(**kwargs) -> DeviceContext:
     "andika_host": "andika",
     "andika_port": 5315,
     "cert_file": None,
+    "mqtt_broker": "mqtt",
   }
   defaults.update(kwargs)
-  return DeviceContext(**defaults)
+  return DeviceSettings(_env_file=None, **defaults)
 
 
 def test_andika_component_registered() -> None:
@@ -73,13 +74,13 @@ def test_andika_component_registered() -> None:
 async def test_andika_transcriber_publishes_partial_results() -> None:
   mqtt_client = MagicMock()
   websocket = AsyncMessages([json.dumps({"partial": "bon", "confidence": 0.9})])
-  transcriber = AndikaTranscriber(_make_context(), mqtt_client, websocket)
+  transcriber = AndikaTranscriber(_make_settings(), mqtt_client, websocket)
 
   await transcriber.transcribing()
 
   mqtt_client.publish.assert_called_once_with(
     "transcription/partial",
-    "bon",
+    json.dumps({"partial": "bon", "confidence": 0.9, "node_id": "test-node"}),
     qos=1,
     retain=False,
     props=ANY,
@@ -92,13 +93,13 @@ async def test_andika_transcriber_publishes_final_results() -> None:
   mqtt_client = MagicMock()
   websocket = AsyncMessages([json.dumps({"text": "bonjour oremi", "confidence": 0.9})])
   transcription_complete_event = asyncio.Event()
-  transcriber = AndikaTranscriber(_make_context(), mqtt_client, websocket, transcription_complete_event)
+  transcriber = AndikaTranscriber(_make_settings(), mqtt_client, websocket, transcription_complete_event)
 
   await transcriber.transcribing()
 
   mqtt_client.publish.assert_called_once_with(
     "transcription/text",
-    "bonjour oremi",
+    json.dumps({"text": "bonjour oremi", "confidence": 0.9, "node_id": "test-node"}),
     qos=1,
     retain=False,
     props=ANY,
@@ -107,11 +108,38 @@ async def test_andika_transcriber_publishes_final_results() -> None:
 
 
 @pytest.mark.asyncio
+async def test_andika_transcriber_uses_configured_topics() -> None:
+  mqtt_client = MagicMock()
+  settings = _make_settings(
+    partial_transcription_topic="speech/partial",
+    final_transcription_topic="speech/final",
+  )
+  websocket = AsyncMessages([json.dumps({"partial": "bon"}), json.dumps({"text": "bonjour"})])
+
+  await AndikaTranscriber(settings, mqtt_client, websocket).transcribing()
+
+  assert [call.args[0] for call in mqtt_client.publish.call_args_list] == ["speech/partial", "speech/final"]
+  assert [json.loads(call.args[1])["node_id"] for call in mqtt_client.publish.call_args_list] == [
+    "test-node",
+    "test-node",
+  ]
+
+
+def test_andika_discovery_uses_configured_final_topic() -> None:
+  component = AndikaComponent(_make_settings(final_transcription_topic="speech/final"))
+
+  _, _, payload = component.ha_entities("test-node", "oremi/device", {})[0]
+
+  assert payload["state_topic"] == "oremi/device/speech/final"
+  assert payload["value_template"] == "{{ value_json.text }}"
+
+
+@pytest.mark.asyncio
 async def test_andika_empty_final_result_completes_conversation() -> None:
   mqtt_client = MagicMock()
   transcription_complete_event = asyncio.Event()
   transcriber = AndikaTranscriber(
-    _make_context(),
+    _make_settings(),
     mqtt_client,
     AsyncMessages([json.dumps({"text": ""})]),
     transcription_complete_event,
@@ -125,7 +153,7 @@ async def test_andika_empty_final_result_completes_conversation() -> None:
 
 @pytest.mark.asyncio
 async def test_andika_listens_only_between_wakeword_and_final_transcription() -> None:
-  component = AndikaComponent(_make_context())
+  component = AndikaComponent(_make_settings())
   component._wakeword_event = asyncio.Event()  # noqa: SLF001
   listening = asyncio.Event()
 
@@ -168,7 +196,7 @@ async def test_andika_listens_only_between_wakeword_and_final_transcription() ->
 
 @pytest.mark.asyncio
 async def test_andika_stops_listening_when_conversation_times_out() -> None:
-  component = AndikaComponent(_make_context(conversation_timeout=0.01))
+  component = AndikaComponent(_make_settings(conversation_timeout=0.01))
   component._wakeword_event = asyncio.Event()  # noqa: SLF001
 
   class AudioListenerStub:
@@ -195,7 +223,7 @@ async def test_andika_stops_listening_when_conversation_times_out() -> None:
 async def test_andika_transcriber_ignores_result_payloads() -> None:
   mqtt_client = MagicMock()
   websocket = AsyncMessages([json.dumps({"result": "bonjour oremi", "confidence": 0.9})])
-  transcriber = AndikaTranscriber(_make_context(), mqtt_client, websocket)
+  transcriber = AndikaTranscriber(_make_settings(), mqtt_client, websocket)
 
   await transcriber.transcribing()
 
@@ -206,7 +234,7 @@ async def test_andika_transcriber_ignores_result_payloads() -> None:
 async def test_andika_transcriber_ignores_nested_partial_result() -> None:
   mqtt_client = MagicMock()
   websocket = AsyncMessages([json.dumps({"result": {"partial": "bon", "confidence": 0.9}})])
-  transcriber = AndikaTranscriber(_make_context(), mqtt_client, websocket)
+  transcriber = AndikaTranscriber(_make_settings(), mqtt_client, websocket)
 
   await transcriber.transcribing()
 
@@ -217,7 +245,7 @@ async def test_andika_transcriber_ignores_nested_partial_result() -> None:
 async def test_andika_transcriber_ignores_nested_text_result() -> None:
   mqtt_client = MagicMock()
   websocket = AsyncMessages([json.dumps({"result": {"text": "bonjour oremi", "confidence": 0.9}})])
-  transcriber = AndikaTranscriber(_make_context(), mqtt_client, websocket)
+  transcriber = AndikaTranscriber(_make_settings(), mqtt_client, websocket)
 
   await transcriber.transcribing()
 
@@ -232,22 +260,26 @@ async def test_andika_transcriber_publishes_each_partial_result() -> None:
     json.dumps({"partial": "bon"}),
     json.dumps({"partial": "bonjour"}),
   ])
-  transcriber = AndikaTranscriber(_make_context(delay=1), mqtt_client, websocket)
+  transcriber = AndikaTranscriber(_make_settings(delay=1), mqtt_client, websocket)
 
   await transcriber.transcribing()
 
   assert mqtt_client.publish.call_count == 3
-  assert [call.args[1] for call in mqtt_client.publish.call_args_list] == ["bon", "bon", "bonjour"]
+  assert [json.loads(call.args[1]) for call in mqtt_client.publish.call_args_list] == [
+    {"partial": "bon", "node_id": "test-node"},
+    {"partial": "bon", "node_id": "test-node"},
+    {"partial": "bonjour", "node_id": "test-node"},
+  ]
 
 
 @pytest.mark.asyncio
-async def test_andika_transcriber_uses_context_delay_as_message_expiry() -> None:
+async def test_andika_transcriber_uses_settings_delay_as_message_expiry() -> None:
   mqtt_client = MagicMock()
   websocket = DelayedAsyncMessages([
     (0, json.dumps({"partial": "bon"})),
     (0.02, json.dumps({"partial": "bon"})),
   ])
-  transcriber = AndikaTranscriber(_make_context(delay=5), mqtt_client, websocket)
+  transcriber = AndikaTranscriber(_make_settings(delay=5), mqtt_client, websocket)
 
   await transcriber.transcribing()
 
@@ -259,7 +291,7 @@ async def test_andika_transcriber_uses_context_delay_as_message_expiry() -> None
 async def test_andika_transcriber_ignores_unknown_payloads() -> None:
   mqtt_client = MagicMock()
   websocket = AsyncMessages([json.dumps({"event": "ready"})])
-  transcriber = AndikaTranscriber(_make_context(), mqtt_client, websocket)
+  transcriber = AndikaTranscriber(_make_settings(), mqtt_client, websocket)
 
   await transcriber.transcribing()
 
@@ -267,7 +299,7 @@ async def test_andika_transcriber_ignores_unknown_payloads() -> None:
 
 
 def test_andika_get_supported_models() -> None:
-  component = AndikaComponent(_make_context())
+  component = AndikaComponent(_make_settings())
   response = MagicMock()
   response.json.return_value = [
     {"id": "vosk-model-small-fr-0.22", "name": "French (Small)", "language": "fr"},
@@ -284,7 +316,7 @@ def test_andika_get_supported_models() -> None:
 
 
 def test_andika_get_supported_models_secure_endpoint() -> None:
-  component = AndikaComponent(_make_context(andika_host="127.0.0.1", andika_port=9443, cert_file="cert.pem"))
+  component = AndikaComponent(_make_settings(andika_host="127.0.0.1", andika_port=9443, cert_file="cert.pem"))
   response = MagicMock()
   response.json.return_value = []
 
@@ -295,7 +327,7 @@ def test_andika_get_supported_models_secure_endpoint() -> None:
 
 
 def test_andika_get_supported_models_returns_empty_on_error() -> None:
-  component = AndikaComponent(_make_context())
+  component = AndikaComponent(_make_settings())
 
   with patch("oremi_device.components.andika.httpx.get", side_effect=RuntimeError("offline")):
     assert component._get_supported_models() == []  # noqa: SLF001

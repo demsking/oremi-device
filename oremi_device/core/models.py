@@ -22,35 +22,6 @@ from pydantic import Field
 DetectedSoundType = Literal["sound", "wakeword"]
 
 
-class DeviceContext(BaseModel):
-  node_id: str
-  """The unique identifier of the Oremi Device node."""
-
-  language: str
-  """The language code (e.g., 'en', 'fr') used for processing the audio input."""
-
-  delay: int
-  """The cooldown period (in seconds) after a sound event is detected during which subsequent events are ignored to prevent rapid retriggering."""
-
-  conversation_timeout: float = Field(gt=0)
-  """Maximum time to capture speech after a wake word before returning to idle."""
-
-  ohunerin_host: str
-  """The hostname or IP address of the Ohunerin service."""
-
-  ohunerin_port: int
-  """The port number on which the Ohunerin service is listening."""
-
-  andika_host: str
-  """The hostname or IP address of the Andika service."""
-
-  andika_port: int
-  """The port number on which the Andika service is listening."""
-
-  cert_file: str | None
-  """The path to the SSL certificate file for secure WebSocket connections. If None, an insecure connection will be used."""
-
-
 class DetectedSound(TypedDict):
   """
   Represents a detected sound event payload.

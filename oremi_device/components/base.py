@@ -56,8 +56,8 @@ from typing import Any
 from pydantic import BaseModel
 
 from ..core.audio import Audio
-from ..core.models import DeviceContext
 from ..core.mqtt import MQTTClient
+from ..core.settings import DeviceSettings
 
 # Type alias: (ha_domain, entity_slug, payload_dict)
 # e.g. ("sensor", "wakeword", {"name": "Wakeword", ...})
@@ -74,8 +74,8 @@ class Component(abc.ABC):
   # Subclasses override this to declare whether they need a microphone stream.
   needs_audio: bool = False
 
-  def __init__(self, context: DeviceContext) -> None:
-    self.context = context
+  def __init__(self, settings: DeviceSettings) -> None:
+    self.settings = settings
 
   @property
   @abc.abstractmethod

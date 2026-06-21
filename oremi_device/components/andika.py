@@ -30,10 +30,10 @@ from websockets.asyncio.client import connect
 from ..core.audio import Audio
 from ..core.listener import AudioListener
 from ..core.models import AndikaConfig
-from ..core.models import DeviceContext
 from ..core.mqtt import MQTTClient
 from ..core.package import APP_NAME
 from ..core.package import APP_VERSION
+from ..core.settings import DeviceSettings
 from ..utils.logger import logger
 from .base import AudioStreamComponent
 from .base import HAEntity
@@ -48,12 +48,12 @@ class AndikaSupportedModel(BaseModel):
 class AndikaTranscriber:
   def __init__(
     self,
-    context: DeviceContext,
+    settings: DeviceSettings,
     mqtt_client: MQTTClient,
     websocket,
     transcription_complete_event: asyncio.Event | None = None,
   ) -> None:
-    self.context = context
+    self.settings = settings
     self.mqtt_client = mqtt_client
     self.websocket = websocket
     self.transcription_complete_event = transcription_complete_event
@@ -69,19 +69,26 @@ class AndikaTranscriber:
 
   async def transcribing(self) -> None:
     props = Properties(PacketTypes.PUBLISH)
-    props.MessageExpiryInterval = self.context.delay
+    props.MessageExpiryInterval = self.settings.delay
 
     async for message in self.websocket:
       payload = json.loads(message)
       field, transcription = self.parse_transcription(payload)
 
       if field:
+        payload["node_id"] = self.settings.node_id
+        mqtt_message = json.dumps(payload)
+
         if field == "partial":
           if transcription:
-            self.mqtt_client.publish("transcription/partial", transcription, qos=1, retain=False, props=props)
+            self.mqtt_client.publish(
+              self.settings.partial_transcription_topic, mqtt_message, qos=1, retain=False, props=props
+            )
         else:
           if transcription:
-            self.mqtt_client.publish("transcription/text", transcription, qos=1, retain=False, props=props)
+            self.mqtt_client.publish(
+              self.settings.final_transcription_topic, mqtt_message, qos=1, retain=False, props=props
+            )
 
           if self.transcription_complete_event:
             self.transcription_complete_event.set()
@@ -92,8 +99,8 @@ class AndikaTranscriber:
 class AndikaComponent(AudioStreamComponent):
   """Andika speech-recognition component (WebSocket + audio stream)."""
 
-  def __init__(self, context: DeviceContext) -> None:
-    super().__init__(context)
+  def __init__(self, settings: DeviceSettings) -> None:
+    super().__init__(settings)
 
     self._task: asyncio.Task | None = None
     self._websocket = None
@@ -120,9 +127,9 @@ class AndikaComponent(AudioStreamComponent):
 
   def _get_supported_models(self) -> list[AndikaSupportedModel]:
     endpoint = (
-      f"https://{self.context.andika_host}:{self.context.andika_port}/api/models"
-      if self.context.cert_file
-      else f"http://{self.context.andika_host}:{self.context.andika_port}/api/models"
+      f"https://{self.settings.andika_host}:{self.settings.andika_port}/api/models"
+      if self.settings.cert_file
+      else f"http://{self.settings.andika_host}:{self.settings.andika_port}/api/models"
     )
 
     try:
@@ -138,7 +145,8 @@ class AndikaComponent(AudioStreamComponent):
     payload: dict = {
       "name": "Transcription",
       "unique_id": f"{node_id}_transcription",
-      "state_topic": f"{topic}/transcription/text",
+      "state_topic": f"{topic}/{self.settings.final_transcription_topic}",
+      "value_template": "{{ value_json.text }}",
       "availability_topic": f"{topic}/available",
       "payload_available": "online",
       "payload_not_available": "offline",
@@ -159,10 +167,10 @@ class AndikaComponent(AudioStreamComponent):
       }
     )
 
-    if self.context.cert_file:
-      return f"wss://{self.context.andika_host}:{self.context.andika_port}/ws?{query_string}"
+    if self.settings.cert_file:
+      return f"wss://{self.settings.andika_host}:{self.settings.andika_port}/ws?{query_string}"
 
-    return f"ws://{self.context.andika_host}:{self.context.andika_port}/ws?{query_string}"
+    return f"ws://{self.settings.andika_host}:{self.settings.andika_port}/ws?{query_string}"
 
   async def start(
     self,
@@ -174,8 +182,8 @@ class AndikaComponent(AudioStreamComponent):
       logger.warning("Andika component started without configuration; using defaults.")
       config = AndikaConfig()
 
-    logger.info(f"Andika Server Host: {self.context.andika_host}")
-    logger.info(f"Andika Server Port: {self.context.andika_port}")
+    logger.info(f"Andika Server Host: {self.settings.andika_host}")
+    logger.info(f"Andika Server Port: {self.settings.andika_port}")
     logger.info(f"Andika Model: {config.model}")
     logger.info(f"Andika Samplerate: {config.samplerate}")
 
@@ -280,10 +288,10 @@ class AndikaComponent(AudioStreamComponent):
         try:
           await asyncio.wait_for(
             self._transcription_complete_event.wait(),
-            timeout=self.context.conversation_timeout,
+            timeout=self.settings.conversation_timeout,
           )
         except TimeoutError:
-          logger.info(f"Andika conversation timed out after {self.context.conversation_timeout:g}s")
+          logger.info(f"Andika conversation timed out after {self.settings.conversation_timeout:g}s")
       finally:
         try:
           await self._stop_listening()
@@ -304,9 +312,9 @@ class AndikaComponent(AudioStreamComponent):
 
     logger.info(f"Andika Connection URI: {andika_uri}")
 
-    if self.context.cert_file:
+    if self.settings.cert_file:
       ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
-      ssl_context.load_verify_locations(self.context.cert_file)
+      ssl_context.load_verify_locations(self.settings.cert_file)
     else:
       ssl_context = None
 
@@ -317,14 +325,16 @@ class AndikaComponent(AudioStreamComponent):
 
       try:
         async with connect(
-          andika_uri, ssl=ssl_context, user_agent_header=f"{APP_NAME}/{APP_VERSION}/{self.context.node_id}"
+          andika_uri, ssl=ssl_context, user_agent_header=f"{APP_NAME}/{APP_VERSION}/{self.settings.node_id}"
         ) as websocket:
           self._websocket = websocket
           retry_delay = 2.0
-          logger.info(f"Connected to Oremi Andika server at {self.context.andika_host}:{self.context.andika_port}")
+          logger.info(
+            f"Connected to Oremi Andika server at {self.settings.andika_host}:{self.settings.andika_port}"
+          )
 
           transcriber = AndikaTranscriber(
-            self.context,
+            self.settings,
             mqtt_client,
             websocket,
             self._transcription_complete_event,

@@ -12,9 +12,23 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
+import argparse
 import asyncio
 
 from . import start
+from .core.package import APP_DESCRIPTION
+from .core.package import APP_NAME
+from .core.package import APP_VERSION
+
+
+parser = argparse.ArgumentParser(prog=APP_NAME, description=APP_DESCRIPTION)
+parser.add_argument(
+  "-v",
+  "--version",
+  action="version",
+  version=f"%(prog)s {APP_VERSION}",
+  help="Show the version of the application.",
+)
 
 
 try:

@@ -52,11 +52,7 @@ ENV TZ="Africa/Douala"
 ENV LOG_LEVEL="info"
 ENV LOG_FILE=
 
-ENV OREMI_DEVICE_NAME=
 ENV OREMI_DEVICE_LANGUAGE="fr"
-
-VOLUME /var/config/pulse/cookie
-VOLUME /var/config/pulse/native
 
 WORKDIR /opt/oremi
 ENTRYPOINT ["/opt/oremi/bin/entrypoint.sh"]

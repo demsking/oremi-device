@@ -16,11 +16,12 @@ import urllib.parse
 
 from oremi_device.components.andika import AndikaComponent
 from oremi_device.components.ohunerin import OhunerinComponent
-from oremi_device.core.models import AndikaConfig, DeviceContext, OhunerinConfig
+from oremi_device.core.models import AndikaConfig, OhunerinConfig
+from oremi_device.core.settings import DeviceSettings
 
 
-def _make_context(**kwargs) -> DeviceContext:
-  """Helper to create a DeviceContext with sensible defaults."""
+def _make_settings(**kwargs) -> DeviceSettings:
+  """Create device settings with sensible test defaults."""
   defaults = {
     "node_id": "test-node",
     "language": "fr",
@@ -31,14 +32,15 @@ def _make_context(**kwargs) -> DeviceContext:
     "andika_host": "localhost",
     "andika_port": 5315,
     "cert_file": None,
+    "mqtt_broker": "mqtt",
   }
   defaults.update(kwargs)
-  return DeviceContext(**defaults)
+  return DeviceSettings(_env_file=None, **defaults)
 
 
 def test_build_connection_uri_default() -> None:
-  context = _make_context(language="fr", ohunerin_host="localhost", ohunerin_port=5023)
-  component = OhunerinComponent(context)
+  settings = _make_settings(language="fr", ohunerin_host="localhost", ohunerin_port=5023)
+  component = OhunerinComponent(settings)
   uri = component.build_connection_uri()
   assert uri.startswith("ws://localhost:5023/ws?")
 
@@ -50,13 +52,13 @@ def test_build_connection_uri_default() -> None:
 
 
 def test_build_connection_uri_secure() -> None:
-  context = _make_context(
+  settings = _make_settings(
     language="en",
     ohunerin_host="127.0.0.1",
     ohunerin_port=8000,
     cert_file="cert.pem",
   )
-  component = OhunerinComponent(context)
+  component = OhunerinComponent(settings)
   uri = component.build_connection_uri()
   assert uri.startswith("wss://127.0.0.1:8000/ws?")
 
@@ -68,8 +70,8 @@ def test_build_connection_uri_secure() -> None:
 
 def test_build_connection_uri_with_ohunerin_config() -> None:
   features_content = {}
-  context = _make_context(language="fr", ohunerin_host="localhost", ohunerin_port=5023)
-  component = OhunerinComponent(context)
+  settings = _make_settings(language="fr", ohunerin_host="localhost", ohunerin_port=5023)
+  component = OhunerinComponent(settings)
   config = OhunerinConfig.model_validate(features_content)
   uri = component.build_connection_uri(config)
   assert uri.startswith("ws://localhost:5023/ws?")
@@ -96,8 +98,8 @@ def test_ohunerin_config_with_threshold() -> None:
 
 
 def test_build_andika_connection_uri_default() -> None:
-  context = _make_context(andika_host="andika", andika_port=5315)
-  component = AndikaComponent(context)
+  settings = _make_settings(andika_host="andika", andika_port=5315)
+  component = AndikaComponent(settings)
   uri = component.build_connection_uri()
   assert uri.startswith("ws://andika:5315/ws?")
 
@@ -108,8 +110,8 @@ def test_build_andika_connection_uri_default() -> None:
 
 
 def test_build_andika_connection_uri_with_config() -> None:
-  context = _make_context(andika_host="127.0.0.1", andika_port=8080, cert_file="cert.pem")
-  component = AndikaComponent(context)
+  settings = _make_settings(andika_host="127.0.0.1", andika_port=8080, cert_file="cert.pem")
+  component = AndikaComponent(settings)
   config = AndikaConfig.model_validate(
     {
       "model": "vosk-model-small-en-us-0.15",
@@ -128,8 +130,8 @@ def test_build_andika_connection_uri_with_config() -> None:
 
 
 def test_andika_ha_entities() -> None:
-  context = _make_context()
-  component = AndikaComponent(context)
+  settings = _make_settings()
+  component = AndikaComponent(settings)
   entities = component.ha_entities(
     "oremi-device-test-node",
     "oremi/device/test-node",
@@ -143,5 +145,5 @@ def test_andika_ha_entities() -> None:
   assert payload["name"] == "Transcription"
   assert payload["unique_id"] == "oremi-device-test-node_transcription"
   assert payload["state_topic"] == "oremi/device/test-node/transcription/text"
-  assert "value_template" not in payload
+  assert payload["value_template"] == "{{ value_json.text }}"
   assert "json_attributes_topic" not in payload

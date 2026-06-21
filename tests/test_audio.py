@@ -55,11 +55,12 @@ def test_audio_initialize_fails() -> None:
 
 @pytest.mark.asyncio
 async def test_main_audio_device_error() -> None:
-  # Mock parse_arguments to return a fully-populated namespace so that
-  # start() can build DeviceContext / MQTTClient before reaching Audio().
-  import argparse
+  # Mock settings loading to return a fully-populated model so that
+  # start() can configure MQTT before reaching Audio().
+  from oremi_device.core.settings import DeviceSettings
 
-  fake_args = argparse.Namespace(
+  fake_settings = DeviceSettings(
+    _env_file=None,
     node_id="test-node",
     language="fr",
     delay=3,
@@ -72,20 +73,20 @@ async def test_main_audio_device_error() -> None:
     ohunerin_threshold=0.65,
     andika_model="vosk-model-small-fr-0.22",
     andika_samplerate=16000,
-    device_index=None,
-    device=None,
+    microphone_device_index=None,
+    microphone_device=None,
     mqtt_broker="localhost",
     mqtt_port=1883,
     mqtt_topic="oremi/test",
     mqtt_username=None,
     mqtt_password=None,
-    mqtt_discovery_prefix=None,
+    mqtt_discovery_prefix="homeassistant",
     mqtt_discovery=False,
     microphone_enabled=True,
     speaker_enabled=True,
   )
 
-  with patch('oremi_device.parse_arguments', return_value=fake_args), \
+  with patch('oremi_device.load_settings', return_value=fake_settings), \
        patch('oremi_device.Audio', side_effect=AudioDeviceError("No device")), \
        patch('sys.exit', side_effect=SystemExit(1)) as mock_exit, \
        patch('oremi_device.MQTTClient') as mock_mqtt_cls:

@@ -23,13 +23,12 @@ from pydantic import BaseModel
 from .components import COMPONENTS
 from .components.base import AudioStreamComponent
 from .components.base import Component
-from .core.args import parse_arguments
 from .core.audio import Audio
 from .core.audio import AudioDeviceError
-from .core.models import DeviceContext
 from .core.mqtt import MQTTClient
 from .core.package import APP_NAME
 from .core.package import APP_VERSION
+from .core.settings import load_settings
 from .core.speaker import Speaker
 from .core.speaker import SpeakerDeviceError
 from .core.speaker import SpeakerPlaybackError
@@ -37,53 +36,41 @@ from .utils.logger import logger
 
 
 async def start() -> None:
-  args = parse_arguments()
+  settings = load_settings()
 
   loop = asyncio.get_running_loop()
 
   # Log initial configuration
   logger.info(f"Starting {APP_NAME}/{APP_VERSION}")
   logger.info(f"Log level: {logging.getLevelName(logger.getEffectiveLevel())}")
-  logger.info(f"Configuration Node ID: {args.node_id}")
-  logger.info(f"Configuration Ohunerin Host: {args.ohunerin_host}")
-  logger.info(f"Configuration Ohunerin Port: {args.ohunerin_port}")
-  logger.info(f"Configuration Andika Host: {args.andika_host}")
-  logger.info(f"Configuration Andika Port: {args.andika_port}")
-  logger.info(f"Configuration Secure Connection: {'Enabled' if args.cert_file else 'Disabled'}")
-  microphone_enabled = args.microphone_enabled
-  speaker_enabled = args.speaker_enabled
+  logger.info(f"Configuration Node ID: {settings.node_id}")
+  logger.info(f"Configuration Ohunerin Host: {settings.ohunerin_host}")
+  logger.info(f"Configuration Ohunerin Port: {settings.ohunerin_port}")
+  logger.info(f"Configuration Andika Host: {settings.andika_host}")
+  logger.info(f"Configuration Andika Port: {settings.andika_port}")
+  logger.info(f"Configuration Secure Connection: {'Enabled' if settings.cert_file else 'Disabled'}")
+  microphone_enabled = settings.microphone_enabled
+  speaker_enabled = settings.speaker_enabled
   logger.info(f"Configuration Microphone: {'Enabled' if microphone_enabled else 'Disabled'}")
   logger.info(f"Configuration Speaker: {'Enabled' if speaker_enabled else 'Disabled'}")
 
-  if args.cert_file:
-    logger.info(f"Configuration Certificate File: {args.cert_file}")
+  if settings.cert_file:
+    logger.info(f"Configuration Certificate File: {settings.cert_file}")
 
-  context = DeviceContext(
-    node_id=args.node_id,
-    language=args.language,
-    delay=args.delay,
-    conversation_timeout=args.conversation_timeout,
-    ohunerin_host=args.ohunerin_host,
-    ohunerin_port=args.ohunerin_port,
-    andika_host=args.andika_host,
-    andika_port=args.andika_port,
-    cert_file=args.cert_file,
-  )
-
-  logger.info(f"Configuration Language: {context.language}")
+  logger.info(f"Configuration Language: {settings.language}")
 
   # ── Resolve active components ────────────────────────────────────────────────
   active_components: list[tuple[Component, BaseModel]] = []
   component_config = {
-    "ohunerin": {"threshold": args.ohunerin_threshold},
-    "andika": {"model": args.andika_model, "samplerate": args.andika_samplerate},
+    "ohunerin": {"threshold": settings.ohunerin_threshold},
+    "andika": {"model": settings.andika_model, "samplerate": settings.andika_samplerate},
   }
 
   for comp_name, (load_config, create_component) in COMPONENTS.items():
     comp_config = (
       load_config.model_validate(component_config.get(comp_name)) if comp_name in component_config else load_config()
     )
-    component = create_component(context)  # pylint: disable=abstract-class-instantiated
+    component = create_component(settings)  # pylint: disable=abstract-class-instantiated
 
     active_components.append((component, comp_config))
 
@@ -96,7 +83,10 @@ async def start() -> None:
 
   if needs_audio:
     try:
-      audio_stream = Audio(device_index=args.device_index, device_name=args.device)
+      audio_stream = Audio(
+        device_index=settings.microphone_device_index,
+        device_name=settings.microphone_device,
+      )
     except AudioDeviceError as error:
       logger.error(str(error))
       sys.exit(1)
@@ -124,13 +114,13 @@ async def start() -> None:
 
   # ── MQTT client ──────────────────────────────────────────────────────────────
   mqtt_client = MQTTClient(
-    broker=args.mqtt_broker,
-    port=args.mqtt_port,
-    node_id=args.node_id,
-    topic=args.mqtt_topic,
-    username=args.mqtt_username,
-    password=args.mqtt_password,
-    discovery_prefix=args.mqtt_discovery_prefix if args.mqtt_discovery else None,
+    broker=settings.mqtt_broker,
+    port=settings.mqtt_port,
+    node_id=settings.node_id,
+    topic=settings.mqtt_topic,
+    username=settings.mqtt_username,
+    password=settings.mqtt_password,
+    discovery_prefix=settings.mqtt_discovery_prefix if settings.mqtt_discovery else None,
   )
 
   # MQTT callbacks run on the client thread, so command state must exist
@@ -151,7 +141,7 @@ async def start() -> None:
     "muted": speaker.muted if speaker else False,
     "volume": speaker.volume if speaker else 1.0,
   }
-  language_state: dict = {"language": args.language}
+  language_state: dict = {"language": settings.language}
   playback_task: asyncio.Task | None = None
 
   async def play_media(media_url: str) -> None:
@@ -454,7 +444,7 @@ async def start() -> None:
   loop.add_signal_handler(signal.SIGTERM, lambda: loop.create_task(shutdown()))
 
   # ── Main event loop ──────────────────────────────────────────────────────────
-  preferred_device = args.device if args.device is not None else args.device_index
+  preferred_device = settings.microphone_device if settings.microphone_device is not None else settings.microphone_device_index
 
   def is_device_available(device, current_devs, compatible_devs) -> bool:
     if isinstance(device, int):
@@ -759,7 +749,7 @@ async def start() -> None:
       elif language_change_task is not None and language_change_task in done:
         new_language = language_change_task.result()
         language_state["language"] = new_language
-        context.language = new_language
+        settings.language = new_language
         logger.info(f"Language switched to: {new_language}")
 
         # Publish the new language state for HA

@@ -24,11 +24,11 @@ from websockets.asyncio.client import connect
 from ..core.audio import Audio
 from ..core.detector import SoundDetector
 from ..core.listener import AudioListener
-from ..core.models import DeviceContext
 from ..core.models import OhunerinConfig
 from ..core.mqtt import MQTTClient
 from ..core.package import APP_NAME
 from ..core.package import APP_VERSION
+from ..core.settings import DeviceSettings
 from ..utils.logger import logger
 from ..utils.string import sluggify
 from .base import AudioStreamComponent
@@ -46,8 +46,8 @@ class OhunerinServerInfo(BaseModel):
 class OhunerinComponent(AudioStreamComponent):
   """Ohunerin speech-event detection component (WebSocket + audio stream)."""
 
-  def __init__(self, context: DeviceContext) -> None:
-    super().__init__(context)
+  def __init__(self, settings: DeviceSettings) -> None:
+    super().__init__(settings)
 
     self._task: asyncio.Task | None = None
     self._websocket = None
@@ -62,7 +62,7 @@ class OhunerinComponent(AudioStreamComponent):
     return "ohunerin"
 
   def _get_server_info(self, host: str, port: int) -> OhunerinServerInfo | None:
-    endpoint = f"https://{host}:{port}/info" if self.context.cert_file else f"http://{host}:{port}/info"
+    endpoint = f"https://{host}:{port}/info" if self.settings.cert_file else f"http://{host}:{port}/info"
 
     try:
       response = httpx.get(endpoint)
@@ -80,7 +80,7 @@ class OhunerinComponent(AudioStreamComponent):
 
     See https://www.home-assistant.io/integrations/sensor.mqtt/
     """
-    server_info = self._get_server_info(self.context.ohunerin_host, self.context.ohunerin_port)
+    server_info = self._get_server_info(self.settings.ohunerin_host, self.settings.ohunerin_port)
 
     wakeword_payload: dict = {
       "name": "Wakeword",
@@ -150,14 +150,14 @@ class OhunerinComponent(AudioStreamComponent):
     query_string = urllib.parse.urlencode(
       {
         "features": "wakeword-detection,sound-detection",
-        "language": self.context.language,
+        "language": self.settings.language,
       }
     )
 
-    if self.context.cert_file:
-      return f"wss://{self.context.ohunerin_host}:{self.context.ohunerin_port}/ws?{query_string}"
+    if self.settings.cert_file:
+      return f"wss://{self.settings.ohunerin_host}:{self.settings.ohunerin_port}/ws?{query_string}"
 
-    return f"ws://{self.context.ohunerin_host}:{self.context.ohunerin_port}/ws?{query_string}"
+    return f"ws://{self.settings.ohunerin_host}:{self.settings.ohunerin_port}/ws?{query_string}"
 
   async def start(
     self,
@@ -169,8 +169,8 @@ class OhunerinComponent(AudioStreamComponent):
       logger.warning("Ohunerin component started without configuration; using defaults.")
       config = OhunerinConfig()
 
-    logger.info(f"Ohunerin Server Host: {self.context.ohunerin_host}")
-    logger.info(f"Ohunerin Server Port: {self.context.ohunerin_port}")
+    logger.info(f"Ohunerin Server Host: {self.settings.ohunerin_host}")
+    logger.info(f"Ohunerin Server Port: {self.settings.ohunerin_port}")
     logger.info(f"Ohunerin Threshold: {config.threshold}")
 
     loop = asyncio.get_running_loop()
@@ -231,11 +231,11 @@ class OhunerinComponent(AudioStreamComponent):
 
     logger.info(f"Ohunerin Configuration Threshold: {config.threshold}")
     logger.info(f"Ohunerin Connection URI: {ohunerin_uri}")
-    logger.info(f"Ohunerin Configuration Delay: {self.context.delay}s")
+    logger.info(f"Ohunerin Configuration Delay: {self.settings.delay}s")
 
-    if self.context.cert_file:
+    if self.settings.cert_file:
       ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
-      ssl_context.load_verify_locations(self.context.cert_file)
+      ssl_context.load_verify_locations(self.settings.cert_file)
     else:
       ssl_context = None
 
@@ -244,17 +244,19 @@ class OhunerinComponent(AudioStreamComponent):
     while True:
       try:
         async with connect(
-          ohunerin_uri, ssl=ssl_context, user_agent_header=f"{APP_NAME}/{APP_VERSION}/{self.context.node_id}"
+          ohunerin_uri, ssl=ssl_context, user_agent_header=f"{APP_NAME}/{APP_VERSION}/{self.settings.node_id}"
         ) as websocket:
           self._websocket = websocket
           retry_delay = 2.0  # reset backoff on successful connection
-          logger.info(f"Connected to Oremi Ohunerin server at {self.context.ohunerin_host}:{self.context.ohunerin_port}")
+          logger.info(
+            f"Connected to Oremi Ohunerin server at {self.settings.ohunerin_host}:{self.settings.ohunerin_port}"
+          )
 
           self.sound_detector = SoundDetector(
             mqtt_client,
             websocket,
             active_stream_container["stream"],
-            delay=self.context.delay,
+            delay=self.settings.delay,
             threshold=config.threshold,
             wakeword_event=shared_resources["wakeword_event"],
           )

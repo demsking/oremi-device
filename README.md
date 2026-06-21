@@ -43,5 +43,3 @@ Pre-release versions (alpha, beta, release candidates) may be published to PyPI 
 ## License
 
 Licensed under the Apache License, Version 2.0. See [LICENSE](LICENSE).
-
-Here are the rewritten sections with more descriptive text:
