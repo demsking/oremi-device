@@ -88,9 +88,9 @@ async def test_detector_threshold_filtering() -> None:
   await detector.detecting()
 
   # Only the second message should have been processed and published
-  assert mock_mqtt.publish.call_count == 1
-  args = mock_mqtt.publish.call_args[0]
-  assert args[0] == "sound"
+  assert mock_mqtt.publish_event.call_count == 1
+  args = mock_mqtt.publish_event.call_args[0]
+  assert args[0] == "event"
   data = json.loads(args[1])
   assert data["score"] == 0.6677674
 
@@ -113,12 +113,12 @@ async def test_detector_cooldown_normal_sound() -> None:
   # First occurrence should publish and schedule clearing task
   await detector.process_detected_sound(sound1)
   assert "cough" in detector.published_sound_sentinel
-  assert mock_mqtt.publish.call_count == 1
+  assert mock_mqtt.publish_event.call_count == 1
 
   # Second occurrence immediately after should be ignored (cooldown active)
-  mock_mqtt.publish.reset_mock()
+  mock_mqtt.publish_event.reset_mock()
   await detector.process_detected_sound(sound1)
-  assert mock_mqtt.publish.call_count == 0
+  assert mock_mqtt.publish_event.call_count == 0
 
   # Wait for cooldown to expire
   await asyncio.sleep(1.1)
@@ -128,13 +128,13 @@ async def test_detector_cooldown_normal_sound() -> None:
 
   # Verify that the clearing message was sent
   clearing_sent = False
-  for call in mock_mqtt.publish.call_args_list:
+  for call in mock_mqtt.publish_event.call_args_list:
     args = call[0]
     topic = args[0]
     payload = args[1]
     retain = call.kwargs.get("retain", False)
     data = json.loads(payload)
-    if topic == "sound" and data["sound"] == "..." and retain is True:
+    if topic == "event" and data["type"] == "sound" and data["sound"] == "..." and retain is True:
       clearing_sent = True
   assert clearing_sent is True
 
@@ -157,13 +157,15 @@ async def test_detector_wakeword_no_cooldown() -> None:
   # First occurrence
   await detector.process_detected_sound(wakeword)
   assert "hey-assistant" in detector.published_sound_sentinel
-  assert mock_mqtt.publish.call_count == 1
+  assert mock_mqtt.publish_event.call_count == 1
+  assert mock_mqtt.publish_event.call_args.args[0] == "event"
   assert wakeword_event.is_set()
 
   # Second occurrence should publish immediately (no cooldown for wakeword)
-  mock_mqtt.publish.reset_mock()
+  mock_mqtt.publish_event.reset_mock()
   await detector.process_detected_sound(wakeword)
-  assert mock_mqtt.publish.call_count == 1
+  assert mock_mqtt.publish_event.call_count == 1
+  assert mock_mqtt.publish_event.call_args.args[0] == "event"
 
 
 @pytest.mark.asyncio
@@ -199,7 +201,7 @@ async def test_detector_multiple_active_sounds_clearing() -> None:
   assert "snoring" in detector.published_sound_sentinel
 
   # Reset mock to watch for clearing messages
-  mock_mqtt.publish.reset_mock()
+  mock_mqtt.publish_event.reset_mock()
 
   # Wait 0.6s (total t = 1.1s). sound1's cooldown should expire.
   await asyncio.sleep(0.6)
@@ -208,12 +210,12 @@ async def test_detector_multiple_active_sounds_clearing() -> None:
 
   # Clearing message should NOT have been sent because snoring is still active
   # Verify that no clearing message of type "sound" with "..." was published
-  for call in mock_mqtt.publish.call_args_list:
+  for call in mock_mqtt.publish_event.call_args_list:
     args = call[0]
     topic = args[0]
     payload = args[1]
     data = json.loads(payload)
-    if topic == "sound":
+    if topic == "event" and data["type"] == "sound":
       assert data["sound"] != "..."
 
   # Wait another 0.5s (total t = 1.6s). sound2's cooldown should expire.
@@ -222,12 +224,12 @@ async def test_detector_multiple_active_sounds_clearing() -> None:
 
   # Now, the clearing message should have been sent since no other sounds are active
   clearing_sent = False
-  for call in mock_mqtt.publish.call_args_list:
+  for call in mock_mqtt.publish_event.call_args_list:
     args = call[0]
     topic = args[0]
     payload = args[1]
     retain = call.kwargs.get("retain", False)
     data = json.loads(payload)
-    if topic == "sound" and data["sound"] == "..." and retain is True:
+    if topic == "event" and data["type"] == "sound" and data["sound"] == "..." and retain is True:
       clearing_sent = True
   assert clearing_sent is True

@@ -87,7 +87,7 @@ class Component(abc.ABC):
     """The main asyncio task driving the component, or ``None`` if not started."""
     return None
 
-  def ha_entities(self, node_id: str, topic: str, device: dict) -> list["HAEntity"]:
+  def ha_entities(self, node_id: str, topic: str, availability_topic: str, device: dict) -> list["HAEntity"]:
     """Return Home Assistant MQTT discovery entity registrations.
 
     Each element is a ``(ha_domain, entity_slug, payload)`` triple where:
@@ -105,8 +105,9 @@ class Component(abc.ABC):
     Args:
       node_id: The slugified device node identifier (already prefixed with
         ``"oremi-device-"`` by the MQTT client).
-      topic: The base MQTT topic for this device (e.g.
-        ``"oremi/device/living-room"``).
+      topic: The event topic for this device (e.g.
+        ``"oremi/device/nodes/living-room"``).
+      availability_topic: The node availability topic used by Home Assistant.
       device: The HA device descriptor dict shared across all entities for
         this device.  Pass it through as the ``"device"`` key of each
         returned payload.

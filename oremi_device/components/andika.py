@@ -39,6 +39,10 @@ from .base import AudioStreamComponent
 from .base import HAEntity
 
 
+PARTIAL_TRANSCRIPTION_TOPIC = "transcription/partial"
+FINAL_TRANSCRIPTION_TOPIC = "transcription/result"
+
+
 class AndikaSupportedModel(BaseModel):
   id: str  # pylint: disable=invalid-name
   name: str
@@ -76,18 +80,17 @@ class AndikaTranscriber:
       field, transcription = self.parse_transcription(payload)
 
       if field:
-        payload["node_id"] = self.settings.node_id
         mqtt_message = json.dumps(payload)
 
         if field == "partial":
           if transcription:
-            self.mqtt_client.publish(
-              self.settings.partial_transcription_topic, mqtt_message, qos=1, retain=False, props=props
+            self.mqtt_client.publish_event(
+              PARTIAL_TRANSCRIPTION_TOPIC, mqtt_message, qos=1, retain=False, props=props
             )
         else:
           if transcription:
-            self.mqtt_client.publish(
-              self.settings.final_transcription_topic, mqtt_message, qos=1, retain=False, props=props
+            self.mqtt_client.publish_event(
+              FINAL_TRANSCRIPTION_TOPIC, mqtt_message, qos=1, retain=False, props=props
             )
 
           if self.transcription_complete_event:
@@ -141,13 +144,13 @@ class AndikaComponent(AudioStreamComponent):
 
     return []
 
-  def ha_entities(self, node_id: str, topic: str, device: dict) -> list[HAEntity]:
+  def ha_entities(self, node_id: str, topic: str, availability_topic: str, device: dict) -> list[HAEntity]:
     payload: dict = {
       "name": "Transcription",
       "unique_id": f"{node_id}_transcription",
-      "state_topic": f"{topic}/{self.settings.final_transcription_topic}",
+      "state_topic": f"{topic}/{FINAL_TRANSCRIPTION_TOPIC}",
       "value_template": "{{ value_json.text }}",
-      "availability_topic": f"{topic}/available",
+      "availability_topic": availability_topic,
       "payload_available": "online",
       "payload_not_available": "offline",
       "icon": "mdi:subtitles",
@@ -263,7 +266,7 @@ class AndikaComponent(AudioStreamComponent):
       return
 
     if device_state is None:
-      device_state = {"enabled": True, "microphone_muted": False}
+      device_state = {"microphone_muted": False}
 
     while True:
       await self._wakeword_event.wait()
@@ -274,7 +277,6 @@ class AndikaComponent(AudioStreamComponent):
       try:
         if (
           active_stream_container["stream"] is not None
-          and device_state["enabled"]
           and not device_state["microphone_muted"]
         ):
           self._start_listening()

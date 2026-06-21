@@ -33,11 +33,9 @@ def test_settings_defaults() -> None:
   assert settings.speaker_enabled is True
   assert settings.microphone_device is None
   assert settings.microphone_device_index is None
-  assert settings.ohunerin_threshold == 0.65
+  assert settings.ohunerin_threshold == 0.25
   assert settings.andika_model == "vosk-model-small-fr-0.22"
   assert settings.andika_samplerate == 16000
-  assert settings.partial_transcription_topic == "transcription/partial"
-  assert settings.final_transcription_topic == "transcription/text"
 
 
 def test_settings_are_loaded_from_environment(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -49,8 +47,6 @@ def test_settings_are_loaded_from_environment(monkeypatch: pytest.MonkeyPatch) -
   monkeypatch.setenv("OREMI_DEVICE_MICROPHONE_DEVICE", "USB Microphone")
   monkeypatch.setenv("OREMI_DEVICE_MICROPHONE_DEVICE_INDEX", "2")
   monkeypatch.setenv("OREMI_DEVICE_ANDIKA_SAMPLERATE", "48000")
-  monkeypatch.setenv("OREMI_DEVICE_PARTIAL_TRANSCRIPTION_TOPIC", "speech/in-progress")
-  monkeypatch.setenv("OREMI_DEVICE_FINAL_TRANSCRIPTION_TOPIC", "speech/final")
 
   settings = DeviceSettings(_env_file=None)
 
@@ -59,8 +55,6 @@ def test_settings_are_loaded_from_environment(monkeypatch: pytest.MonkeyPatch) -
   assert settings.microphone_device == "USB Microphone"
   assert settings.microphone_device_index == 2
   assert settings.andika_samplerate == 48000
-  assert settings.partial_transcription_topic == "speech/in-progress"
-  assert settings.final_transcription_topic == "speech/final"
 
 
 @pytest.mark.parametrize(

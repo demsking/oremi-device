@@ -78,14 +78,14 @@ async def test_andika_transcriber_publishes_partial_results() -> None:
 
   await transcriber.transcribing()
 
-  mqtt_client.publish.assert_called_once_with(
+  mqtt_client.publish_event.assert_called_once_with(
     "transcription/partial",
-    json.dumps({"partial": "bon", "confidence": 0.9, "node_id": "test-node"}),
+    json.dumps({"partial": "bon", "confidence": 0.9}),
     qos=1,
     retain=False,
     props=ANY,
   )
-  assert mqtt_client.publish.call_args.kwargs["props"].MessageExpiryInterval == 3
+  assert mqtt_client.publish_event.call_args.kwargs["props"].MessageExpiryInterval == 3
 
 
 @pytest.mark.asyncio
@@ -97,9 +97,9 @@ async def test_andika_transcriber_publishes_final_results() -> None:
 
   await transcriber.transcribing()
 
-  mqtt_client.publish.assert_called_once_with(
-    "transcription/text",
-    json.dumps({"text": "bonjour oremi", "confidence": 0.9, "node_id": "test-node"}),
+  mqtt_client.publish_event.assert_called_once_with(
+    "transcription/result",
+    json.dumps({"text": "bonjour oremi", "confidence": 0.9}),
     qos=1,
     retain=False,
     props=ANY,
@@ -108,29 +108,34 @@ async def test_andika_transcriber_publishes_final_results() -> None:
 
 
 @pytest.mark.asyncio
-async def test_andika_transcriber_uses_configured_topics() -> None:
+async def test_andika_transcriber_uses_fixed_topics() -> None:
   mqtt_client = MagicMock()
-  settings = _make_settings(
-    partial_transcription_topic="speech/partial",
-    final_transcription_topic="speech/final",
-  )
   websocket = AsyncMessages([json.dumps({"partial": "bon"}), json.dumps({"text": "bonjour"})])
 
-  await AndikaTranscriber(settings, mqtt_client, websocket).transcribing()
+  await AndikaTranscriber(_make_settings(), mqtt_client, websocket).transcribing()
 
-  assert [call.args[0] for call in mqtt_client.publish.call_args_list] == ["speech/partial", "speech/final"]
-  assert [json.loads(call.args[1])["node_id"] for call in mqtt_client.publish.call_args_list] == [
-    "test-node",
-    "test-node",
+  assert [call.args[0] for call in mqtt_client.publish_event.call_args_list] == [
+    "transcription/partial",
+    "transcription/result",
+  ]
+  assert [json.loads(call.args[1]) for call in mqtt_client.publish_event.call_args_list] == [
+    {"partial": "bon"},
+    {"text": "bonjour"},
   ]
 
 
-def test_andika_discovery_uses_configured_final_topic() -> None:
-  component = AndikaComponent(_make_settings(final_transcription_topic="speech/final"))
+def test_andika_discovery_uses_final_result_topic() -> None:
+  component = AndikaComponent(_make_settings())
 
-  _, _, payload = component.ha_entities("test-node", "oremi/device", {})[0]
+  _, _, payload = component.ha_entities(
+    "test-node",
+    "oremi/device/nodes/test-node",
+    "oremi/device/nodes/test-node/available",
+    {},
+  )[0]
 
-  assert payload["state_topic"] == "oremi/device/speech/final"
+  assert payload["state_topic"] == "oremi/device/nodes/test-node/transcription/result"
+  assert payload["availability_topic"] == "oremi/device/nodes/test-node/available"
   assert payload["value_template"] == "{{ value_json.text }}"
 
 
@@ -147,7 +152,7 @@ async def test_andika_empty_final_result_completes_conversation() -> None:
 
   await transcriber.transcribing()
 
-  mqtt_client.publish.assert_not_called()
+  mqtt_client.publish_event.assert_not_called()
   assert transcription_complete_event.is_set()
 
 
@@ -239,7 +244,7 @@ async def test_andika_transcriber_ignores_result_payloads() -> None:
 
   await transcriber.transcribing()
 
-  mqtt_client.publish.assert_not_called()
+  mqtt_client.publish_event.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -250,7 +255,7 @@ async def test_andika_transcriber_ignores_nested_partial_result() -> None:
 
   await transcriber.transcribing()
 
-  mqtt_client.publish.assert_not_called()
+  mqtt_client.publish_event.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -261,42 +266,46 @@ async def test_andika_transcriber_ignores_nested_text_result() -> None:
 
   await transcriber.transcribing()
 
-  mqtt_client.publish.assert_not_called()
+  mqtt_client.publish_event.assert_not_called()
 
 
 @pytest.mark.asyncio
 async def test_andika_transcriber_publishes_each_partial_result() -> None:
   mqtt_client = MagicMock()
-  websocket = AsyncMessages([
-    json.dumps({"partial": "bon"}),
-    json.dumps({"partial": "bon"}),
-    json.dumps({"partial": "bonjour"}),
-  ])
+  websocket = AsyncMessages(
+    [
+      json.dumps({"partial": "bon"}),
+      json.dumps({"partial": "bon"}),
+      json.dumps({"partial": "bonjour"}),
+    ]
+  )
   transcriber = AndikaTranscriber(_make_settings(delay=1), mqtt_client, websocket)
 
   await transcriber.transcribing()
 
-  assert mqtt_client.publish.call_count == 3
-  assert [json.loads(call.args[1]) for call in mqtt_client.publish.call_args_list] == [
-    {"partial": "bon", "node_id": "test-node"},
-    {"partial": "bon", "node_id": "test-node"},
-    {"partial": "bonjour", "node_id": "test-node"},
+  assert mqtt_client.publish_event.call_count == 3
+  assert [json.loads(call.args[1]) for call in mqtt_client.publish_event.call_args_list] == [
+    {"partial": "bon"},
+    {"partial": "bon"},
+    {"partial": "bonjour"},
   ]
 
 
 @pytest.mark.asyncio
 async def test_andika_transcriber_uses_settings_delay_as_message_expiry() -> None:
   mqtt_client = MagicMock()
-  websocket = DelayedAsyncMessages([
-    (0, json.dumps({"partial": "bon"})),
-    (0.02, json.dumps({"partial": "bon"})),
-  ])
+  websocket = DelayedAsyncMessages(
+    [
+      (0, json.dumps({"partial": "bon"})),
+      (0.02, json.dumps({"partial": "bon"})),
+    ]
+  )
   transcriber = AndikaTranscriber(_make_settings(delay=5), mqtt_client, websocket)
 
   await transcriber.transcribing()
 
-  assert mqtt_client.publish.call_count == 2
-  assert all(call.kwargs["props"].MessageExpiryInterval == 5 for call in mqtt_client.publish.call_args_list)
+  assert mqtt_client.publish_event.call_count == 2
+  assert all(call.kwargs["props"].MessageExpiryInterval == 5 for call in mqtt_client.publish_event.call_args_list)
 
 
 @pytest.mark.asyncio
@@ -307,7 +316,7 @@ async def test_andika_transcriber_ignores_unknown_payloads() -> None:
 
   await transcriber.transcribing()
 
-  mqtt_client.publish.assert_not_called()
+  mqtt_client.publish_event.assert_not_called()
 
 
 def test_andika_get_supported_models() -> None:

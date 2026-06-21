@@ -22,6 +22,7 @@ from pydantic import BaseModel
 from websockets.asyncio.client import connect
 
 from ..core.audio import Audio
+from ..core.detector import DETECTION_EVENT_TOPIC
 from ..core.detector import SoundDetector
 from ..core.listener import AudioListener
 from ..core.models import OhunerinConfig
@@ -74,26 +75,32 @@ class OhunerinComponent(AudioStreamComponent):
 
     return None
 
-  def ha_entities(self, node_id: str, topic: str, device: dict) -> list[HAEntity]:
+  def ha_entities(self, node_id: str, topic: str, availability_topic: str, device: dict) -> list[HAEntity]:
     """
     Register Wakeword and Sound Detector HA sensor entities.
 
     See https://www.home-assistant.io/integrations/sensor.mqtt/
     """
     server_info = self._get_server_info(self.settings.ohunerin_host, self.settings.ohunerin_port)
+    event_topic = f"{topic}/{DETECTION_EVENT_TOPIC}"
 
     wakeword_payload: dict = {
       "name": "Wakeword",
       "unique_id": f"{node_id}_wakeword",
-      "state_topic": f"{topic}/wakeword",
-      "value_template": "{% if value_json.sound == '...' %}💤{% else %}detected{% endif %}",
-      "availability_topic": f"{topic}/available",
+      "state_topic": event_topic,
+      "value_template": (
+        "{% if value_json.type == 'wakeword' and value_json.sound != '...' %}detected{% else %}💤{% endif %}"
+      ),
+      "availability_topic": availability_topic,
       "payload_available": "online",
       "payload_not_available": "offline",
       "device_class": "enum",
       "options": ["detected", "💤"],
-      "json_attributes_topic": f"{topic}/wakeword",
-      "json_attributes_template": "{% if value_json.sound != '...' %}{{ value_json | tojson }}{% else %}{}{% endif %}",
+      "json_attributes_topic": event_topic,
+      "json_attributes_template": (
+        "{% if value_json.type == 'wakeword' and value_json.sound != '...' %}"
+        "{{ value_json | tojson }}{% else %}{}{% endif %}"
+      ),
       "icon": "mdi:waveform",
       "device": device,
     }
@@ -101,13 +108,19 @@ class OhunerinComponent(AudioStreamComponent):
     sound_payload: dict = {
       "name": "Sound Detector",
       "unique_id": f"{node_id}_sound",
-      "state_topic": f"{topic}/sound",
-      "value_template": "{% if value_json.sound == '...' %}💤{% else %}{{ value_json.sound }}{% endif %}",
-      "availability_topic": f"{topic}/available",
+      "state_topic": event_topic,
+      "value_template": (
+        "{% if value_json.type == 'sound' and value_json.sound != '...' %}"
+        "{{ value_json.sound }}{% else %}💤{% endif %}"
+      ),
+      "availability_topic": availability_topic,
       "payload_available": "online",
       "payload_not_available": "offline",
-      "json_attributes_topic": f"{topic}/sound",
-      "json_attributes_template": "{% if value_json.sound != '...' %}{{ value_json | tojson }}{% else %}{}{% endif %}",
+      "json_attributes_topic": event_topic,
+      "json_attributes_template": (
+        "{% if value_json.type == 'sound' and value_json.sound != '...' %}"
+        "{{ value_json | tojson }}{% else %}{}{% endif %}"
+      ),
       "icon": "mdi:waveform",
       "device": device,
     }
@@ -125,7 +138,7 @@ class OhunerinComponent(AudioStreamComponent):
 
       mapper_str = ", ".join(mapper_items)
       sound_payload["value_template"] = (
-        f"{{% if value_json.sound == '...' %}}💤"
+        f"{{% if value_json.type != 'sound' or value_json.sound == '...' %}}💤"
         f"{{% else %}}{{% set mapper = {{{mapper_str}}} %}}"
         f"{{{{ mapper.get(value_json.sound, value_json.sound) }}}}"
         f"{{% endif %}}"
@@ -270,7 +283,6 @@ class OhunerinComponent(AudioStreamComponent):
 
           if (
             active_stream_container["stream"] is not None
-            and device_state["enabled"]
             and not device_state["microphone_muted"]
           ):
             self._listening_task = loop.create_task(self.audio_listener.listening(), name="Listening Task")

@@ -26,6 +26,9 @@ from .models import DetectedSoundType
 from .mqtt import MQTTClient
 
 
+DETECTION_EVENT_TOPIC = "event"
+
+
 class SoundDetector:
   def __init__(
     self,
@@ -70,7 +73,7 @@ class SoundDetector:
       "date": datetime.now().isoformat(),
     }
     message = json.dumps(data)
-    self.mqtt_client.publish(sound_type, message, retain=True)
+    self.mqtt_client.publish_event(DETECTION_EVENT_TOPIC, message, retain=True)
 
   async def detecting(self) -> None:
     try:
@@ -91,13 +94,13 @@ class SoundDetector:
     payload = json.dumps(data)
 
     if data["type"] == "wakeword":
-      self.mqtt_client.publish(data["type"], payload)
+      self.mqtt_client.publish_event(DETECTION_EVENT_TOPIC, payload)
       self.schedule_clearing_task(data)
 
       if self.wakeword_event:
         self.wakeword_event.set()
     elif current_sound not in self.published_sound_sentinel:
-      self.mqtt_client.publish(data["type"], payload)
+      self.mqtt_client.publish_event(DETECTION_EVENT_TOPIC, payload)
       self.schedule_clearing_task(data)
 
   def schedule_clearing_task(self, data: DetectedSound) -> None:

@@ -15,3 +15,8 @@
 DOMAIN = "oremi_device"
 CONF_NODE_ID = "node_id"
 CONF_TOPIC = "topic"
+DEFAULT_TOPIC = "oremi/device"
+
+
+def build_node_topic(topic: str, node_id: str) -> str:
+  return f"{topic.rstrip('/')}/nodes/{node_id}"

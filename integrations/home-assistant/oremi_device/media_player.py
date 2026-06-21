@@ -27,6 +27,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
+from .const import build_node_topic
 from .const import CONF_NODE_ID
 from .const import CONF_TOPIC
 from .const import DOMAIN
@@ -56,7 +57,7 @@ class OremiMediaPlayer(MediaPlayerEntity):
 
   def __init__(self, entry: ConfigEntry) -> None:
     self._node_id = entry.data[CONF_NODE_ID]
-    self._topic = f"{entry.data[CONF_TOPIC]}/device/{self._node_id}"
+    self._topic = build_node_topic(entry.data[CONF_TOPIC], self._node_id)
     self._attr_name = f"Oremi Player ({self._node_id})"
     self._attr_unique_id = f"oremi-device-{self._node_id}-player"
     self._attr_state = MediaPlayerState.IDLE
@@ -77,7 +78,7 @@ class OremiMediaPlayer(MediaPlayerEntity):
       (f"{self._topic}/player/state", self._state_received),
       (f"{self._topic}/speaker/volume/state", self._volume_received),
       (f"{self._topic}/speaker/mute/state", self._mute_received),
-      (f"{self._topic.rsplit('/device/', 1)[0]}/available", self._availability_received),
+      (f"{self._topic}/available", self._availability_received),
     )
 
     for topic, handler in subscriptions:

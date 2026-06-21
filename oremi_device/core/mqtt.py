@@ -41,11 +41,11 @@ class MQTTClient:  # pylint: disable=too-many-public-methods
     username: str | None = None,
     password: str | None = None,
     discovery_prefix: str | None = None,
-  ):
+  ) -> None:
     self.client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id=f"oremi-device-{node_id}")
     self.broker = broker
     self.port = port
-    self.topic = topic
+    self.topic = topic.rstrip("/")
     self.node_id = node_id
     self.username = username
     self.password = password
@@ -75,82 +75,15 @@ class MQTTClient:  # pylint: disable=too-many-public-methods
       "configuration_url": "https://gitlab.com/demsking/oremi-device",
     }
 
-  def get_microphone_command_topic(self) -> str:
-    """Return the instance-scoped MQTT topic for microphone select commands.
+  def parse_node_topic(self, topic: str) -> str:
+    node_topic = f"{self.topic}/nodes/{self.node_id}"
+    suffix = topic.strip("/")
+    return f"{node_topic}/{suffix}" if suffix else node_topic
 
-    Using the node_id ensures that when multiple instances share the same
-    base topic, each instance only reacts to commands addressed to it.
-    """
-    return f"{self.topic}/device/{self.node_id}/microphone/set"
+  def parse_event_topic(self, topic: str) -> str:
+    return self.parse_node_topic(topic)
 
-  def get_mute_command_topic(self) -> str:
-    """Return the instance-scoped topic for microphone mute commands."""
-    return f"{self.topic}/device/{self.node_id}/microphone/mute/set"
-
-  def get_mute_state_topic(self) -> str:
-    """Return the instance-scoped topic for microphone mute state."""
-    return f"{self.topic}/device/{self.node_id}/microphone/mute/state"
-
-  def get_speaker_command_topic(self) -> str:
-    """Return the instance-scoped topic for speaker selection commands."""
-    return f"{self.topic}/device/{self.node_id}/speaker/set"
-
-  def get_speaker_state_topic(self) -> str:
-    """Return the instance-scoped topic for the selected speaker."""
-    return f"{self.topic}/device/{self.node_id}/speaker/state"
-
-  def get_speaker_mute_cmd_topic(self) -> str:
-    """Return the instance-scoped topic for speaker mute commands."""
-    return f"{self.topic}/device/{self.node_id}/speaker/mute/set"
-
-  def get_speaker_mute_state_topic(self) -> str:
-    """Return the instance-scoped topic for speaker mute state."""
-    return f"{self.topic}/device/{self.node_id}/speaker/mute/state"
-
-  def get_speaker_volume_cmd_topic(self) -> str:
-    """Return the instance-scoped topic for speaker volume commands."""
-    return f"{self.topic}/device/{self.node_id}/speaker/volume/set"
-
-  def get_speaker_volume_state_topic(self) -> str:
-    """Return the instance-scoped topic for speaker volume state."""
-    return f"{self.topic}/device/{self.node_id}/speaker/volume/state"
-
-  def get_player_play_command_topic(self) -> str:
-    return f"{self.topic}/device/{self.node_id}/player/play/set"
-
-  def get_player_stop_command_topic(self) -> str:
-    return f"{self.topic}/device/{self.node_id}/player/stop/set"
-
-  def get_player_state_topic(self) -> str:
-    return f"{self.topic}/device/{self.node_id}/player/state"
-
-  def get_player_discovery_topic(self) -> str:
-    return f"{self.topic}/device/{self.node_id}/player/discovery"
-
-  def get_language_command_topic(self) -> str:
-    """Return the instance-scoped MQTT topic for language-select commands."""
-    return f"{self.topic}/device/{self.node_id}/language/set"
-
-  def get_language_state_topic(self) -> str:
-    """Return the instance-scoped MQTT topic for the current language state."""
-    return f"{self.topic}/device/{self.node_id}/language/state"
-
-  def get_switch_command_topic(self) -> str:
-    """Return the instance-scoped MQTT topic for the enable/disable switch."""
-    return f"{self.topic}/device/{self.node_id}/switch/set"
-
-  def get_switch_state_topic(self) -> str:
-    """Return the instance-scoped MQTT topic for the switch state."""
-    return f"{self.topic}/device/{self.node_id}/switch/state"
-
-  def connect(self) -> None:
-    if self.username:
-      self.client.username_pw_set(username=self.username, password=self.password)
-
-    self.client.connect(self.broker, self.port, keepalive=0)
-    self.client.loop_start()
-
-  def publish(
+  def publish_event(
     self,
     topic: DetectedSoundType | str,
     message: str,
@@ -159,15 +92,95 @@ class MQTTClient:  # pylint: disable=too-many-public-methods
     props: mqtt_properties.Properties | None = None,
     retain: bool = False,
   ) -> None:
-    logger.debug(f"Publishing #{self.topic}/{topic}: {message} with retain {retain}")
-    self.client.publish(f"{self.topic}/{topic}", message, qos=qos, retain=retain, properties=props)
+    event_topic = self.parse_event_topic(topic)
+    logger.debug(f"Publishing #{event_topic}: {message} with retain {retain}")
+    self.client.publish(event_topic, message, qos=qos, retain=retain, properties=props)
+
+  def publish_node(
+    self,
+    topic: str,
+    message: str,
+    *,
+    qos: int = 0,
+    props: mqtt_properties.Properties | None = None,
+    retain: bool = False,
+  ) -> None:
+    node_topic = self.parse_node_topic(topic)
+    logger.debug(f"Publishing #{node_topic}: {message} with retain {retain}")
+    self.client.publish(node_topic, message, qos=qos, retain=retain, properties=props)
+
+  def get_microphone_command_topic(self) -> str:
+    """Return the instance-scoped MQTT topic for microphone select commands.
+
+    Using the node_id ensures that when multiple instances share the same
+    base topic, each instance only reacts to commands addressed to it.
+    """
+    return self.parse_node_topic("microphone/set")
+
+  def get_mute_command_topic(self) -> str:
+    """Return the instance-scoped topic for microphone mute commands."""
+    return self.parse_node_topic("microphone/mute/set")
+
+  def get_mute_state_topic(self) -> str:
+    """Return the instance-scoped topic for microphone mute state."""
+    return self.parse_node_topic("microphone/mute/state")
+
+  def get_speaker_command_topic(self) -> str:
+    """Return the instance-scoped topic for speaker selection commands."""
+    return self.parse_node_topic("speaker/set")
+
+  def get_speaker_state_topic(self) -> str:
+    """Return the instance-scoped topic for the selected speaker."""
+    return self.parse_node_topic("speaker/state")
+
+  def get_speaker_mute_cmd_topic(self) -> str:
+    """Return the instance-scoped topic for speaker mute commands."""
+    return self.parse_node_topic("speaker/mute/set")
+
+  def get_speaker_mute_state_topic(self) -> str:
+    """Return the instance-scoped topic for speaker mute state."""
+    return self.parse_node_topic("speaker/mute/state")
+
+  def get_speaker_volume_cmd_topic(self) -> str:
+    """Return the instance-scoped topic for speaker volume commands."""
+    return self.parse_node_topic("speaker/volume/set")
+
+  def get_speaker_volume_state_topic(self) -> str:
+    """Return the instance-scoped topic for speaker volume state."""
+    return self.parse_node_topic("speaker/volume/state")
+
+  def get_player_play_command_topic(self) -> str:
+    return self.parse_node_topic("player/play/set")
+
+  def get_player_stop_command_topic(self) -> str:
+    return self.parse_node_topic("player/stop/set")
+
+  def get_player_state_topic(self) -> str:
+    return self.parse_node_topic("player/state")
+
+  def get_player_discovery_topic(self) -> str:
+    return self.parse_node_topic("player/discovery")
+
+  def get_language_command_topic(self) -> str:
+    """Return the instance-scoped MQTT topic for language-select commands."""
+    return self.parse_node_topic("language/set")
+
+  def get_language_state_topic(self) -> str:
+    """Return the instance-scoped MQTT topic for the current language state."""
+    return self.parse_node_topic("language/state")
+
+  def connect(self) -> None:
+    if self.username:
+      self.client.username_pw_set(username=self.username, password=self.password)
+
+    self.client.connect(self.broker, self.port, keepalive=0)
+    self.client.loop_start()
 
   def publish_discovery_configs(
     self,
     input_devices: list[str],
     current_device: str,
     entities: list["HAEntity"] | None = None,
-    enabled: bool = True,
     microphone_muted: bool = False,
     output_devices: list[str] | None = None,
     current_output: str = "",
@@ -180,9 +193,8 @@ class MQTTClient:  # pylint: disable=too-many-public-methods
   ) -> None:
     """Publish Home Assistant MQTT discovery configs.
 
-    Publishes device-level entities (microphone select, language select,
-    enable/disable switch) and any additional entities supplied by components
-    via their ``ha_entities()`` hook.
+    Publishes device-level entities and any additional entities supplied by
+    components via their ``ha_entities()`` hook.
 
     Args:
       input_devices: Available input device names for the HA select entity.
@@ -190,7 +202,6 @@ class MQTTClient:  # pylint: disable=too-many-public-methods
       entities: Optional list of ``(ha_domain, entity_slug, payload)`` tuples
         collected from active components. Each payload should already contain
         the ``"device"`` key.
-      enabled: Whether the device is currently enabled (switch initial state).
       microphone_muted: Whether microphone audio capture is currently muted.
       output_devices: Available speaker output names for the HA select entity.
       current_output: Currently selected speaker output name.
@@ -223,7 +234,7 @@ class MQTTClient:  # pylint: disable=too-many-public-methods
       "unique_id": f"{node_id}_language",
       "state_topic": self.get_language_state_topic(),
       "command_topic": self.get_language_command_topic(),
-      "availability_topic": f"{self.topic}/available",
+      "availability_topic": self.parse_node_topic("available"),
       "payload_available": "online",
       "payload_not_available": "offline",
       "options": languages,
@@ -237,30 +248,6 @@ class MQTTClient:  # pylint: disable=too-many-public-methods
     # Publish the current language state
     self.client.publish(self.get_language_state_topic(), current_language, retain=True)
 
-    # ── Device-level: enable/disable switch ──────────────────────────────────
-    # See https://www.home-assistant.io/integrations/switch.mqtt/
-    switch_payload = {
-      "name": "Enabled",
-      "unique_id": f"{node_id}_enabled",
-      "state_topic": self.get_switch_state_topic(),
-      "command_topic": self.get_switch_command_topic(),
-      "payload_on": "ON",
-      "payload_off": "OFF",
-      "state_on": "ON",
-      "state_off": "OFF",
-      "availability_topic": f"{self.topic}/available",
-      "payload_available": "online",
-      "payload_not_available": "offline",
-      "icon": "mdi:ear-hearing",
-      "device": device,
-    }
-
-    switch_topic = f"{self.discovery_prefix}/switch/{node_id}/enabled/config"
-    self.client.publish(switch_topic, json.dumps(switch_payload), retain=True)
-
-    # Publish initial switch state
-    self.client.publish(self.get_switch_state_topic(), "ON" if enabled else "OFF", retain=True)
-
     # ── Device-level: microphone mute switch ─────────────────────────────────
     mute_payload = {
       "name": "Microphone muted",
@@ -271,7 +258,7 @@ class MQTTClient:  # pylint: disable=too-many-public-methods
       "payload_off": "OFF",
       "state_on": "ON",
       "state_off": "OFF",
-      "availability_topic": f"{self.topic}/available",
+      "availability_topic": self.parse_node_topic("available"),
       "payload_available": "online",
       "payload_not_available": "offline",
       "icon": "mdi:microphone-off",
@@ -289,9 +276,9 @@ class MQTTClient:  # pylint: disable=too-many-public-methods
     select_payload = {
       "name": "Microphone Device",
       "unique_id": f"{node_id}_microphone_device",
-      "state_topic": f"{self.topic}/microphone/state",
+      "state_topic": self.parse_node_topic("microphone/state"),
       "command_topic": self.get_microphone_command_topic(),
-      "availability_topic": f"{self.topic}/available",
+      "availability_topic": self.parse_node_topic("available"),
       "payload_available": "online",
       "payload_not_available": "offline",
       "options": input_devices,
@@ -306,7 +293,7 @@ class MQTTClient:  # pylint: disable=too-many-public-methods
 
     # Publish currently active device state
     if microphone_enabled:
-      self.publish("microphone/state", current_device, retain=True)
+      self.publish_node("microphone/state", current_device, retain=True)
 
     # ── Device-level: speaker output select ──────────────────────────────────
     speaker_payload = {
@@ -314,13 +301,14 @@ class MQTTClient:  # pylint: disable=too-many-public-methods
       "unique_id": f"{node_id}_speaker_device",
       "state_topic": self.get_speaker_state_topic(),
       "command_topic": self.get_speaker_command_topic(),
-      "availability_topic": f"{self.topic}/available",
+      "availability_topic": self.parse_node_topic("available"),
       "payload_available": "online",
       "payload_not_available": "offline",
       "options": output_devices or [],
       "icon": "mdi:speaker",
       "device": device,
     }
+
     speaker_topic = f"{self.discovery_prefix}/select/{node_id}/speaker_device/config"
     self.client.publish(speaker_topic, json.dumps(speaker_payload) if speaker_enabled else "", retain=True)
 
@@ -337,7 +325,7 @@ class MQTTClient:  # pylint: disable=too-many-public-methods
       "payload_off": "OFF",
       "state_on": "ON",
       "state_off": "OFF",
-      "availability_topic": f"{self.topic}/available",
+      "availability_topic": self.parse_node_topic("available"),
       "payload_available": "online",
       "payload_not_available": "offline",
       "icon": "mdi:volume-off",
@@ -355,7 +343,7 @@ class MQTTClient:  # pylint: disable=too-many-public-methods
       "unique_id": f"{node_id}_speaker_volume",
       "state_topic": self.get_speaker_volume_state_topic(),
       "command_topic": self.get_speaker_volume_cmd_topic(),
-      "availability_topic": f"{self.topic}/available",
+      "availability_topic": self.parse_node_topic("available"),
       "payload_available": "online",
       "payload_not_available": "offline",
       "min": 0,
@@ -387,13 +375,7 @@ class MQTTClient:  # pylint: disable=too-many-public-methods
 
   def set_availability(self, available: bool) -> None:
     message: Literal["online", "offline"] = "online" if available else "offline"
-    self.publish("available", message, retain=True)
-
-  def set_switch_state(self, enabled: bool) -> None:
-    """Publish the enable/disable switch state to the instance-scoped topic."""
-    state = "ON" if enabled else "OFF"
-    logger.debug(f"Publishing switch state: {state}")
-    self.client.publish(self.get_switch_state_topic(), state, retain=True)
+    self.publish_node("available", message, retain=True)
 
   def set_mute_state(self, muted: bool) -> None:
     """Publish the microphone mute state to the instance-scoped topic."""

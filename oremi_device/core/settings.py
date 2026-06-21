@@ -51,8 +51,6 @@ class DeviceSettings(BaseSettings):
   mqtt_topic: str = "oremi/device"
   mqtt_discovery: bool = True
   mqtt_discovery_prefix: str = "homeassistant"
-  partial_transcription_topic: str = "transcription/partial"
-  final_transcription_topic: str = "transcription/text"
 
 
 def load_settings() -> DeviceSettings:

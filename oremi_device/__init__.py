@@ -126,7 +126,6 @@ async def start() -> None:
   # MQTT callbacks run on the client thread, so command state must exist
   # before connecting and subscribing to retained command topics.
   device_change_queue: asyncio.Queue = asyncio.Queue()
-  device_enable_queue: asyncio.Queue = asyncio.Queue()
   microphone_mute_queue: asyncio.Queue = asyncio.Queue()
   speaker_change_queue: asyncio.Queue = asyncio.Queue()
   speaker_mute_queue: asyncio.Queue = asyncio.Queue()
@@ -135,7 +134,7 @@ async def start() -> None:
   player_stop_queue: asyncio.Queue = asyncio.Queue()
   language_change_queue: asyncio.Queue = asyncio.Queue()
   wakeword_event = asyncio.Event()
-  device_state: dict = {"enabled": True, "microphone_muted": False}
+  device_state: dict = {"microphone_muted": False}
   speaker_state: dict = {
     "device": speaker.device_name if speaker else "",
     "muted": speaker.muted if speaker else False,
@@ -176,9 +175,6 @@ async def start() -> None:
       client.subscribe(mqtt_client.get_player_play_command_topic())
       client.subscribe(mqtt_client.get_player_stop_command_topic())
 
-    # Subscribe to the instance-scoped enable/disable switch command topic.
-    client.subscribe(mqtt_client.get_switch_command_topic())
-
     # Subscribe to the language-select command topic.
     client.subscribe(mqtt_client.get_language_command_topic())
 
@@ -190,14 +186,20 @@ async def start() -> None:
         device = mqtt_client.get_device_descriptor()
 
         ha_entities = [
-          entity for component, _ in active_components for entity in component.ha_entities(node_id, mqtt_client.topic, device)
+          entity
+          for component, _ in active_components
+          for entity in component.ha_entities(
+            node_id,
+            mqtt_client.parse_event_topic(""),
+            mqtt_client.parse_node_topic("available"),
+            device,
+          )
         ]
 
         mqtt_client.publish_discovery_configs(
           input_devices=Audio.get_compatible_input_devices(current_device=curr_name) if needs_audio else [],
           current_device=curr_name,
           entities=ha_entities,
-          enabled=device_state["enabled"],
           microphone_muted=device_state["microphone_muted"],
           output_devices=Speaker.get_compatible_output_devices() if speaker_enabled else [],
           current_output=speaker_state["device"],
@@ -234,16 +236,6 @@ async def start() -> None:
         loop.call_soon_threadsafe(device_change_queue.put_nowait, new_device)
       except Exception as error:
         logger.error(f"Error decoding or handling MQTT microphone command: {error}")
-
-    elif topic == mqtt_client.get_switch_command_topic():
-      try:
-        payload = message.payload.decode("utf-8").strip().upper()
-        logger.info(f"Received device switch command: {payload}")
-
-        if payload in ("ON", "OFF"):
-          loop.call_soon_threadsafe(device_enable_queue.put_nowait, payload == "ON")
-      except Exception as error:
-        logger.error(f"Error decoding or handling MQTT switch command: {error}")
 
     elif needs_audio and topic == mqtt_client.get_mute_command_topic():
       try:
@@ -357,13 +349,13 @@ async def start() -> None:
       active_stream_container["stream"] = new_stream
 
       # Signal components only when microphone capture should be active.
-      if device_state["enabled"] and not device_state["microphone_muted"]:
+      if not device_state["microphone_muted"]:
         for component, _ in started_components:
           if isinstance(component, AudioStreamComponent):
             await component.on_device_changed(new_stream)
 
       # Publish microphone state
-      mqtt_client.publish("microphone/state", new_stream.device_name, retain=True)
+      mqtt_client.publish_node("microphone/state", new_stream.device_name, retain=True)
       mqtt_client.set_availability(True)
 
       # Republish HA discovery options with updated device list
@@ -371,14 +363,20 @@ async def start() -> None:
         node_id = mqtt_client.get_node_id()
         device = mqtt_client.get_device_descriptor()
         ha_entities = [
-          entity for component, _ in started_components for entity in component.ha_entities(node_id, mqtt_client.topic, device)
+          entity
+          for component, _ in started_components
+          for entity in component.ha_entities(
+            node_id,
+            mqtt_client.parse_event_topic(""),
+            mqtt_client.parse_node_topic("available"),
+            device,
+          )
         ]
         comp_devices = Audio.get_compatible_input_devices(current_device=new_stream.device_name)
         mqtt_client.publish_discovery_configs(
           input_devices=comp_devices,
           current_device=new_stream.device_name,
           entities=ha_entities,
-          enabled=device_state["enabled"],
           microphone_muted=device_state["microphone_muted"],
           output_devices=Speaker.get_compatible_output_devices() if speaker_enabled else [],
           current_output=speaker_state["device"],
@@ -409,7 +407,7 @@ async def start() -> None:
         if isinstance(component, AudioStreamComponent):
           await component.on_device_changed(None)
 
-      mqtt_client.publish("microphone/state", "None", retain=True)
+      mqtt_client.publish_node("microphone/state", "None", retain=True)
       mqtt_client.set_availability(False)
 
       return False
@@ -417,7 +415,6 @@ async def start() -> None:
   shared_resources = {
     "active_stream_container": active_stream_container,
     "device_change_queue": device_change_queue,
-    "device_enable_queue": device_enable_queue,
     "microphone_mute_queue": microphone_mute_queue,
     "speaker": speaker,
     "speaker_state": speaker_state,
@@ -498,13 +495,17 @@ async def start() -> None:
           ha_entities = [
             entity
             for component, _ in started_components
-            for entity in component.ha_entities(node_id, mqtt_client.topic, device)
+            for entity in component.ha_entities(
+              node_id,
+              mqtt_client.parse_event_topic(""),
+              mqtt_client.parse_node_topic("available"),
+              device,
+            )
           ]
           mqtt_client.publish_discovery_configs(
             input_devices=compatible_devs,
             current_device=curr_name or "",
             entities=ha_entities,
-            enabled=device_state["enabled"],
             microphone_muted=device_state["microphone_muted"],
             output_devices=Speaker.get_compatible_output_devices() if speaker_enabled else [],
             current_output=speaker_state["device"],
@@ -577,9 +578,6 @@ async def start() -> None:
       else:
         device_change_task = None
 
-      device_enable_task = loop.create_task(device_enable_queue.get())
-      tasks.append(device_enable_task)
-
       microphone_mute_task = loop.create_task(microphone_mute_queue.get()) if needs_audio else None
 
       if microphone_mute_task is not None:
@@ -604,7 +602,6 @@ async def start() -> None:
       # they cannot consume a later command behind the active iteration's task.
       command_tasks = [
         device_change_task,
-        device_enable_task,
         microphone_mute_task,
         speaker_change_task,
         speaker_mute_task,
@@ -653,37 +650,6 @@ async def start() -> None:
             logger.info("Explicit switch failed. Attempting to auto-select any compatible microphone...")
             await change_audio_device(None)
 
-      elif device_enable_task is not None and device_enable_task in done:
-        new_enabled = device_enable_task.result()
-        device_state["enabled"] = new_enabled
-
-        if new_enabled:
-          logger.info("Device enabled from HA UI. Resuming listening...")
-          mqtt_client.set_switch_state(True)
-
-          # Resume the audio stream if it was up before being disabled
-          if needs_audio:
-            curr_stream = active_stream_container["stream"]
-
-            if curr_stream is not None and not device_state["microphone_muted"]:
-              for component, _ in started_components:
-                if isinstance(component, AudioStreamComponent):
-                  await component.on_device_changed(curr_stream)
-            else:
-              loop.call_soon_threadsafe(device_change_queue.put_nowait, "__auto_select__")
-
-          mqtt_client.set_availability(True)
-        else:
-          logger.info("Device disabled from HA UI. Stopping listening and sleeping...")
-          mqtt_client.set_switch_state(False)
-
-          # Stop all audio stream components (stop listening but keep WS/MQTT alive)
-          if needs_audio:
-            for component, _ in started_components:
-              if isinstance(component, AudioStreamComponent):
-                await component.on_device_changed(None)
-
-          mqtt_client.set_availability(False)
       elif microphone_mute_task is not None and microphone_mute_task in done:
         muted = microphone_mute_task.result()
         device_state["microphone_muted"] = muted
@@ -695,7 +661,7 @@ async def start() -> None:
           for component, _ in started_components:
             if isinstance(component, AudioStreamComponent):
               await component.on_device_changed(None)
-        elif device_state["enabled"]:
+        else:
           logger.info("Microphone unmuted. Resuming audio capture...")
           curr_stream = active_stream_container["stream"]
 
@@ -779,13 +745,17 @@ async def start() -> None:
             ha_entities = [
               entity
               for component, _ in started_components
-              for entity in component.ha_entities(node_id, mqtt_client.topic, device)
+              for entity in component.ha_entities(
+                node_id,
+                mqtt_client.parse_event_topic(""),
+                mqtt_client.parse_node_topic("available"),
+                device,
+              )
             ]
             mqtt_client.publish_discovery_configs(
               input_devices=Audio.get_compatible_input_devices(current_device=curr_name) if needs_audio else [],
               current_device=curr_name,
               entities=ha_entities,
-              enabled=device_state["enabled"],
               microphone_muted=device_state["microphone_muted"],
               output_devices=Speaker.get_compatible_output_devices() if speaker_enabled else [],
               current_output=speaker_state["device"],

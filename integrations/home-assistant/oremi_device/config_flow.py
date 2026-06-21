@@ -21,6 +21,7 @@ from homeassistant.data_entry_flow import FlowResult
 
 from .const import CONF_NODE_ID
 from .const import CONF_TOPIC
+from .const import DEFAULT_TOPIC
 from .const import DOMAIN
 
 
@@ -34,8 +35,11 @@ class OremiDeviceConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     try:
       payload = discovery_info.payload
       data = json.loads(payload.decode() if isinstance(payload, bytes) else payload)
-      node_id = data[CONF_NODE_ID]
-      topic = data[CONF_TOPIC]
+      node_id = data[CONF_NODE_ID].strip()
+      topic = data[CONF_TOPIC].strip().rstrip("/")
+
+      if not node_id or not topic:
+        raise ValueError
     except (AttributeError, KeyError, TypeError, ValueError):
       return self.async_abort(reason="invalid_discovery")
 
@@ -52,5 +56,5 @@ class OremiDeviceConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
       self._abort_if_unique_id_configured()
       return self.async_create_entry(title=f"Oremi Player ({node_id})", data={CONF_NODE_ID: node_id, CONF_TOPIC: topic})
 
-    schema = vol.Schema({vol.Required(CONF_NODE_ID): str, vol.Required(CONF_TOPIC, default="oremi/device"): str})
+    schema = vol.Schema({vol.Required(CONF_NODE_ID): str, vol.Required(CONF_TOPIC, default=DEFAULT_TOPIC): str})
     return self.async_show_form(step_id="user", data_schema=schema)

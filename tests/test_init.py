@@ -102,6 +102,29 @@ def test_ohunerin_config_with_threshold() -> None:
   assert config_default.threshold == 0.65
 
 
+def test_ohunerin_ha_entities_use_event_topics_and_node_availability() -> None:
+  component = OhunerinComponent(_make_settings())
+
+  with patch.object(component, "_get_server_info", return_value=None):
+    entities = component.ha_entities(
+      "oremi-device-test-node",
+      "oremi/device/nodes/test-node",
+      "oremi/device/nodes/test-node/available",
+      {"identifiers": ["oremi-device-test-node"]},
+    )
+
+  payloads = {entity_slug: payload for _, entity_slug, payload in entities}
+  assert payloads["wakeword"]["state_topic"] == "oremi/device/nodes/test-node/event"
+  assert payloads["sound"]["state_topic"] == "oremi/device/nodes/test-node/event"
+  assert payloads["wakeword"]["json_attributes_topic"] == "oremi/device/nodes/test-node/event"
+  assert payloads["sound"]["json_attributes_topic"] == "oremi/device/nodes/test-node/event"
+  assert "value_json.type == 'wakeword'" in payloads["wakeword"]["value_template"]
+  assert "value_json.type == 'sound'" in payloads["sound"]["value_template"]
+  assert all(
+    payload["availability_topic"] == "oremi/device/nodes/test-node/available" for payload in payloads.values()
+  )
+
+
 def test_build_andika_connection_uri_default() -> None:
   settings = _make_settings(andika_host="andika", andika_port=5315)
   component = AndikaComponent(settings)
@@ -139,7 +162,8 @@ def test_andika_ha_entities() -> None:
   component = AndikaComponent(settings)
   entities = component.ha_entities(
     "oremi-device-test-node",
-    "oremi/device/test-node",
+    "oremi/device/nodes/test-node",
+    "oremi/device/nodes/test-node/available",
     {"identifiers": ["oremi-device-test-node"]},
   )
 
@@ -149,7 +173,8 @@ def test_andika_ha_entities() -> None:
   assert entity_slug == "transcription"
   assert payload["name"] == "Transcription"
   assert payload["unique_id"] == "oremi-device-test-node_transcription"
-  assert payload["state_topic"] == "oremi/device/test-node/transcription/text"
+  assert payload["state_topic"] == "oremi/device/nodes/test-node/transcription/result"
+  assert payload["availability_topic"] == "oremi/device/nodes/test-node/available"
   assert payload["value_template"] == "{{ value_json.text }}"
   assert "json_attributes_topic" not in payload
 
@@ -195,7 +220,7 @@ async def test_ohunerin_stop_does_not_reconnect_after_detection_cancellation() -
     "handle_task_done": None,
     "active_stream_container": {"stream": None},
     "wakeword_event": asyncio.Event(),
-    "device_state": {"enabled": False, "microphone_muted": False},
+    "device_state": {"microphone_muted": True},
   }
 
   with patch("oremi_device.components.ohunerin.connect", return_value=connection):

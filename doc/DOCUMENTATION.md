@@ -38,12 +38,12 @@ uv tool install oremi-device
 After installation, you can run the device directly:
 
 ```bash
-export OREMI_DEVICE_NODE_ID=living-room
-export OREMI_DEVICE_OHUNERIN_HOST=localhost
-export OREMI_DEVICE_ANDIKA_HOST=localhost
-export OREMI_DEVICE_MQTT_BROKER=localhost
+$ export OREMI_DEVICE_NODE_ID=living-room
+$ export OREMI_DEVICE_OHUNERIN_HOST=localhost
+$ export OREMI_DEVICE_ANDIKA_HOST=localhost
+$ export OREMI_DEVICE_MQTT_BROKER=localhost
 
-oremi-device
+$ oremi-device
 ```
 
 ### Using Docker
@@ -121,8 +121,6 @@ working directory. Environment variables take precedence over `.env` values.
 | `OREMI_DEVICE_MQTT_TOPIC`                  | `oremi/device`             | Base topic for events, availability, and controls.                         |
 | `OREMI_DEVICE_MQTT_DISCOVERY`              | `true`                     | Enable Home Assistant MQTT discovery.                                      |
 | `OREMI_DEVICE_MQTT_DISCOVERY_PREFIX`       | `homeassistant`            | Home Assistant discovery topic prefix.                                     |
-| `OREMI_DEVICE_PARTIAL_TRANSCRIPTION_TOPIC` | `transcription/partial`    | Partial-transcription topic relative to the MQTT base topic.               |
-| `OREMI_DEVICE_FINAL_TRANSCRIPTION_TOPIC`   | `transcription/text`       | Final-transcription topic relative to the MQTT base topic.                 |
 
 Positive numeric values and valid port ranges are checked at startup. Boolean
 values accept standard forms such as `true` and `false`. For example, a `.env`
@@ -153,28 +151,37 @@ Ohunerin and Andika reconnect with exponential backoff when their WebSocket
 connections fail. The application also polls for audio-device changes and
 updates Home Assistant discovery options when devices appear or disappear.
 
-The device enable and microphone mute controls pause audio streaming without
-stopping the service connections. A language command updates the retained MQTT
-state and reconnects Ohunerin with the newly selected language.
+The microphone mute control pauses audio streaming without stopping the service
+connections. A language command updates the retained MQTT state and reconnects
+Ohunerin with the newly selected language.
 
 ## MQTT
 
 Examples below use the default base topic `oremi/device` and a node ID of
-`living-room`.
+`living-room`. Events, controls, states, and availability are scoped below
+`oremi/device/nodes/living-room`; the table lists suffixes relative to that
+node prefix.
 
 ### Events
 
-| Topic suffix            | Payload                   | Notes                                                                                                                   |
-| ----------------------- | ------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
-| `available`             | `online` or `offline`     | Retained availability state.                                                                                            |
-| `sound`                 | JSON detection event      | Environmental sounds accepted by the configured threshold. Duplicate labels are suppressed during the configured delay. |
-| `wakeword`              | JSON detection event      | Wake-word events also activate Andika transcription.                                                                    |
-| `transcription/partial` | JSON transcription        | Non-retained partial Andika result, QoS 1.                                                                              |
-| `transcription/text`    | JSON transcription        | Non-retained final Andika result, QoS 1. This is also the default Home Assistant transcription sensor state topic.      |
-| `microphone/state`      | Microphone name or `None` | Retained active microphone state.                                                                                       |
+| Topic suffix            | Payload              | Notes                                                                                                                   |
+| ----------------------- | -------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| `event`                 | JSON detection event | Wake words and ambient sounds, distinguished by the payload's `type` field.                                              |
+| `transcription/partial` | JSON transcription   | Non-retained partial Andika result, QoS 1.                                                                              |
+| `transcription/result`  | JSON transcription   | Non-retained final Andika result, QoS 1. This is also the Home Assistant transcription sensor state topic.              |
 
-Ohunerin detection messages use this shape. The `sound` value is converted to a
-lowercase slug before publication:
+The `event` topic carries the detected-sound model for both wake words and
+ambient sounds:
+
+| Field   | Type     | Required | Description |
+| ------- | -------- | -------- | ----------- |
+| `date`  | string   | Yes      | ISO 8601 date-time when the sound was detected. |
+| `score` | number   | Yes      | Detection confidence score. |
+| `sound` | string   | Yes      | Detected ambient sound or wake-word name. |
+| `type`  | string   | Yes      | Event discriminator: `sound` or `wakeword`. |
+
+The `sound` value is converted to a lowercase slug before publication. Ambient
+sound events use this shape:
 
 ```json
 {
@@ -185,44 +192,64 @@ lowercase slug before publication:
 }
 ```
 
+Wake-word events use the same model with `"type": "wakeword"` and activate
+Andika transcription. Home Assistant's wake-word and ambient-sound sensors both
+subscribe to `<OREMI_DEVICE_MQTT_TOPIC>/nodes/+/event` and select messages by
+their `type` field.
+
 After the delay expires, the service publishes a retained clearing message with
 `"sound": "..."` when no event of that type remains active.
 
-The transcription suffixes in the table are defaults and can be changed with
-the partial and final transcription topic settings. Both payloads preserve the
-raw Andika JSON response and add `node_id` to identify the originating device.
-For example, a final response is published as:
+The fixed MQTT subscription patterns are
+`<OREMI_DEVICE_MQTT_TOPIC>/nodes/+/transcription/partial` for partial results
+and `<OREMI_DEVICE_MQTT_TOPIC>/nodes/+/transcription/result` for final results.
+The `+` wildcard represents the node ID. Both payloads are the raw Andika JSON
+response; the node is identified by the scoped MQTT topic.
+
+See the [Andika models documentation](https://demsking.gitlab.io/oremi-andika/#models/)
+for details about the
+[PartialResult](https://demsking.gitlab.io/oremi-andika/#models/PartialResult)
+and [FinalResult](https://demsking.gitlab.io/oremi-andika/#models/FinalResult)
+models.
+
+A partial response is published as:
 
 ```json
 {
-  "text": "turn on the living room light",
-  "node_id": "living-room"
+  "partial": "..."
+}
+```
+
+A final response is published as:
+
+```json
+{
+  "text": "turn on the living room light"
 }
 ```
 
 ### Device Controls
 
-| Command topic                                         | State topic                                             | Payload                                                   |
-| ----------------------------------------------------- | ------------------------------------------------------- | --------------------------------------------------------- |
-| `oremi/device/device/living-room/switch/set`          | `oremi/device/device/living-room/switch/state`          | `ON` enables audio processing; `OFF` disables it.         |
-| `oremi/device/device/living-room/language/set`        | `oremi/device/device/living-room/language/state`        | A UTF-8 language string. Discovery offers `fr` and `en`.  |
-| `oremi/device/device/living-room/microphone/set`      | `oremi/device/microphone/state`                         | A microphone name exposed by discovery.                   |
-| `oremi/device/device/living-room/microphone/mute/set` | `oremi/device/device/living-room/microphone/mute/state` | `ON` mutes capture; `OFF` unmutes it.                     |
-| `oremi/device/device/living-room/speaker/set`         | `oremi/device/device/living-room/speaker/state`         | A speaker name exposed by discovery.                      |
-| `oremi/device/device/living-room/speaker/mute/set`    | `oremi/device/device/living-room/speaker/mute/state`    | `ON` mutes the speaker; `OFF` unmutes it.                 |
-| `oremi/device/device/living-room/speaker/volume/set`  | `oremi/device/device/living-room/speaker/volume/state`  | Integer percentage from `0` to `100`.                     |
-| `oremi/device/device/living-room/player/play/set`     | `oremi/device/device/living-room/player/state`          | An HTTP or HTTPS audio URL; state is `playing` or `idle`. |
-| `oremi/device/device/living-room/player/stop/set`     | `oremi/device/device/living-room/player/state`          | Any payload stops playback.                               |
+Node availability is retained at
+`oremi/device/nodes/<node-id>/available` with an `online` or `offline` payload.
 
-The microphone state topic is `oremi/device/microphone/state`; unlike the other
-control states, it is not nested below the node-specific prefix.
+| Command topic                                      | State topic                                          | Payload                                                   |
+| -------------------------------------------------- | ---------------------------------------------------- | --------------------------------------------------------- |
+| `oremi/device/nodes/<node-id>/language/set`        | `oremi/device/nodes/<node-id>/language/state`        | A UTF-8 language string. Discovery offers `fr` and `en`.  |
+| `oremi/device/nodes/<node-id>/microphone/set`      | `oremi/device/nodes/<node-id>/microphone/state`      | A microphone name exposed by discovery.                   |
+| `oremi/device/nodes/<node-id>/microphone/mute/set` | `oremi/device/nodes/<node-id>/microphone/mute/state` | `ON` mutes capture; `OFF` unmutes it.                     |
+| `oremi/device/nodes/<node-id>/speaker/set`         | `oremi/device/nodes/<node-id>/speaker/state`         | A speaker name exposed by discovery.                      |
+| `oremi/device/nodes/<node-id>/speaker/mute/set`    | `oremi/device/nodes/<node-id>/speaker/mute/state`    | `ON` mutes the speaker; `OFF` unmutes it.                 |
+| `oremi/device/nodes/<node-id>/speaker/volume/set`  | `oremi/device/nodes/<node-id>/speaker/volume/state`  | Integer percentage from `0` to `100`.                     |
+| `oremi/device/nodes/<node-id>/player/play/set`     | `oremi/device/nodes/<node-id>/player/state`          | An HTTP or HTTPS audio URL; state is `playing` or `idle`. |
+| `oremi/device/nodes/<node-id>/player/stop/set`     | `oremi/device/nodes/<node-id>/player/state`          | Any payload stops playback.                               |
 
 For example, disable processing for this node with:
 
 ```bash
 mosquitto_pub \
-  -t oremi/device/device/living-room/switch/set \
-  -m OFF
+  -t oremi/device/nodes/living-room/microphone/mute/set \
+  -m ON
 ```
 
 ## Logging
@@ -237,14 +264,14 @@ Logging is configured only through environment variables:
 **Example:**
 
 ```bash
-export LOG_LEVEL=DEBUG
-export LOG_FILE=/var/log/oremi-device.log
-export OREMI_DEVICE_NODE_ID=living-room
-export OREMI_DEVICE_OHUNERIN_HOST=localhost
-export OREMI_DEVICE_ANDIKA_HOST=localhost
-export OREMI_DEVICE_MQTT_BROKER=localhost
+$ export LOG_LEVEL=DEBUG
+$ export LOG_FILE=/var/log/oremi-device.log
+$ export OREMI_DEVICE_NODE_ID=living-room
+$ export OREMI_DEVICE_OHUNERIN_HOST=localhost
+$ export OREMI_DEVICE_ANDIKA_HOST=localhost
+$ export OREMI_DEVICE_MQTT_BROKER=localhost
 
-oremi-device
+$ oremi-device
 ```
 
 **Docker example:**
@@ -274,7 +301,7 @@ docker run --rm -it \
 MQTT discovery is enabled by default. On MQTT connection, Oremi Device publishes
 retained discovery configurations below `homeassistant` for:
 
-- enabled state and language
+- language selection
 - microphone selection and mute state
 - speaker selection, mute state, and volume
 - Ohunerin wake-word and sound sensors
@@ -287,7 +314,7 @@ corresponding retained discovery configs are cleared.
 
 Set `OREMI_DEVICE_MQTT_DISCOVERY=false` to disable discovery or set
 `OREMI_DEVICE_MQTT_DISCOVERY_PREFIX` when Home Assistant uses a custom prefix.
-The transcription sensor follows `OREMI_DEVICE_FINAL_TRANSCRIPTION_TOPIC` and
+The transcription sensor follows the node's `transcription/result` topic and
 extracts its state from the final JSON payload's `text` field.
 
 ### Media Player
@@ -304,7 +331,7 @@ Assistant configuration directory and restart Home Assistant:
    Alternatively, you can copy it manually from the cloned repository:
 
    ```bash
-   cp -r integrations/home-assistant/oremi-device /path/to/your/homeassistant/config/custom_components/oremi_device
+   cp -r integrations/home-assistant/oremi_device /path/to/your/homeassistant/config/custom_components/oremi_device
    ```
 
 3. Restart Home Assistant.

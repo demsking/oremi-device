@@ -38,8 +38,26 @@ def test_mqtt_client_initialization() -> None:
   assert client.discovery_prefix == "homeassistant"
 
 
+@patch("paho.mqtt.client.Client")
+def test_topic_publishers_normalize_topics(mock_mqtt_class) -> None:
+  client = MQTTClient(
+    broker="localhost",
+    port=1883,
+    topic="oremi/device/",
+    node_id="living-room",
+  )
 
-@patch('paho.mqtt.client.Client')
+  client.publish_event("/event", "event", qos=1, retain=True)
+  client.publish_node("/microphone/mute/state", "ON", retain=True)
+
+  assert client.topic == "oremi/device"
+  assert mock_mqtt_class.return_value.publish.call_args_list == [
+    (("oremi/device/nodes/living-room/event", "event"), {"qos": 1, "retain": True, "properties": None}),
+    (("oremi/device/nodes/living-room/microphone/mute/state", "ON"), {"qos": 0, "retain": True, "properties": None}),
+  ]
+
+
+@patch("paho.mqtt.client.Client")
 def test_publish_discovery_configs_no_entities(mock_mqtt_class) -> None:
   """Without component entities only the select + state topics are published."""
   client = MQTTClient(
@@ -65,8 +83,8 @@ def test_publish_discovery_configs_no_entities(mock_mqtt_class) -> None:
     speaker_volume=0.42,
   )
 
-  # Seven device-level configs, their states, and player integration discovery.
-  assert mock_client_instance.publish.call_count == 16
+  # Six device-level configs, their states, and player integration discovery.
+  assert mock_client_instance.publish.call_count == 14
 
   calls = mock_client_instance.publish.call_args_list
 
@@ -84,41 +102,24 @@ def test_publish_discovery_configs_no_entities(mock_mqtt_class) -> None:
   # Second call: language state
   call_lang_state = calls[1]
   topic_lang_state, payload_lang_state = call_lang_state[0]
-  assert topic_lang_state == "oremi/ohunerin/custom/device/oremi-ohunerin-custom/language/state"
+  assert topic_lang_state == "oremi/ohunerin/custom/nodes/oremi-ohunerin-custom/language/state"
   assert payload_lang_state == "fr"  # default
 
-  # Third call: switch config
-  call_sw = calls[2]
-  topic_sw, payload_sw = call_sw[0]
-  assert topic_sw == "homeassistant/switch/oremi-device-oremi-ohunerin-custom/enabled/config"
-  assert call_sw[1].get("retain") is True
-  data_sw = json.loads(payload_sw)
-  assert data_sw["name"] == "Enabled"
-  assert data_sw["unique_id"] == "oremi-device-oremi-ohunerin-custom_enabled"
-  assert data_sw["payload_on"] == "ON"
-  assert data_sw["payload_off"] == "OFF"
-
-  # Fourth call: switch state
-  call_sw_state = calls[3]
-  topic_sw_state, payload_sw_state = call_sw_state[0]
-  assert topic_sw_state == "oremi/ohunerin/custom/device/oremi-ohunerin-custom/switch/state"
-  assert payload_sw_state == "ON"
-
-  # Fifth and sixth calls: microphone mute config and state
-  call_mute = calls[4]
+  # Third and fourth calls: microphone mute config and state
+  call_mute = calls[2]
   topic_mute, payload_mute = call_mute[0]
   assert topic_mute == "homeassistant/switch/oremi-device-oremi-ohunerin-custom/microphone_muted/config"
   data_mute = json.loads(payload_mute)
   assert data_mute["name"] == "Microphone muted"
-  assert data_mute["command_topic"] == "oremi/ohunerin/custom/device/oremi-ohunerin-custom/microphone/mute/set"
-  assert data_mute["state_topic"] == "oremi/ohunerin/custom/device/oremi-ohunerin-custom/microphone/mute/state"
+  assert data_mute["command_topic"] == "oremi/ohunerin/custom/nodes/oremi-ohunerin-custom/microphone/mute/set"
+  assert data_mute["state_topic"] == "oremi/ohunerin/custom/nodes/oremi-ohunerin-custom/microphone/mute/state"
 
-  topic_mute_state, payload_mute_state = calls[5][0]
-  assert topic_mute_state == "oremi/ohunerin/custom/device/oremi-ohunerin-custom/microphone/mute/state"
+  topic_mute_state, payload_mute_state = calls[3][0]
+  assert topic_mute_state == "oremi/ohunerin/custom/nodes/oremi-ohunerin-custom/microphone/mute/state"
   assert payload_mute_state == "OFF"
 
-  # Seventh call: mic select config
-  call_mic = calls[6]
+  # Fifth call: mic select config
+  call_mic = calls[4]
   topic_mic, payload_mic = call_mic[0]
   kwargs_mic = call_mic[1]
   assert topic_mic == "homeassistant/select/oremi-device-oremi-ohunerin-custom/microphone_device/config"
@@ -127,53 +128,53 @@ def test_publish_discovery_configs_no_entities(mock_mqtt_class) -> None:
   data_mic = json.loads(payload_mic)
   assert data_mic["name"] == "Microphone Device"
   assert data_mic["unique_id"] == "oremi-device-oremi-ohunerin-custom_microphone_device"
-  assert data_mic["state_topic"] == "oremi/ohunerin/custom/microphone/state"
-  assert data_mic["command_topic"] == "oremi/ohunerin/custom/device/oremi-ohunerin-custom/microphone/set"
+  assert data_mic["state_topic"] == "oremi/ohunerin/custom/nodes/oremi-ohunerin-custom/microphone/state"
+  assert data_mic["command_topic"] == "oremi/ohunerin/custom/nodes/oremi-ohunerin-custom/microphone/set"
   assert data_mic["options"] == devices
   assert data_mic["device"]["identifiers"] == ["oremi-device-oremi-ohunerin-custom"]
 
-  # Eighth call: microphone state
-  call_mic_state = calls[7]
+  # Sixth call: microphone state
+  call_mic_state = calls[5]
   topic_mic_state, payload_mic_state = call_mic_state[0]
   kwargs_mic_state = call_mic_state[1]
-  assert topic_mic_state == "oremi/ohunerin/custom/microphone/state"
+  assert topic_mic_state == "oremi/ohunerin/custom/nodes/oremi-ohunerin-custom/microphone/state"
   assert payload_mic_state == current
   assert kwargs_mic_state.get("retain") is True
 
   # Speaker output select config and state
-  topic_speaker, payload_speaker = calls[8][0]
+  topic_speaker, payload_speaker = calls[6][0]
   assert topic_speaker == "homeassistant/select/oremi-device-oremi-ohunerin-custom/speaker_device/config"
   data_speaker = json.loads(payload_speaker)
-  assert data_speaker["command_topic"] == "oremi/ohunerin/custom/device/oremi-ohunerin-custom/speaker/set"
-  assert data_speaker["state_topic"] == "oremi/ohunerin/custom/device/oremi-ohunerin-custom/speaker/state"
+  assert data_speaker["command_topic"] == "oremi/ohunerin/custom/nodes/oremi-ohunerin-custom/speaker/set"
+  assert data_speaker["state_topic"] == "oremi/ohunerin/custom/nodes/oremi-ohunerin-custom/speaker/state"
   assert data_speaker["options"] == speakers
-  assert calls[9][0] == (
-    "oremi/ohunerin/custom/device/oremi-ohunerin-custom/speaker/state",
+  assert calls[7][0] == (
+    "oremi/ohunerin/custom/nodes/oremi-ohunerin-custom/speaker/state",
     "USB Speaker",
   )
 
   # Speaker mute config and state
-  topic_speaker_mute, payload_speaker_mute = calls[10][0]
+  topic_speaker_mute, payload_speaker_mute = calls[8][0]
   assert topic_speaker_mute == "homeassistant/switch/oremi-device-oremi-ohunerin-custom/speaker_muted/config"
   data_speaker_mute = json.loads(payload_speaker_mute)
   assert data_speaker_mute["command_topic"].endswith("/speaker/mute/set")
-  assert calls[11][0][1] == "ON"
+  assert calls[9][0][1] == "ON"
 
   # Speaker volume config and percentage state
-  topic_volume, payload_volume = calls[12][0]
+  topic_volume, payload_volume = calls[10][0]
   assert topic_volume == "homeassistant/number/oremi-device-oremi-ohunerin-custom/speaker_volume/config"
   data_volume = json.loads(payload_volume)
   assert data_volume["min"] == 0
   assert data_volume["max"] == 100
   assert data_volume["command_topic"].endswith("/speaker/volume/set")
-  assert calls[13][0][1] == "42"
+  assert calls[11][0][1] == "42"
 
-  assert calls[14][0] == (
-    "oremi/ohunerin/custom/device/oremi-ohunerin-custom/player/state",
+  assert calls[12][0] == (
+    "oremi/ohunerin/custom/nodes/oremi-ohunerin-custom/player/state",
     "idle",
   )
-  topic_player, payload_player = calls[15][0]
-  assert topic_player == "oremi/ohunerin/custom/device/oremi-ohunerin-custom/player/discovery"
+  topic_player, payload_player = calls[13][0]
+  assert topic_player == "oremi/ohunerin/custom/nodes/oremi-ohunerin-custom/player/discovery"
   assert json.loads(payload_player) == {
     "node_id": "oremi-ohunerin-custom",
     "topic": "oremi/ohunerin/custom",
@@ -215,7 +216,7 @@ def test_disabled_audio_discovery(mock_mqtt_class) -> None:
   assert len(audio_config_payloads) == 5
   assert all(payload == "" for payload in audio_config_payloads.values())
   mock_client.publish.assert_any_call(
-    "oremi/device/device/test-node/player/discovery",
+    "oremi/device/nodes/test-node/player/discovery",
     "",
     retain=True,
   )
@@ -236,13 +237,13 @@ def test_discovery_preserves_active_player_state(mock_mqtt_class) -> None:
   client.publish_discovery_configs(input_devices=[], current_device="")
 
   mock_mqtt_class.return_value.publish.assert_any_call(
-    "oremi/device/device/test-node/player/state",
+    "oremi/device/nodes/test-node/player/state",
     "playing",
     retain=True,
   )
 
 
-@patch('paho.mqtt.client.Client')
+@patch("paho.mqtt.client.Client")
 def test_publish_discovery_configs_with_entities(mock_mqtt_class) -> None:
   """Component-provided entities are published before the device-level select."""
   client = MQTTClient(
@@ -262,8 +263,8 @@ def test_publish_discovery_configs_with_entities(mock_mqtt_class) -> None:
   wakeword_payload = {
     "name": "Wakeword",
     "unique_id": f"{node_id}_wakeword",
-    "state_topic": "oremi/ohunerin/custom/wakeword",
-    "availability_topic": "oremi/ohunerin/custom/available",
+    "state_topic": "oremi/ohunerin/custom/nodes/oremi-ohunerin-custom/event",
+    "availability_topic": "oremi/ohunerin/custom/nodes/oremi-ohunerin-custom/available",
     "device_class": "enum",
     "options": ["detected", "💤"],
     "icon": "mdi:waveform",
@@ -272,8 +273,8 @@ def test_publish_discovery_configs_with_entities(mock_mqtt_class) -> None:
   sound_payload = {
     "name": "Sound Detector",
     "unique_id": f"{node_id}_sound",
-    "state_topic": "oremi/ohunerin/custom/sound",
-    "availability_topic": "oremi/ohunerin/custom/available",
+    "state_topic": "oremi/ohunerin/custom/nodes/oremi-ohunerin-custom/event",
+    "availability_topic": "oremi/ohunerin/custom/nodes/oremi-ohunerin-custom/available",
     "icon": "mdi:waveform",
     "device": device,
   }
@@ -288,7 +289,7 @@ def test_publish_discovery_configs_with_entities(mock_mqtt_class) -> None:
   client.publish_discovery_configs(input_devices=devices, current_device=current, entities=entities)
 
   # 2 component entities + device-level configs, states, and player discovery.
-  assert mock_client_instance.publish.call_count == 18
+  assert mock_client_instance.publish.call_count == 16
 
   calls = mock_client_instance.publish.call_args_list
 
@@ -298,8 +299,8 @@ def test_publish_discovery_configs_with_entities(mock_mqtt_class) -> None:
   data_1 = json.loads(payload_1)
   assert data_1["name"] == "Wakeword"
   assert data_1["unique_id"] == "oremi-device-oremi-ohunerin-custom_wakeword"
-  assert data_1["state_topic"] == "oremi/ohunerin/custom/wakeword"
-  assert data_1["availability_topic"] == "oremi/ohunerin/custom/available"
+  assert data_1["state_topic"] == "oremi/ohunerin/custom/nodes/oremi-ohunerin-custom/event"
+  assert data_1["availability_topic"] == "oremi/ohunerin/custom/nodes/oremi-ohunerin-custom/available"
   assert data_1["device"]["identifiers"] == ["oremi-device-oremi-ohunerin-custom"]
   assert data_1["device"]["sw_version"] == APP_VERSION
 
@@ -309,7 +310,7 @@ def test_publish_discovery_configs_with_entities(mock_mqtt_class) -> None:
   data_2 = json.loads(payload_2)
   assert data_2["name"] == "Sound Detector"
   assert data_2["unique_id"] == "oremi-device-oremi-ohunerin-custom_sound"
-  assert data_2["state_topic"] == "oremi/ohunerin/custom/sound"
+  assert data_2["state_topic"] == "oremi/ohunerin/custom/nodes/oremi-ohunerin-custom/event"
   assert data_2["device"]["identifiers"] == ["oremi-device-oremi-ohunerin-custom"]
   assert data_2["device"]["sw_version"] == APP_VERSION
 
@@ -322,41 +323,29 @@ def test_publish_discovery_configs_with_entities(mock_mqtt_class) -> None:
 
   # Fourth call: language state
   topic_4, payload_4 = calls[3][0]
-  assert topic_4 == "oremi/ohunerin/custom/device/oremi-ohunerin-custom/language/state"
+  assert topic_4 == "oremi/ohunerin/custom/nodes/oremi-ohunerin-custom/language/state"
   assert payload_4 == "fr"  # default
 
-  # Fifth call: switch config
+  # Fifth and sixth calls: microphone mute config and state
   topic_5, payload_5 = calls[4][0]
-  assert topic_5 == "homeassistant/switch/oremi-device-oremi-ohunerin-custom/enabled/config"
-  data_5 = json.loads(payload_5)
-  assert data_5["name"] == "Enabled"
-  assert data_5["unique_id"] == "oremi-device-oremi-ohunerin-custom_enabled"
+  assert topic_5 == "homeassistant/switch/oremi-device-oremi-ohunerin-custom/microphone_muted/config"
+  assert json.loads(payload_5)["unique_id"] == "oremi-device-oremi-ohunerin-custom_microphone_muted"
 
-  # Sixth call: switch state
   topic_6, payload_6 = calls[5][0]
-  assert topic_6 == "oremi/ohunerin/custom/device/oremi-ohunerin-custom/switch/state"
-  assert payload_6 == "ON"
+  assert topic_6 == "oremi/ohunerin/custom/nodes/oremi-ohunerin-custom/microphone/mute/state"
+  assert payload_6 == "OFF"
 
-  # Seventh and eighth calls: microphone mute config and state
-  topic_7, payload_7 = calls[6][0]
-  assert topic_7 == "homeassistant/switch/oremi-device-oremi-ohunerin-custom/microphone_muted/config"
-  assert json.loads(payload_7)["unique_id"] == "oremi-device-oremi-ohunerin-custom_microphone_muted"
+  # Seventh call: mic select config
+  topic_7, _ = calls[6][0]
+  assert topic_7 == "homeassistant/select/oremi-device-oremi-ohunerin-custom/microphone_device/config"
 
+  # Eighth call: microphone state
   topic_8, payload_8 = calls[7][0]
-  assert topic_8 == "oremi/ohunerin/custom/device/oremi-ohunerin-custom/microphone/mute/state"
-  assert payload_8 == "OFF"
-
-  # Ninth call: mic select config
-  topic_9, _ = calls[8][0]
-  assert topic_9 == "homeassistant/select/oremi-device-oremi-ohunerin-custom/microphone_device/config"
-
-  # Tenth call: microphone state
-  topic_10, payload_10 = calls[9][0]
-  assert topic_10 == "oremi/ohunerin/custom/microphone/state"
-  assert payload_10 == current
+  assert topic_8 == "oremi/ohunerin/custom/nodes/oremi-ohunerin-custom/microphone/state"
+  assert payload_8 == current
 
 
-@patch('paho.mqtt.client.Client')
+@patch("paho.mqtt.client.Client")
 def test_muted_discovery_state(mock_mqtt_class) -> None:
   client = MQTTClient(
     broker="localhost",
@@ -373,12 +362,12 @@ def test_muted_discovery_state(mock_mqtt_class) -> None:
     microphone_muted=True,
   )
 
-  mute_state_call = mock_client_instance.publish.call_args_list[5]
-  assert mute_state_call[0] == ("test/topic/device/listener-1/microphone/mute/state", "ON")
+  mute_state_call = mock_client_instance.publish.call_args_list[3]
+  assert mute_state_call[0] == ("test/topic/nodes/listener-1/microphone/mute/state", "ON")
   assert mute_state_call[1]["retain"] is True
 
 
-@patch('paho.mqtt.client.Client')
+@patch("paho.mqtt.client.Client")
 def test_publish_discovery_disabled(mock_mqtt_class) -> None:
   client = MQTTClient(
     broker="localhost",
@@ -395,7 +384,7 @@ def test_publish_discovery_disabled(mock_mqtt_class) -> None:
   mock_client_instance.publish.assert_not_called()
 
 
-@patch('paho.mqtt.client.Client')
+@patch("paho.mqtt.client.Client")
 def test_connect_disconnect(mock_mqtt_class) -> None:
   client = MQTTClient(
     broker="localhost",
