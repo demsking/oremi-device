@@ -35,6 +35,27 @@ class MockWebSocket:
     return self.messages.pop(0)
 
 
+class BlockingWebSocket:
+  def __aiter__(self) -> "BlockingWebSocket":
+    return self
+
+  async def __anext__(self) -> str:
+    await asyncio.Event().wait()
+    raise StopAsyncIteration
+
+
+@pytest.mark.asyncio
+async def test_detector_propagates_cancellation() -> None:
+  detector = SoundDetector(MagicMock(), BlockingWebSocket(), None, delay=1, threshold=0.65)  # type: ignore
+  task = asyncio.create_task(detector.detecting())
+  await asyncio.sleep(0)
+
+  task.cancel()
+
+  with pytest.raises(asyncio.CancelledError):
+    await task
+
+
 @pytest.mark.asyncio
 async def test_detector_threshold_filtering() -> None:
   mock_mqtt = MagicMock()

@@ -178,12 +178,6 @@ class OhunerinComponent(AudioStreamComponent):
     self._task = loop.create_task(self._run(config, mqtt_client, shared_resources))
 
   async def stop(self) -> None:
-    if self._websocket:
-      try:
-        await self._websocket.close()
-      except Exception:
-        pass
-
     if self._task and not self._task.done():
       self._task.cancel()
 

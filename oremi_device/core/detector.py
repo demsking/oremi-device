@@ -81,6 +81,7 @@ class SoundDetector:
           await self.process_detected_sound(data)
     except asyncio.CancelledError:
       logger.info("Recording cancelled")
+      raise
     finally:
       self.terminate()
 

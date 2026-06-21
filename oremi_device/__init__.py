@@ -311,10 +311,10 @@ async def start() -> None:
 
   def handle_task_done(task: asyncio.Task) -> None:
     try:
-      if task.exception() is not None:
-        logger.error(task)
-      elif task.cancelled():
+      if task.cancelled():
         logger.info(f"{task.get_name()} cancelled")
+      elif task.exception() is not None:
+        logger.error(task)
       else:
         logger.info(f"{task.get_name()} done")
     except (asyncio.CancelledError, asyncio.InvalidStateError) as error:
@@ -435,13 +435,15 @@ async def start() -> None:
     await component.start(comp_config, mqtt_client, shared_resources)
     started_components.append((component, comp_config))
 
-  async def shutdown() -> None:
-    logger.info("Shutdown signal received. Stopping all components...")
-    for component, _ in started_components:
-      await component.stop()
+  shutdown_event = asyncio.Event()
 
-  loop.add_signal_handler(signal.SIGINT, lambda: loop.create_task(shutdown()))
-  loop.add_signal_handler(signal.SIGTERM, lambda: loop.create_task(shutdown()))
+  def request_shutdown() -> None:
+    if not shutdown_event.is_set():
+      logger.info("Shutdown signal received. Stopping application...")
+      shutdown_event.set()
+
+  loop.add_signal_handler(signal.SIGINT, request_shutdown)
+  loop.add_signal_handler(signal.SIGTERM, request_shutdown)
 
   # ── Main event loop ──────────────────────────────────────────────────────────
   preferred_device = settings.microphone_device if settings.microphone_device is not None else settings.microphone_device_index
@@ -547,6 +549,8 @@ async def start() -> None:
     monitor_task = loop.create_task(monitor_devices(), name="Monitor Devices Task")
     monitor_task.add_done_callback(handle_task_done)
 
+  shutdown_task = loop.create_task(shutdown_event.wait(), name="Shutdown Task")
+
   try:
     while True:
       tasks = []
@@ -592,6 +596,7 @@ async def start() -> None:
 
       language_change_task = loop.create_task(language_change_queue.get())
       tasks.append(language_change_task)
+      tasks.append(shutdown_task)
 
       done, _ = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
 
@@ -609,9 +614,18 @@ async def start() -> None:
         language_change_task,
       ]
 
+      cancelled_command_tasks = []
+
       for command_task in command_tasks:
         if command_task is not None and command_task not in done:
           command_task.cancel()
+          cancelled_command_tasks.append(command_task)
+
+      if cancelled_command_tasks:
+        await asyncio.gather(*cancelled_command_tasks, return_exceptions=True)
+
+      if shutdown_task in done:
+        break
 
       if device_change_task is not None and device_change_task in done:
         new_device = device_change_task.result()
@@ -801,6 +815,12 @@ async def start() -> None:
           # A main component task finished — time to exit
           break
   finally:
+    for signal_number in (signal.SIGINT, signal.SIGTERM):
+      loop.remove_signal_handler(signal_number)
+
+    if not shutdown_task.done():
+      shutdown_task.cancel()
+
     if speaker is not None:
       speaker.stop()
 

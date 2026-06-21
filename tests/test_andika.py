@@ -220,6 +220,18 @@ async def test_andika_stops_listening_when_conversation_times_out() -> None:
 
 
 @pytest.mark.asyncio
+async def test_andika_stop_cancels_main_task_without_waiting_for_websocket_close() -> None:
+  component = AndikaComponent(_make_settings())
+  component._websocket = MagicMock()  # noqa: SLF001
+  component._task = asyncio.create_task(asyncio.Event().wait())  # noqa: SLF001
+
+  await component.stop()
+
+  assert component._task.cancelled()  # noqa: SLF001
+  component._websocket.close.assert_not_called()  # noqa: SLF001
+
+
+@pytest.mark.asyncio
 async def test_andika_transcriber_ignores_result_payloads() -> None:
   mqtt_client = MagicMock()
   websocket = AsyncMessages([json.dumps({"result": "bonjour oremi", "confidence": 0.9})])

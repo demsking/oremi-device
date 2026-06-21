@@ -198,10 +198,12 @@ class AndikaComponent(AudioStreamComponent):
     self._task = loop.create_task(self._run(config, mqtt_client, shared_resources), name="Andika Task")
 
   async def stop(self) -> None:
-    if self._websocket:
+    if self._task and not self._task.done():
+      self._task.cancel()
+
       try:
-        await self._websocket.close()
-      except Exception:
+        await self._task
+      except asyncio.CancelledError:
         pass
 
     if self._listening_task and not self._listening_task.done():
@@ -209,14 +211,6 @@ class AndikaComponent(AudioStreamComponent):
 
       try:
         await self._listening_task
-      except asyncio.CancelledError:
-        pass
-
-    if self._task and not self._task.done():
-      self._task.cancel()
-
-      try:
-        await self._task
       except asyncio.CancelledError:
         pass
 

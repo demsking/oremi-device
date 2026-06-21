@@ -12,7 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
+import asyncio
 import urllib.parse
+from unittest.mock import MagicMock
+from unittest.mock import patch
+
+import pytest
 
 from oremi_device.components.andika import AndikaComponent
 from oremi_device.components.ohunerin import OhunerinComponent
@@ -147,3 +152,56 @@ def test_andika_ha_entities() -> None:
   assert payload["state_topic"] == "oremi/device/test-node/transcription/text"
   assert payload["value_template"] == "{{ value_json.text }}"
   assert "json_attributes_topic" not in payload
+
+
+@pytest.mark.asyncio
+async def test_ohunerin_stop_cancels_main_task_without_waiting_for_websocket_close() -> None:
+  component = OhunerinComponent(_make_settings())
+  component._websocket = MagicMock()  # noqa: SLF001
+  component._task = asyncio.create_task(asyncio.Event().wait())  # noqa: SLF001
+
+  await component.stop()
+
+  assert component._task.cancelled()  # noqa: SLF001
+  component._websocket.close.assert_not_called()  # noqa: SLF001
+
+
+@pytest.mark.asyncio
+async def test_ohunerin_stop_does_not_reconnect_after_detection_cancellation() -> None:
+  entered = asyncio.Event()
+
+  class BlockingWebSocket:
+    def __aiter__(self):
+      return self
+
+    async def __anext__(self):
+      await asyncio.Event().wait()
+      raise StopAsyncIteration
+
+  class Connection:
+    enter_count = 0
+
+    async def __aenter__(self):
+      self.enter_count += 1
+      entered.set()
+      return BlockingWebSocket()
+
+    async def __aexit__(self, exc_type, exc, traceback):
+      return False
+
+  connection = Connection()
+  component = OhunerinComponent(_make_settings())
+  shared_resources = {
+    "handle_task_done": None,
+    "active_stream_container": {"stream": None},
+    "wakeword_event": asyncio.Event(),
+    "device_state": {"enabled": False, "microphone_muted": False},
+  }
+
+  with patch("oremi_device.components.ohunerin.connect", return_value=connection):
+    await component.start(OhunerinConfig(), MagicMock(), shared_resources)
+    await asyncio.wait_for(entered.wait(), timeout=1)
+    await asyncio.wait_for(component.stop(), timeout=1)
+
+  assert component.task.done()
+  assert connection.enter_count == 1
