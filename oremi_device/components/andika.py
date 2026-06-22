@@ -18,6 +18,8 @@ import asyncio
 import json
 import ssl
 import urllib.parse
+from collections.abc import Awaitable
+from collections.abc import Callable
 from typing import Any
 from typing import Literal
 
@@ -28,6 +30,7 @@ from pydantic import BaseModel
 from websockets.asyncio.client import connect
 
 from ..core.audio import Audio
+from ..core.cues import ConversationEvent
 from ..core.listener import AudioListener
 from ..core.models import AndikaConfig
 from ..core.mqtt import MQTTClient
@@ -56,11 +59,13 @@ class AndikaTranscriber:
     mqtt_client: MQTTClient,
     websocket,
     transcription_complete_event: asyncio.Event | None = None,
+    conversation_event_handler: Callable[[ConversationEvent], Awaitable[None]] | None = None,
   ) -> None:
     self.settings = settings
     self.mqtt_client = mqtt_client
     self.websocket = websocket
     self.transcription_complete_event = transcription_complete_event
+    self.conversation_event_handler = conversation_event_handler
 
   def parse_transcription(self, payload: dict) -> tuple[Literal["partial", "text"] | None, str]:
     if "partial" in payload:
@@ -93,6 +98,9 @@ class AndikaTranscriber:
               FINAL_TRANSCRIPTION_TOPIC, mqtt_message, qos=1, retain=False, props=props
             )
 
+          if self.conversation_event_handler:
+            await self.conversation_event_handler("processing" if transcription else "cancelled")
+
           if self.transcription_complete_event:
             self.transcription_complete_event.set()
       else:
@@ -113,6 +121,7 @@ class AndikaComponent(AudioStreamComponent):
     self._wakeword_event: asyncio.Event | None = None
     self._transcription_complete_event = asyncio.Event()
     self._transcription_active = False
+    self._conversation_event_handler: Callable[[ConversationEvent], Awaitable[None]] | None = None
 
   @property
   def name(self) -> str:
@@ -261,6 +270,12 @@ class AndikaComponent(AudioStreamComponent):
       except Exception:
         pass
 
+  async def _handle_transcription_event(self, event: ConversationEvent) -> None:
+    await self._stop_listening()
+
+    if self._conversation_event_handler:
+      await self._conversation_event_handler(event)
+
   async def _activate_on_wakeword(self, active_stream_container: dict, device_state: dict | None = None) -> None:
     if self._wakeword_event is None:
       return
@@ -273,6 +288,9 @@ class AndikaComponent(AudioStreamComponent):
       self._wakeword_event.clear()
       self._transcription_complete_event.clear()
       self._transcription_active = True
+
+      if self._conversation_event_handler:
+        await self._conversation_event_handler("listening")
 
       try:
         if (
@@ -288,6 +306,11 @@ class AndikaComponent(AudioStreamComponent):
           )
         except TimeoutError:
           logger.info(f"Andika conversation timed out after {self.settings.conversation_timeout:g}s")
+
+          await self._stop_listening()
+
+          if self._conversation_event_handler:
+            await self._conversation_event_handler("cancelled")
       finally:
         try:
           await self._stop_listening()
@@ -304,6 +327,7 @@ class AndikaComponent(AudioStreamComponent):
     loop = asyncio.get_running_loop()
     active_stream_container = shared_resources["active_stream_container"]
     self._wakeword_event = shared_resources["wakeword_event"]
+    self._conversation_event_handler = shared_resources.get("conversation_event_handler")
     andika_uri = self.build_connection_uri(config)
 
     logger.info(f"Andika Connection URI: {andika_uri}")
@@ -334,6 +358,7 @@ class AndikaComponent(AudioStreamComponent):
             mqtt_client,
             websocket,
             self._transcription_complete_event,
+            self._handle_transcription_event,
           )
           self.audio_listener = AudioListener(active_stream_container["stream"], websocket, mqtt_client)
           device_state = shared_resources["device_state"]

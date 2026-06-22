@@ -93,7 +93,18 @@ async def test_andika_transcriber_publishes_final_results() -> None:
   mqtt_client = MagicMock()
   websocket = AsyncMessages([json.dumps({"text": "bonjour oremi", "confidence": 0.9})])
   transcription_complete_event = asyncio.Event()
-  transcriber = AndikaTranscriber(_make_settings(), mqtt_client, websocket, transcription_complete_event)
+  conversation_events = []
+
+  async def handle_conversation_event(event: str) -> None:
+    conversation_events.append(event)
+
+  transcriber = AndikaTranscriber(
+    _make_settings(),
+    mqtt_client,
+    websocket,
+    transcription_complete_event,
+    handle_conversation_event,
+  )
 
   await transcriber.transcribing()
 
@@ -105,6 +116,7 @@ async def test_andika_transcriber_publishes_final_results() -> None:
     props=ANY,
   )
   assert transcription_complete_event.is_set()
+  assert conversation_events == ["processing"]
 
 
 @pytest.mark.asyncio
@@ -143,17 +155,24 @@ def test_andika_discovery_uses_final_result_topic() -> None:
 async def test_andika_empty_final_result_completes_conversation() -> None:
   mqtt_client = MagicMock()
   transcription_complete_event = asyncio.Event()
+  conversation_events = []
+
+  async def handle_conversation_event(event: str) -> None:
+    conversation_events.append(event)
+
   transcriber = AndikaTranscriber(
     _make_settings(),
     mqtt_client,
     AsyncMessages([json.dumps({"text": ""})]),
     transcription_complete_event,
+    handle_conversation_event,
   )
 
   await transcriber.transcribing()
 
   mqtt_client.publish_event.assert_not_called()
   assert transcription_complete_event.is_set()
+  assert conversation_events == ["cancelled"]
 
 
 @pytest.mark.asyncio
@@ -161,6 +180,15 @@ async def test_andika_listens_only_between_wakeword_and_final_transcription() ->
   component = AndikaComponent(_make_settings())
   component._wakeword_event = asyncio.Event()  # noqa: SLF001
   listening = asyncio.Event()
+  cue_started = asyncio.Event()
+  cue_finished = asyncio.Event()
+
+  async def handle_conversation_event(event: str) -> None:
+    if event == "listening":
+      cue_started.set()
+      await cue_finished.wait()
+
+  component._conversation_event_handler = handle_conversation_event  # noqa: SLF001
 
   class AudioListenerStub:
     def __init__(self) -> None:
@@ -179,6 +207,10 @@ async def test_andika_listens_only_between_wakeword_and_final_transcription() ->
   assert audio_listener.call_count == 0
 
   component._wakeword_event.set()  # noqa: SLF001
+  await asyncio.wait_for(cue_started.wait(), timeout=1)
+  assert audio_listener.call_count == 0
+
+  cue_finished.set()
   await asyncio.wait_for(listening.wait(), timeout=1)
   assert audio_listener.call_count == 1
   assert component._listening_task is not None  # noqa: SLF001
@@ -203,6 +235,12 @@ async def test_andika_listens_only_between_wakeword_and_final_transcription() ->
 async def test_andika_stops_listening_when_conversation_times_out() -> None:
   component = AndikaComponent(_make_settings(conversation_timeout=0.01))
   component._wakeword_event = asyncio.Event()  # noqa: SLF001
+  conversation_events = []
+
+  async def handle_conversation_event(event: str) -> None:
+    conversation_events.append(event)
+
+  component._conversation_event_handler = handle_conversation_event  # noqa: SLF001
 
   class AudioListenerStub:
     async def listening(self) -> None:
@@ -218,10 +256,28 @@ async def test_andika_stops_listening_when_conversation_times_out() -> None:
 
   await asyncio.wait_for(wait_until_stopped(), timeout=1)
   assert component._listening_task.done()  # noqa: SLF001
+  assert conversation_events == ["listening", "cancelled"]
 
   activation_task.cancel()
   with pytest.raises(asyncio.CancelledError):
     await activation_task
+
+
+@pytest.mark.asyncio
+async def test_andika_stops_listening_before_processing_cue() -> None:
+  component = AndikaComponent(_make_settings())
+  component._listening_task = asyncio.create_task(asyncio.Event().wait())  # noqa: SLF001
+  listener_stopped_during_handler = False
+
+  async def handle_conversation_event(event: str) -> None:
+    nonlocal listener_stopped_during_handler
+    listener_stopped_during_handler = component._listening_task.done()  # noqa: SLF001
+
+  component._conversation_event_handler = handle_conversation_event  # noqa: SLF001
+
+  await component._handle_transcription_event("processing")  # noqa: SLF001
+
+  assert listener_stopped_during_handler is True
 
 
 @pytest.mark.asyncio

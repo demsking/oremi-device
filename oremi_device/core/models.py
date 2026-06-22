@@ -12,10 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
+from typing import Annotated
 from typing import Literal
 from typing import TypedDict
 
+from pydantic import AwareDatetime
 from pydantic import BaseModel
+from pydantic import ConfigDict
 from pydantic import Field
 
 
@@ -91,3 +94,94 @@ class AndikaConfig(BaseModel):
 
   model: AndikaModel = Field(default="vosk-model-small-fr-0.22", description="The Andika speech-to-text model identifier.")
   samplerate: int = Field(default=16000, description="The audio sample rate in Hz.")
+
+
+class Command(BaseModel):
+  model_config = ConfigDict(extra="forbid")
+
+
+class SpeakCommand(Command):
+  type: Literal["speak"]
+  text: str = Field(min_length=1)
+  voice: str | None = None
+
+
+class AnnounceCommand(Command):
+  type: Literal["announce"]
+  text: str = Field(min_length=1)
+  voice: str | None = None
+
+
+class PlayCommand(Command):
+  type: Literal["play"]
+  url: str = Field(pattern=r"^https?://")
+
+
+class PlayerCommand(Command):
+  type: Literal["stop", "pause", "resume"]
+
+
+class AlarmCommand(Command):
+  type: Literal["alarm"]
+  id: str = Field(min_length=1, max_length=64, pattern=r"^[A-Za-z0-9][A-Za-z0-9_-]*$")  # pylint: disable=invalid-name
+  at: AwareDatetime  # pylint: disable=invalid-name
+  message: str = Field(default="Alarm", min_length=1)
+  url: str | None = Field(default=None, pattern=r"^https?://")
+  voice: str | None = None
+
+
+class ReminderCommand(Command):
+  type: Literal["reminder"]
+  id: str = Field(min_length=1, max_length=64, pattern=r"^[A-Za-z0-9][A-Za-z0-9_-]*$")  # pylint: disable=invalid-name
+  at: AwareDatetime  # pylint: disable=invalid-name
+  message: str = Field(min_length=1)
+  voice: str | None = None
+
+
+class CancelScheduledCommand(Command):
+  type: Literal["cancel_scheduled"]
+  id: str = Field(min_length=1, max_length=64, pattern=r"^[A-Za-z0-9][A-Za-z0-9_-]*$")  # pylint: disable=invalid-name
+
+
+class SetVolumeCommand(Command):
+  type: Literal["set_volume"]
+  volume: int = Field(ge=0, le=100)
+
+
+class MuteCommand(Command):
+  type: Literal["mute"]
+  muted: bool
+
+
+class SetVoiceCommand(Command):
+  type: Literal["set_voice"]
+  voice: str = Field(min_length=1)
+
+
+ProcessingCommand = Annotated[
+  SpeakCommand
+  | AnnounceCommand
+  | PlayCommand
+  | PlayerCommand
+  | AlarmCommand
+  | ReminderCommand
+  | CancelScheduledCommand
+  | SetVolumeCommand
+  | MuteCommand
+  | SetVoiceCommand,
+  Field(discriminator="type"),
+]
+
+
+class ProcessingResponse(BaseModel):
+  """Validated command envelope published by an Oremi NLP service."""
+
+  message: str | None = None
+  commands: list[ProcessingCommand] = Field(default_factory=list)
+
+  def resolved_commands(self) -> list[ProcessingCommand]:
+    """Use a response message as the conversational speech fallback."""
+    if self.commands or not self.message or not self.message.strip():
+      return self.commands
+
+    return [SpeakCommand(type="speak", text=self.message)]

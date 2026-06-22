@@ -4,8 +4,9 @@
 
 Oremi Device captures microphone audio and connects it to Oremi services:
 
-- **Ohunerin** detects wake words and environmental sounds.
-- **Andika** transcribes speech after Ohunerin detects a wake word.
+- **Oremi Ohunerin** detects wake words and environmental sounds.
+- **Oremi Andika** transcribes speech after Ohunerin detects a wake word.
+- **Oremi Izwi** synthesizes spoken NLP responses when configured.
 - **MQTT** exposes events, device controls, availability, and Home Assistant
   discovery entities.
 
@@ -15,31 +16,36 @@ preferred device becomes available again.
 
 ## Documentation
 
-All project documentation—including architecture details, configuration reference, and the Home Assistant integration guide—can be found at:
+All project documentation—including architecture details, configuration
+reference, and the Home Assistant integration guide—can be found at:
 https://demsking.gitlab.io/oremi-device/
 
 ## Development
 
-Oremi Device is built with Python and uses `uv` for dependency management. The project follows standard Python development practices with type hints, linting, and automated testing.
+Oremi Device is built with Python and uses `uv` for dependency management. The
+project follows standard Python development practices with type hints, linting,
+and automated testing.
 
-For detailed information on setting up your development environment, running tests, code style guidelines, and the pull request process, please refer to [CONTRIBUTING.md](CONTRIBUTING.md).
+For detailed information on setting up your development environment, running
+tests, code style guidelines, and the pull request process, please refer to
+[CONTRIBUTING.md](https://gitlab.com/demsking/oremi-device/-/blob/main/CONTRIBUTING.md).
 
 ## Versioning
 
-This project adheres to [Semantic Versioning](https://semver.org/) (SemVer). Version numbers follow the `MAJOR.MINOR.PATCH` format:
+Oremi Device project adheres to [Semantic Versioning](https://semver.org/)
+(SemVer). Version numbers follow the `MAJOR.MINOR.PATCH` format:
 
 - **MAJOR** version increments for incompatible API changes
 - **MINOR** version increments for backward-compatible new functionality
 - **PATCH** version increments for backward-compatible bug fixes
 
-The current version can be found in `pyproject.toml` or by running:
+The current version can be found by running:
 
 ```bash
+docker run --rm demsking/oremi-device --version
 oremi-device --version
 ```
 
-Pre-release versions (alpha, beta, release candidates) may be published to PyPI for testing purposes and are clearly marked with version suffixes.
-
 ## License
 
-Licensed under the Apache License, Version 2.0. See [LICENSE](LICENSE).
+Licensed under the Apache License, Version 2.0. See [LICENSE](https://gitlab.com/demsking/oremi-device/-/blob/main/LICENSE).

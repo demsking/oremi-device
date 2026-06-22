@@ -13,7 +13,8 @@
 # limitations under the License.
 # ==============================================================================
 import json
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
+from unittest.mock import patch
 
 from oremi_device.core.mqtt import MQTTClient
 from oremi_device.core.package import APP_VERSION
@@ -244,6 +245,36 @@ def test_discovery_preserves_active_player_state(mock_mqtt_class) -> None:
 
 
 @patch("paho.mqtt.client.Client")
+def test_voice_discovery_uses_filtered_options(mock_mqtt_class) -> None:
+  client = MQTTClient(
+    broker="localhost",
+    port=1883,
+    topic="oremi/device",
+    node_id="test-node",
+    discovery_prefix="homeassistant",
+  )
+
+  client.publish_discovery_configs(
+    input_devices=[],
+    current_device="",
+    voices=["ff_siwis", "ff_gilles"],
+    current_voice="ff_siwis",
+  )
+
+  calls = mock_mqtt_class.return_value.publish.call_args_list
+  voice_call = next(call for call in calls if call.args[0].endswith("/voice/config"))
+  payload = json.loads(voice_call.args[1])
+  assert payload["options"] == ["ff_siwis", "ff_gilles"]
+  assert payload["command_topic"].endswith("/voice/set")
+  assert payload["state_topic"].endswith("/voice/state")
+  mock_mqtt_class.return_value.publish.assert_any_call(
+    "oremi/device/nodes/test-node/voice/state",
+    "ff_siwis",
+    retain=True,
+  )
+
+
+@patch("paho.mqtt.client.Client")
 def test_publish_discovery_configs_with_entities(mock_mqtt_class) -> None:
   """Component-provided entities are published before the device-level select."""
   client = MQTTClient(
@@ -410,3 +441,21 @@ def test_connect_disconnect(mock_mqtt_class) -> None:
   client.disconnect()
   mock_client_instance.disconnect.assert_called_once()
   mock_client_instance.loop_stop.assert_called_once()
+
+
+@patch("paho.mqtt.client.Client")
+def test_conversation_state_topic_is_retained(mock_mqtt_class) -> None:
+  client = MQTTClient(
+    broker="localhost",
+    port=1883,
+    topic="oremi/device",
+    node_id="kitchen",
+  )
+
+  client.set_conversation_state("processing")
+
+  mock_mqtt_class.return_value.publish.assert_called_once_with(
+    "oremi/device/nodes/kitchen/conversation/state",
+    "processing",
+    retain=True,
+  )

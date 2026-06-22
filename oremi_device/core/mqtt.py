@@ -20,6 +20,7 @@ import paho.mqtt.properties as mqtt_properties
 
 from ..utils.logger import logger
 from ..utils.string import sluggify
+from .cues import ConversationState
 from .models import DetectedSoundType
 from .package import APP_VERSION
 
@@ -50,7 +51,7 @@ class MQTTClient:  # pylint: disable=too-many-public-methods
     self.username = username
     self.password = password
     self.discovery_prefix = discovery_prefix
-    self.player_state: Literal["idle", "playing"] = "idle"
+    self.player_state: Literal["idle", "playing", "paused"] = "idle"
 
   # ── Helpers for building HA entity payloads outside this class ──────────────
 
@@ -169,6 +170,18 @@ class MQTTClient:  # pylint: disable=too-many-public-methods
     """Return the instance-scoped MQTT topic for the current language state."""
     return self.parse_node_topic("language/state")
 
+  def get_processing_result_topic(self) -> str:
+    return self.parse_node_topic("processing/result")
+
+  def get_conversation_state_topic(self) -> str:
+    return self.parse_node_topic("conversation/state")
+
+  def get_voice_command_topic(self) -> str:
+    return self.parse_node_topic("voice/set")
+
+  def get_voice_state_topic(self) -> str:
+    return self.parse_node_topic("voice/state")
+
   def connect(self) -> None:
     if self.username:
       self.client.username_pw_set(username=self.username, password=self.password)
@@ -190,6 +203,8 @@ class MQTTClient:  # pylint: disable=too-many-public-methods
     supported_languages: list[str] | None = None,
     microphone_enabled: bool = True,
     speaker_enabled: bool = True,
+    voices: list[str] | None = None,
+    current_voice: str = "",
   ) -> None:
     """Publish Home Assistant MQTT discovery configs.
 
@@ -212,6 +227,8 @@ class MQTTClient:  # pylint: disable=too-many-public-methods
         Defaults to ``['fr', 'en']`` when not provided.
       microphone_enabled: Whether microphone controls should be advertised.
       speaker_enabled: Whether speaker controls should be advertised.
+      voices: Izwi voices matching the active device language.
+      current_voice: Currently selected Izwi voice.
     """
     if not self.discovery_prefix:
       return
@@ -247,6 +264,25 @@ class MQTTClient:  # pylint: disable=too-many-public-methods
 
     # Publish the current language state
     self.client.publish(self.get_language_state_topic(), current_language, retain=True)
+
+    if voices is not None:
+      voice_payload = {
+        "name": "Voice",
+        "unique_id": f"{node_id}_voice",
+        "state_topic": self.get_voice_state_topic(),
+        "command_topic": self.get_voice_command_topic(),
+        "availability_topic": self.parse_node_topic("available"),
+        "payload_available": "online",
+        "payload_not_available": "offline",
+        "options": voices,
+        "icon": "mdi:account-voice",
+        "device": device,
+      }
+      voice_topic = f"{self.discovery_prefix}/select/{node_id}/voice/config"
+      self.client.publish(voice_topic, json.dumps(voice_payload) if voices else "", retain=True)
+
+      if voices:
+        self.publish_voice_state(current_voice)
 
     # ── Device-level: microphone mute switch ─────────────────────────────────
     mute_payload = {
@@ -373,6 +409,12 @@ class MQTTClient:  # pylint: disable=too-many-public-methods
     logger.debug(f"Publishing language state: {language}")
     self.client.publish(self.get_language_state_topic(), language, retain=True)
 
+  def publish_voice_state(self, voice: str) -> None:
+    self.client.publish(self.get_voice_state_topic(), voice, retain=True)
+
+  def set_conversation_state(self, state: ConversationState) -> None:
+    self.client.publish(self.get_conversation_state_topic(), state, retain=True)
+
   def set_availability(self, available: bool) -> None:
     message: Literal["online", "offline"] = "online" if available else "offline"
     self.publish_node("available", message, retain=True)
@@ -396,7 +438,7 @@ class MQTTClient:  # pylint: disable=too-many-public-methods
     """Publish speaker volume as a Home Assistant percentage."""
     self.client.publish(self.get_speaker_volume_state_topic(), str(round(volume * 100)), retain=True)
 
-  def set_player_state(self, state: Literal["idle", "playing"]) -> None:
+  def set_player_state(self, state: Literal["idle", "playing", "paused"]) -> None:
     """Publish the Home Assistant player state."""
     self.player_state = state
     self.client.publish(self.get_player_state_topic(), state, retain=True)

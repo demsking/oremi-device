@@ -39,7 +39,7 @@ dependencies = [
 "Documentation" = "https://gitlab.com/demsking/oremi-device/-/blob/main/README.md"
 
 [project.scripts]
-oremi-device = "oremi_device:main"
+oremi-device = "oremi_device.__main__:main"
 
 [dependency-groups]
 dev = [

@@ -14,11 +14,14 @@
 # ==============================================================================
 import argparse
 import asyncio
+import sys
+from collections.abc import Sequence
 
-from . import start
+from .core.app import start
 from .core.package import APP_DESCRIPTION
 from .core.package import APP_NAME
 from .core.package import APP_VERSION
+from .core.settings import SettingsError
 
 
 parser = argparse.ArgumentParser(prog=APP_NAME, description=APP_DESCRIPTION)
@@ -31,7 +34,23 @@ parser.add_argument(
 )
 
 
-try:
-  asyncio.run(start())
-except KeyboardInterrupt:
-  pass
+def main(argv: Sequence[str] | None = None) -> int:
+  parser.parse_args(argv)
+
+  try:
+    asyncio.run(start())
+  except SettingsError as error:
+    print(f"{APP_NAME}: configuration error", file=sys.stderr)
+
+    for issue in error.issues:
+      print(f"  - {issue}", file=sys.stderr)
+
+    return 2
+  except KeyboardInterrupt:
+    return 130
+
+  return 0
+
+
+if __name__ == "__main__":
+  raise SystemExit(main())

@@ -13,8 +13,10 @@
 # limitations under the License.
 # ==============================================================================
 import array
+import signal
 import subprocess  # nosec B404
 import threading
+from pathlib import Path
 
 import sounddevice as sd
 
@@ -38,7 +40,9 @@ class Speaker:
     self._muted = muted
     self._playback_lock = threading.Lock()
     self._playback_process: subprocess.Popen | None = None
-    self._stop_playback = threading.Event()
+    self._playback_processes: dict[subprocess.Popen, threading.Event] = {}
+    self._ducking_count = 0
+    self._ducking_gain = 0.25
     self.set_volume(volume)
 
     if device_name:
@@ -70,6 +74,25 @@ class Speaker:
   def gain(self) -> float:
     """Return the gain future playback streams should apply."""
     return 0.0 if self._muted else self._volume
+
+  def begin_ducking(self) -> None:
+    """Reduce the gain of duckable streams until matching calls complete."""
+    with self._playback_lock:
+      self._ducking_count += 1
+
+  def end_ducking(self) -> None:
+    """Release one active ducking request without changing user volume."""
+    with self._playback_lock:
+      self._ducking_count = max(0, self._ducking_count - 1)
+
+  def playback_gain(self, *, duckable: bool) -> float:
+    """Return current gain for a main-media or foreground speech stream."""
+    gain = self.gain
+
+    with self._playback_lock:
+      ducking = self._ducking_count > 0
+
+    return gain * self._ducking_gain if duckable and ducking else gain
 
   def select_device(self, device_name: str) -> str:
     """Select a compatible output device and return its canonical name."""
@@ -103,33 +126,93 @@ class Speaker:
 
     self._volume = volume
 
-  def play_url(self, media_url: str) -> None:
+  def play_url(
+    self,
+    media_url: str,
+    *,
+    method: str = "GET",
+    body: str | None = None,
+    interrupt: bool = True,
+    duckable: bool = True,
+  ) -> None:
     """Decode and play an HTTP media URL, blocking until playback finishes."""
     if not media_url.startswith(("http://", "https://")):
       raise SpeakerPlaybackError("Speaker media URL must use HTTP or HTTPS")
 
-    self.stop()
-    self._stop_playback.clear()
+    self._play_source(
+      media_url,
+      method=method,
+      body=body,
+      interrupt=interrupt,
+      duckable=duckable,
+    )
+
+  def play_file(self, media_path: Path, *, interrupt: bool = False, duckable: bool = False) -> None:
+    """Decode a trusted packaged audio file."""
+    resolved_path = media_path.resolve()
+
+    if not resolved_path.is_file():
+      raise SpeakerPlaybackError(f"Audio cue not found: {resolved_path.name}")
+
+    self._play_source(str(resolved_path), interrupt=interrupt, duckable=duckable)
+
+  def _play_source(
+    self,
+    media_source: str,
+    *,
+    method: str = "GET",
+    body: str | None = None,
+    interrupt: bool,
+    duckable: bool,
+  ) -> None:
+
+    if method not in ("GET", "POST"):
+      raise SpeakerPlaybackError(f"Unsupported HTTP method: {method}")
+
+    if method == "POST" and body is None:
+      raise SpeakerPlaybackError("POST media playback requires a request body")
+
+    if interrupt:
+      self.stop()
+
+    stop_event = threading.Event()
     command = [
       "ffmpeg",
       "-nostdin",
       "-loglevel",
       "error",
-      "-i",
-      media_url,
-      "-f",
-      "f32le",
-      "-acodec",
-      "pcm_f32le",
-      "-ac",
-      "2",
-      "-ar",
-      "48000",
-      "pipe:1",
     ]
 
+    if method == "POST":
+      command.extend(
+        [
+          "-method",
+          "POST",
+          "-content_type",
+          "application/json",
+          "-post_data",
+          (body or "").encode("utf-8").hex(),
+        ]
+      )
+
+    command.extend(
+      [
+        "-i",
+        media_source,
+        "-f",
+        "f32le",
+        "-acodec",
+        "pcm_f32le",
+        "-ac",
+        "2",
+        "-ar",
+        "48000",
+        "pipe:1",
+      ]
+    )
+
     try:
-      # media_url is restricted to HTTP(S) above and remains one argv value.
+      # The source is validated by play_url() or play_file() and remains one argv value.
       process = subprocess.Popen(  # nosec B603  # pylint: disable=consider-using-with
         command,
         stdout=subprocess.PIPE,
@@ -140,13 +223,16 @@ class Speaker:
       raise SpeakerPlaybackError(f"Failed to start ffmpeg: {error}") from error
 
     with self._playback_lock:
-      self._playback_process = process
+      self._playback_processes[process] = stop_event
+
+      if interrupt:
+        self._playback_process = process
 
     try:
       with sd.RawOutputStream(samplerate=48000, channels=2, dtype="float32", device=self._device_name) as stream:
         remainder = b""
 
-        while not self._stop_playback.is_set():
+        while not stop_event.is_set():
           chunk = remainder + (process.stdout.read(16384) if process.stdout else b"")
 
           if not chunk:
@@ -160,7 +246,7 @@ class Speaker:
 
           samples = array.array("f")
           samples.frombytes(chunk[:complete_length])
-          gain = self.gain
+          gain = self.playback_gain(duckable=duckable)
 
           if gain != 1.0:
             for index, sample in enumerate(samples):
@@ -170,7 +256,7 @@ class Speaker:
 
       return_code = process.wait()
 
-      if return_code and not self._stop_playback.is_set():
+      if return_code and not stop_event.is_set():
         raise SpeakerPlaybackError(f"ffmpeg exited with status {return_code}")
     except SpeakerPlaybackError:
       raise
@@ -182,18 +268,42 @@ class Speaker:
         process.wait()
 
       with self._playback_lock:
+        self._playback_processes.pop(process, None)
+
         if self._playback_process is process:
           self._playback_process = None
 
   def stop(self) -> None:
     """Stop current media playback, if any."""
-    self._stop_playback.set()
+    with self._playback_lock:
+      processes = list(self._playback_processes.items())
+      current_process = self._playback_process
+      known_processes = set(self._playback_processes)
 
+    if current_process is not None and current_process not in known_processes:
+      processes.append((current_process, threading.Event()))
+
+    for process, stop_event in processes:
+      stop_event.set()
+
+      if process.poll() is None:
+        process.terminate()
+
+  def pause(self) -> None:
+    """Pause the active decoder on platforms that support POSIX signals."""
     with self._playback_lock:
       process = self._playback_process
 
     if process is not None and process.poll() is None:
-      process.terminate()
+      process.send_signal(signal.SIGSTOP)
+
+  def resume(self) -> None:
+    """Resume a paused decoder."""
+    with self._playback_lock:
+      process = self._playback_process
+
+    if process is not None and process.poll() is None:
+      process.send_signal(signal.SIGCONT)
 
   @staticmethod
   def get_compatible_output_devices() -> list[str]:

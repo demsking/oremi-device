@@ -1,0 +1,17 @@
+Interface Sounds 1.0
+Created and distributed by Kenney (https://kenney.nl)
+
+License: Creative Commons Zero (CC0 1.0 Universal)
+https://creativecommons.org/publicdomain/zero/1.0/
+
+The source pack permits use in personal, educational, and commercial projects.
+Attribution is not required. Source: https://kenney.nl/assets/interface-sounds
+
+Files used by Oremi Device:
+- confirmation_001.ogg as listening.ogg
+- close_002.ogg as cancel.ogg
+- question_002.ogg as thinking.ogg
+- bong_001.ogg as announcement.ogg
+- tick_001.ogg as volume.ogg
+- confirmation_003.ogg as ready.ogg
+- close_004.ogg as shutdown.ogg

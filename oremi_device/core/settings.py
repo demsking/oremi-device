@@ -14,11 +14,62 @@
 # ==============================================================================
 from typing import Literal
 
+from pydantic import AnyHttpUrl
 from pydantic import Field
+from pydantic import ValidationError
 from pydantic_settings import BaseSettings
 from pydantic_settings import SettingsConfigDict
 
 from .models import AndikaModel
+
+
+class SettingsError(Exception):
+  """User-facing configuration validation failure."""
+
+  def __init__(self, issues: list[str]) -> None:
+    super().__init__("Invalid application configuration")
+    self.issues = issues
+
+
+def format_settings_errors(error: ValidationError) -> list[str]:
+  """Convert Pydantic details into concise environment-variable errors."""
+  issues = []
+
+  for detail in error.errors(include_url=False, include_input=False):
+    location = detail.get("loc", ())
+    field = str(location[0]) if location else "configuration"
+    setting = f"OREMI_DEVICE_{field.upper()}"
+    error_type = detail.get("type")
+    context = detail.get("ctx", {})
+
+    if error_type == "missing":
+      message = "is required"
+    elif field == "language" and error_type == "literal_error":
+      message = "must be one of: fr, en"
+    elif field == "andika_model" and error_type == "literal_error":
+      message = "contains an unsupported model identifier"
+    elif field == "izwi_url" and error_type in ("url_parsing", "url_scheme"):
+      message = "must be a valid HTTP or HTTPS URL"
+    elif error_type == "greater_than":
+      message = f"must be greater than {context['gt']}"
+    elif error_type == "greater_than_equal":
+      message = f"must be at least {context['ge']}"
+    elif error_type == "less_than":
+      message = f"must be less than {context['lt']}"
+    elif error_type == "less_than_equal":
+      message = f"must be at most {context['le']}"
+    elif error_type in ("int_parsing", "int_type"):
+      message = "must be an integer"
+    elif error_type in ("float_parsing", "float_type"):
+      message = "must be a number"
+    elif error_type in ("bool_parsing", "bool_type"):
+      message = "must be true or false"
+    else:
+      message = "has an invalid value"
+
+    issues.append(f"{setting} {message}")
+
+  return issues
 
 
 class DeviceSettings(BaseSettings):
@@ -34,12 +85,14 @@ class DeviceSettings(BaseSettings):
 
   ohunerin_host: str
   ohunerin_port: int = Field(default=5023, gt=0, le=65535)
-  ohunerin_threshold: float = Field(default=0.65, gt=0)
+  ohunerin_threshold: float = Field(default=0.25, gt=0)
 
   andika_host: str
   andika_port: int = Field(default=5315, gt=0, le=65535)
   andika_model: AndikaModel = "vosk-model-small-fr-0.22"
   andika_samplerate: int = Field(default=16000, gt=0)
+
+  izwi_url: AnyHttpUrl | None = None
 
   cert_file: str | None = None
   node_id: str
@@ -53,5 +106,8 @@ class DeviceSettings(BaseSettings):
   mqtt_discovery_prefix: str = "homeassistant"
 
 
-def load_settings() -> DeviceSettings:
-  return DeviceSettings()  # type: ignore
+def load_settings() -> DeviceSettings:  # type: ignore
+  try:
+    return DeviceSettings()  # type: ignore
+  except ValidationError as error:
+    raise SettingsError(format_settings_errors(error)) from None

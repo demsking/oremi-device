@@ -86,7 +86,12 @@ class OremiMediaPlayer(MediaPlayerEntity):
 
   @callback
   def _state_received(self, message: mqtt.ReceiveMessage) -> None:
-    self._attr_state = MediaPlayerState.PLAYING if message.payload == "playing" else MediaPlayerState.IDLE
+    states = {
+      "idle": MediaPlayerState.IDLE,
+      "paused": MediaPlayerState.PAUSED,
+      "playing": MediaPlayerState.PLAYING,
+    }
+    self._attr_state = states.get(message.payload, MediaPlayerState.IDLE)
     self.async_write_ha_state()
 
   @callback
