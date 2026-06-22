@@ -36,6 +36,7 @@ class Speaker:
 
   def __init__(self, device_name: str | None = None, *, volume: float = 1.0, muted: bool = False) -> None:
     self._device_name = ""
+    self._output_channels = 2
     self._volume = 1.0
     self._muted = muted
     self._playback_lock = threading.Lock()
@@ -57,6 +58,7 @@ class Speaker:
         raise SpeakerDeviceError("No compatible speaker output device found")
 
       self._device_name = default_device["name"]
+      self._output_channels = self._get_stream_channels(default_device)
 
   @property
   def device_name(self) -> str:
@@ -74,6 +76,11 @@ class Speaker:
   def gain(self) -> float:
     """Return the gain future playback streams should apply."""
     return 0.0 if self._muted else self._volume
+
+  @property
+  def output_channels(self) -> int:
+    """Return the channel count used for output streams."""
+    return self._output_channels
 
   def begin_ducking(self) -> None:
     """Reduce the gain of duckable streams until matching calls complete."""
@@ -114,7 +121,14 @@ class Speaker:
     except Exception as error:
       raise SpeakerDeviceError(f"Speaker output device is not compatible: {matched_name}") from error
 
+    try:
+      device_info = sd.query_devices(matched_name, kind="output")
+    except Exception as error:
+      raise SpeakerDeviceError(f"Failed to query speaker output device: {matched_name}") from error
+
     self._device_name = matched_name
+    self._output_channels = self._get_stream_channels(device_info)
+
     return matched_name
 
   def set_muted(self, muted: bool) -> None:
@@ -204,7 +218,7 @@ class Speaker:
         "-acodec",
         "pcm_f32le",
         "-ac",
-        "2",
+        str(self._output_channels),
         "-ar",
         "48000",
         "pipe:1",
@@ -229,7 +243,12 @@ class Speaker:
         self._playback_process = process
 
     try:
-      with sd.RawOutputStream(samplerate=48000, channels=2, dtype="float32", device=self._device_name) as stream:
+      with sd.RawOutputStream(
+        samplerate=48000,
+        channels=self._output_channels,
+        dtype="float32",
+        device=self._device_name,
+      ) as stream:
         remainder = b""
 
         while not stop_event.is_set():
@@ -331,3 +350,9 @@ class Speaker:
       compatible_devices.append(name)
 
     return compatible_devices
+
+  @staticmethod
+  def _get_stream_channels(device_info: dict) -> int:
+    """Normalize output channel count to a stream-safe value."""
+    max_channels = int(device_info.get("max_output_channels", 0))
+    return 1 if max_channels <= 1 else 2

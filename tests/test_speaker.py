@@ -132,6 +132,28 @@ def test_play_url_decodes_audio_to_selected_device(mock_output_stream, mock_quer
   assert stream.write.call_count == 1
 
 
+@patch("sounddevice.query_devices", return_value={"name": "Container Speaker", "max_output_channels": 1})
+@patch("sounddevice.RawOutputStream")
+def test_play_url_uses_mono_stream_when_output_device_is_mono(mock_output_stream, mock_query_devices) -> None:
+  speaker = Speaker(volume=0.5)
+  process = MagicMock()
+  process.stdout.read.side_effect = [(b"\x00\x00\x80?" * 4), b""]
+  process.wait.return_value = 0
+  process.poll.return_value = 0
+
+  with patch("oremi_device.core.speaker.subprocess.Popen", return_value=process) as popen:
+    speaker.play_url("https://home-assistant.local/api/tts.wav")
+
+  command = popen.call_args.args[0]
+  assert command[command.index("-ac") + 1] == "1"
+  mock_output_stream.assert_called_once_with(
+    samplerate=48000,
+    channels=1,
+    dtype="float32",
+    device="Container Speaker",
+  )
+
+
 @patch("sounddevice.query_devices", return_value={"name": "Speaker", "max_output_channels": 2})
 def test_play_url_rejects_non_http_media(mock_query_devices) -> None:
   speaker = Speaker()
