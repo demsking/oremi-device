@@ -17,6 +17,7 @@ import json
 from datetime import datetime
 
 from websockets.asyncio.client import ClientConnection as WebSocket
+from websockets.exceptions import ConnectionClosedError
 
 from ..utils.logger import logger
 from ..utils.string import sluggify
@@ -85,6 +86,8 @@ class SoundDetector:
     except asyncio.CancelledError:
       logger.info("Recording cancelled")
       raise
+    except ConnectionClosedError as error:
+      logger.error(f"Ohunerin connection closed: {error}")
     finally:
       self.terminate()
 

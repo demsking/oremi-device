@@ -46,7 +46,7 @@ class AudioListener:
             break
           except sd.PortAudioError as error:
             logger.error(f"Audio stream error: {error}")
-            break
+            raise
     finally:
       self.audio_stream.unsubscribe(audio_queue)
 

@@ -16,7 +16,9 @@
 import asyncio
 import json
 from unittest.mock import MagicMock
+
 import pytest
+from websockets.exceptions import ConnectionClosedError
 
 from oremi_device.core.detector import SoundDetector
 from oremi_device.core.models import DetectedSound
@@ -44,6 +46,14 @@ class BlockingWebSocket:
     raise StopAsyncIteration
 
 
+class ClosedWebSocket:
+  def __aiter__(self) -> "ClosedWebSocket":
+    return self
+
+  async def __anext__(self) -> str:
+    raise ConnectionClosedError(None, None, None)
+
+
 @pytest.mark.asyncio
 async def test_detector_propagates_cancellation() -> None:
   detector = SoundDetector(MagicMock(), BlockingWebSocket(), None, delay=1, threshold=0.65)  # type: ignore
@@ -54,6 +64,15 @@ async def test_detector_propagates_cancellation() -> None:
 
   with pytest.raises(asyncio.CancelledError):
     await task
+
+
+@pytest.mark.asyncio
+async def test_detector_handles_connection_closed_error() -> None:
+  detector = SoundDetector(MagicMock(), ClosedWebSocket(), None, delay=1, threshold=0.65)  # type: ignore
+
+  await detector.detecting()
+
+  assert detector.published_sound_sentinel == {}
 
 
 @pytest.mark.asyncio

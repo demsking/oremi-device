@@ -18,6 +18,7 @@ import signal
 import sys
 from datetime import datetime
 from datetime import timezone
+from typing import Literal
 
 import sounddevice as sd
 from pydantic import BaseModel
@@ -55,6 +56,37 @@ from .settings import load_settings
 from .speaker import Speaker
 from .speaker import SpeakerDeviceError
 from .speaker import SpeakerPlaybackError
+
+
+def listening_task_failed(task: asyncio.Task) -> bool:
+  """Return true only when an audio listener failed with an exception."""
+  if task.cancelled():
+    return False
+
+  try:
+    return task.exception() is not None
+  except asyncio.InvalidStateError:
+    return False
+
+
+def classify_supervisor_done(
+  done: set[asyncio.Task],
+  listening_tasks: dict[asyncio.Task, object],
+  component_tasks: dict[asyncio.Task, object],
+) -> Literal["recover_audio", "exit", "continue"]:
+  unexpected_listening_tasks = [
+    task
+    for task in done
+    if task in listening_tasks and listening_task_failed(task)
+  ]
+
+  if unexpected_listening_tasks and not any(task in component_tasks for task in done):
+    return "recover_audio"
+
+  if any(task in component_tasks for task in done):
+    return "exit"
+
+  return "continue"
 
 
 async def start() -> None:
@@ -840,7 +872,6 @@ async def start() -> None:
           if not success:
             logger.info("Explicit switch failed. Attempting to auto-select any compatible microphone...")
             await change_audio_device(None)
-
       elif microphone_mute_task is not None and microphone_mute_task in done:
         muted = microphone_mute_task.result()
         device_state["microphone_muted"] = muted
@@ -1067,14 +1098,13 @@ async def start() -> None:
             await component.stop()
             await component.start(comp_config, mqtt_client, shared_resources)
       else:
-        is_listening_done = any(t in listening_tasks for t in done)
-        is_main_done = any(t in component_tasks for t in done)
+        supervisor_action = classify_supervisor_done(done, listening_tasks, component_tasks)
 
-        if is_listening_done and not is_main_done:
+        if supervisor_action == "recover_audio":
           # Audio feed task ended (e.g. mic disconnected) but WebSocket is still up
           logger.warning("Listening task finished unexpectedly (possibly microphone disconnected).")
           loop.call_soon_threadsafe(device_change_queue.put_nowait, "__auto_select__")
-        else:
+        elif supervisor_action == "exit":
           # A main component task finished — time to exit
           break
   finally:

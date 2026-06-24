@@ -12,9 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
+import asyncio
 from unittest.mock import patch
 
+import pytest
+
 from oremi_device.__main__ import main
+from oremi_device.core.app import classify_supervisor_done
+from oremi_device.core.app import listening_task_failed
 from oremi_device.core.settings import SettingsError
 
 
@@ -38,3 +43,63 @@ def test_main_prints_clean_configuration_errors(capsys) -> None:
     "  - OREMI_DEVICE_MQTT_PORT must be at most 65535\n"
   )
   assert "Traceback" not in captured.err
+
+
+@pytest.mark.asyncio
+async def test_cancelled_listening_task_is_not_unexpected() -> None:
+  task = asyncio.create_task(asyncio.sleep(60))
+  task.cancel()
+
+  try:
+    await task
+  except asyncio.CancelledError:
+    pass
+
+  assert listening_task_failed(task) is False
+
+
+@pytest.mark.asyncio
+async def test_failed_listening_task_is_unexpected() -> None:
+  async def fail() -> None:
+    raise RuntimeError("audio failed")
+
+  task = asyncio.create_task(fail())
+
+  with pytest.raises(RuntimeError):
+    await task
+
+  assert listening_task_failed(task) is True
+
+
+@pytest.mark.asyncio
+async def test_supervisor_continues_after_expected_listening_task_completion() -> None:
+  task = asyncio.create_task(asyncio.sleep(60))
+  task.cancel()
+
+  try:
+    await task
+  except asyncio.CancelledError:
+    pass
+
+  assert classify_supervisor_done({task}, {task: object()}, {}) == "continue"
+
+
+@pytest.mark.asyncio
+async def test_supervisor_recovers_after_failed_listening_task() -> None:
+  async def fail() -> None:
+    raise RuntimeError("audio failed")
+
+  task = asyncio.create_task(fail())
+
+  with pytest.raises(RuntimeError):
+    await task
+
+  assert classify_supervisor_done({task}, {task: object()}, {}) == "recover_audio"
+
+
+@pytest.mark.asyncio
+async def test_supervisor_exits_after_main_component_task_finishes() -> None:
+  task = asyncio.create_task(asyncio.sleep(0))
+  await task
+
+  assert classify_supervisor_done({task}, {}, {task: object()}) == "exit"
