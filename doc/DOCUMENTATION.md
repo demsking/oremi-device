@@ -281,47 +281,64 @@ take precedence over `.env` values.
 
 ### Required Settings
 
-| Environment variable         | Description                                        |
-| ---------------------------- | -------------------------------------------------- |
-| `OREMI_DEVICE_NODE_ID`       | Unique node identifier used in MQTT device topics. |
-| `OREMI_DEVICE_OHUNERIN_HOST` | Ohunerin server host or IP address.                |
-| `OREMI_DEVICE_MQTT_BROKER`   | MQTT broker host or IP address.                    |
+- **`OREMI_DEVICE_NODE_ID`** – Unique node identifier used in MQTT device topics.
+- **`OREMI_DEVICE_OHUNERIN_HOST`** – Ohunerin server host or IP address.
+- **`OREMI_DEVICE_MQTT_BROKER`** – MQTT broker host or IP address.
 
 The transcription backend has one additional required setting:
 
-| Backend       | Required environment variable | Description                       |
-| ------------- | ----------------------------- | --------------------------------- |
-| `andika`      | `OREMI_DEVICE_ANDIKA_HOST`    | Andika server host or IP address. |
-| `whisper.cpp` | `OREMI_DEVICE_WHISPER_URL`    | whisper.cpp HTTP server base URL. |
+- **`andika` backend**: `OREMI_DEVICE_ANDIKA_HOST` – Andika server host or IP address.
+- **`whisper.cpp` backend**: `OREMI_DEVICE_WHISPER_URL` – whisper.cpp HTTP server base URL.
 
 ### Optional Settings
 
-| Environment variable                     | Default                    | Description                                                                   |
-| ---------------------------------------- | -------------------------- | ----------------------------------------------------------------------------- |
-| `OREMI_DEVICE_LANGUAGE`                  | `fr`                       | Processing language; supported values are `fr` and `en`.                      |
-| `OREMI_DEVICE_MICROPHONE_DEVICE_INDEX`   | Auto                       | Preferred microphone index.                                                   |
-| `OREMI_DEVICE_MICROPHONE_DEVICE`         | Auto                       | Preferred microphone name; takes precedence over the index.                   |
-| `OREMI_DEVICE_MICROPHONE_ENABLED`        | `true`                     | Enable microphone initialization and audio capture.                           |
-| `OREMI_DEVICE_SPEAKER_ENABLED`           | `true`                     | Enable speaker initialization and MQTT speaker controls.                      |
-| `OREMI_DEVICE_DELAY`                     | `3`                        | Sound-event cooldown in seconds and transcription message expiry interval.    |
-| `OREMI_DEVICE_CONVERSATION_TIMEOUT`      | `15`                       | Maximum seconds to wait for a final transcription after a wake word.          |
-| `OREMI_DEVICE_TRANSCRIPTION_BACKEND`     | `andika`                   | Transcriber: `andika` or `whisper.cpp`.                                       |
-| `OREMI_DEVICE_OHUNERIN_PORT`             | `5023`                     | Ohunerin server port.                                                         |
-| `OREMI_DEVICE_OHUNERIN_THRESHOLD`        | `0.65`                     | Minimum accepted Ohunerin confidence score.                                   |
-| `OREMI_DEVICE_ANDIKA_PORT`               | `5315`                     | Andika server port.                                                           |
-| `OREMI_DEVICE_ANDIKA_MODEL`              | `vosk-model-small-fr-0.22` | Vosk model identifier sent to Andika.                                         |
-| `OREMI_DEVICE_ANDIKA_SAMPLERATE`         | `16000`                    | Audio sample rate sent to Andika.                                             |
-| `OREMI_DEVICE_WHISPER_URL`               | Unset                      | whisper.cpp server URL; required for the `whisper.cpp` backend.               |
-| `OREMI_DEVICE_WHISPER_SILENCE_THRESHOLD` | `500`                      | PCM RMS level above which whisper.cpp capture counts as speech.               |
-| `OREMI_DEVICE_WHISPER_SILENCE_DURATION`  | `1.0`                      | Seconds of silence that finish a whisper.cpp utterance.                       |
-| `OREMI_DEVICE_IZWI_URL`                  | Unset                      | Izwi base URL. When unset, speech synthesis and voice discovery are disabled. |
-| `OREMI_DEVICE_CERT_FILE`                 | Unset                      | CA certificate for TLS connections to Oremi services.                         |
-| `OREMI_DEVICE_MQTT_PORT`                 | `1883`                     | MQTT broker port.                                                             |
-| `OREMI_DEVICE_MQTT_USERNAME`             | Unset                      | MQTT username.                                                                |
-| `OREMI_DEVICE_MQTT_PASSWORD`             | Unset                      | MQTT password.                                                                |
-| `OREMI_DEVICE_MQTT_TOPIC`                | `oremi/device`             | Base topic for events, availability, and controls.                            |
-| `OREMI_DEVICE_MQTT_DISCOVERY`            | `true`                     | Enable Home Assistant MQTT discovery.                                         |
-| `OREMI_DEVICE_MQTT_DISCOVERY_PREFIX`     | `homeassistant`            | Home Assistant discovery topic prefix.                                        |
+#### Audio Hardware
+
+- **`OREMI_DEVICE_MICROPHONE_DEVICE_INDEX`** – Preferred microphone index. Default: Auto.
+- **`OREMI_DEVICE_MICROPHONE_DEVICE`** – Preferred microphone name; takes precedence over the index. Default: Auto.
+- **`OREMI_DEVICE_MICROPHONE_ENABLED`** – Enable microphone initialization and audio capture. Default: `true`.
+- **`OREMI_DEVICE_SPEAKER_ENABLED`** – Enable speaker initialization and MQTT speaker controls. Default: `true`.
+
+#### Language & Transcription
+
+- **`OREMI_DEVICE_LANGUAGE`** – Processing language; supported values are `fr` and `en`. Default: `fr`.
+- **`OREMI_DEVICE_TRANSCRIPTION_BACKEND`** – Transcriber: `andika` or `whisper.cpp`. Default: `andika`.
+- **`OREMI_DEVICE_DELAY`** – Sound-event cooldown in seconds and transcription message expiry interval. Default: `3`.
+- **`OREMI_DEVICE_CONVERSATION_TIMEOUT`** – Maximum seconds to wait for a final transcription after a wake word. Default: `15`.
+
+#### Ohunerin Wake Word
+
+- **`OREMI_DEVICE_OHUNERIN_PORT`** – Ohunerin server port. Default: `5023`.
+- **`OREMI_DEVICE_OHUNERIN_THRESHOLD`** – Minimum accepted Ohunerin confidence score. Default: `0.65`.
+
+#### Andika Transcription
+
+- **`OREMI_DEVICE_ANDIKA_PORT`** – Andika server port. Default: `5315`.
+- **`OREMI_DEVICE_ANDIKA_MODEL`** – Vosk model identifier sent to Andika. Default: `vosk-model-small-fr-0.22`.
+- **`OREMI_DEVICE_ANDIKA_SAMPLERATE`** – Audio sample rate sent to Andika. Default: `16000`.
+
+#### whisper.cpp Transcription
+
+- **`OREMI_DEVICE_WHISPER_URL`** – whisper.cpp server URL; required for the `whisper.cpp` backend. Default: Unset.
+- **`OREMI_DEVICE_WHISPER_SILENCE_THRESHOLD`** – PCM RMS level above which whisper.cpp capture counts as speech. Default: `500`.
+- **`OREMI_DEVICE_WHISPER_SILENCE_DURATION`** – Seconds of silence that finish a whisper.cpp utterance. Default: `1.0`.
+
+#### Speech Synthesis
+
+- **`OREMI_DEVICE_IZWI_URL`** – Oremi Izwi base URL. When unset, speech synthesis and voice discovery are disabled. Default: Unset.
+
+#### MQTT
+
+- **`OREMI_DEVICE_MQTT_PORT`** – MQTT broker port. Default: `1883`.
+- **`OREMI_DEVICE_MQTT_USERNAME`** – MQTT username. Default: Unset.
+- **`OREMI_DEVICE_MQTT_PASSWORD`** – MQTT password. Default: Unset.
+- **`OREMI_DEVICE_MQTT_TOPIC`** – Base topic for events, availability, and controls. Default: `oremi/device`.
+- **`OREMI_DEVICE_MQTT_DISCOVERY`** – Enable Home Assistant MQTT discovery. Default: `true`.
+- **`OREMI_DEVICE_MQTT_DISCOVERY_PREFIX`** – Home Assistant discovery topic prefix. Default: `homeassistant`.
+
+#### Security
+
+- **`OREMI_DEVICE_CERT_FILE`** – CA certificate for TLS connections to Oremi services. Default: Unset.
 
 Positive numeric values and valid port ranges are checked at startup. Boolean
 values accept standard forms such as `true` and `false`. For example, a `.env`
@@ -371,32 +388,38 @@ Ohunerin with the newly selected language.
 
 ## MQTT
 
-Examples below use the default base topic `oremi/device` and a node ID of
-`living-room`. Events, controls, states, and availability are scoped below
-`oremi/device/nodes/living-room`; the table lists suffixes relative to that
-node prefix.
+All MQTT topics use the prefix `<OREMI_DEVICE_MQTT_TOPIC>/nodes/<OREMI_DEVICE_NODE_ID>/`
+for device-specific communication. Wildcard subscriptions use `+` in place of
+the node ID where appropriate.
 
 ### Events
 
-| Topic suffix            | Payload              | Notes                                                                                                      |
-| ----------------------- | -------------------- | ---------------------------------------------------------------------------------------------------------- |
-| `event`                 | JSON detection event | Wake words and ambient sounds, distinguished by the payload's `type` field.                                |
-| `transcription/partial` | JSON transcription   | Non-retained partial Andika result, QoS 1.                                                                 |
-| `transcription/result`  | JSON transcription   | Non-retained final Andika result, QoS 1. This is also the Home Assistant transcription sensor state topic. |
-| `conversation/state`    | UTF-8 state          | Retained lifecycle state: `idle`, `listening`, `processing`, or `speaking`.                                |
+#### Sound Event
 
-The `event` topic carries the detected-sound model for both wake words and
-ambient sounds:
+Detected sounds from the environment, including both wake words and ambient sounds.
 
-| Field   | Type   | Required | Description                                     |
-| ------- | ------ | -------- | ----------------------------------------------- |
-| `date`  | string | Yes      | ISO 8601 date-time when the sound was detected. |
-| `score` | number | Yes      | Detection confidence score.                     |
-| `sound` | string | Yes      | Detected ambient sound or wake-word name.       |
-| `type`  | string | Yes      | Event discriminator: `sound` or `wakeword`.     |
+- **Topic:** `<OREMI_DEVICE_MQTT_TOPIC>/nodes/<OREMI_DEVICE_NODE_ID>/event`
+- **Retained:** No
+- **QoS:** 0
 
-The `sound` value is converted to a lowercase slug before publication. Ambient
-sound events use this shape:
+**Model:**
+
+```typescript
+interface SoundEvent {
+  /** Event discriminator: 'sound' or 'wakeword' */
+  type: 'sound' | 'wakeword';
+  /** Detected ambient sound or wake-word name, converted to lowercase slug */
+  sound: string;
+  /** Detection confidence score (0.0 to 1.0) */
+  score: number;
+  /** ISO 8601 date-time when the sound was detected */
+  date: string;
+}
+```
+
+**Examples:**
+
+Ambient sound event:
 
 ```json
 {
@@ -407,35 +430,72 @@ sound events use this shape:
 }
 ```
 
-Wake-word events use the same model with `"type": "wakeword"` and activate
-Andika transcription. Home Assistant's wake-word and ambient-sound sensors both
-subscribe to `<OREMI_DEVICE_MQTT_TOPIC>/nodes/+/event` and select messages by
-their `type` field.
-
-After the delay expires, the service publishes a retained clearing message with
-`"sound": "..."` when no event of that type remains active.
-
-The fixed MQTT subscription patterns are
-`<OREMI_DEVICE_MQTT_TOPIC>/nodes/+/transcription/partial` for partial results
-and `<OREMI_DEVICE_MQTT_TOPIC>/nodes/+/transcription/result` for final results.
-The `+` wildcard represents the node ID. Both payloads are the raw Andika JSON
-response; the node is identified by the scoped MQTT topic.
-
-See the [Andika models documentation](https://demsking.gitlab.io/oremi-andika/#models/)
-for details about the
-[PartialResult](https://demsking.gitlab.io/oremi-andika/#models/PartialResult)
-and [FinalResult](https://demsking.gitlab.io/oremi-andika/#models/FinalResult)
-models.
-
-A partial response is published as:
+Wake-word event:
 
 ```json
 {
-  "partial": "..."
+  "type": "wakeword",
+  "sound": "oremi",
+  "score": 1.0,
+  "date": "2026-06-19T12:05:22.654321"
 }
 ```
 
-A final response is published as:
+**Notes:**
+
+- Wake-word events activate Andika transcription for the following speech.
+- Home Assistant's wake-word and ambient-sound sensors subscribe to `<OREMI_DEVICE_MQTT_TOPIC>/nodes/+/event` and select messages by their `type` field.
+- After the configured delay expires, the service publishes a retained clearing message with `"sound": "..."` when no event of that type remains active.
+
+#### Partial Transcription
+
+Incremental transcription results while speech is being captured. **This event is only available when using the `andika` transcription backend.**
+
+- **Topic:** `<OREMI_DEVICE_MQTT_TOPIC>/nodes/<OREMI_DEVICE_NODE_ID>/transcription/partial`
+- **Retained:** No
+- **QoS:** 1
+
+**Model:**
+
+```typescript
+interface PartialTranscription {
+  /** Incrementally transcribed text as speech is captured */
+  partial: string;
+}
+```
+
+**Example:**
+
+```json
+{
+  "partial": "turn on the living room light"
+}
+```
+
+**Notes:**
+
+- Published continuously during speech capture as the transcription is refined.
+- Only supported when `OREMI_DEVICE_TRANSCRIPTION_BACKEND` is set to `andika`.
+- Subscribers can subscribe to `<OREMI_DEVICE_MQTT_TOPIC>/nodes/+/transcription/partial` to receive partial results from all nodes.
+
+#### Final Transcription
+
+The final, complete transcription result after speech capture completes.
+
+- **Topic:** `<OREMI_DEVICE_MQTT_TOPIC>/nodes/<OREMI_DEVICE_NODE_ID>/transcription/result`
+- **Retained:** No
+- **QoS:** 1
+
+**Model:**
+
+```typescript
+interface FinalTranscription {
+  /** Final transcribed text after speech capture completes */
+  text: string;
+}
+```
+
+**Example:**
 
 ```json
 {
@@ -443,16 +503,38 @@ A final response is published as:
 }
 ```
 
-#### Conversation State And Sound Cues
+**Notes:**
 
-The retained `conversation/state` topic exposes the interaction lifecycle:
+- Published once when speech capture ends and transcription is finalized.
+- This is also the Home Assistant transcription sensor state topic.
+- Subscribers can subscribe to `<OREMI_DEVICE_MQTT_TOPIC>/nodes/+/transcription/result` to receive final results from all nodes.
 
-| State        | Meaning                                                                  | Sound cue                                                               |
-| ------------ | ------------------------------------------------------------------------ | ----------------------------------------------------------------------- |
-| `idle`       | No conversation is active.                                               | Cancellation cue when listening times out or produces no usable speech. |
-| `listening`  | A wake word was detected and Andika is capturing the request.            | Listening confirmation cue.                                             |
-| `processing` | A final transcription was published and the device is waiting for NLP.   | Thinking cue.                                                           |
-| `speaking`   | Izwi speech is playing for a response, announcement, alarm, or reminder. | Announcements first play a notification cue.                            |
+See the [Andika models documentation](https://demsking.gitlab.io/oremi-andika/#models/) for details about the [PartialResult](https://demsking.gitlab.io/oremi-andika/#models/PartialResult) and [FinalResult](https://demsking.gitlab.io/oremi-andika/#models/FinalResult) models.
+
+---
+
+#### Conversation State
+
+The current lifecycle state of the device's conversation handling.
+
+- **Topic:** `<OREMI_DEVICE_MQTT_TOPIC>/nodes/<OREMI_DEVICE_NODE_ID>/conversation/state`
+- **Retained:** Yes
+- **QoS:** 1
+
+**States:**
+
+- **`idle`** – No conversation is active. Cancellation cue when listening times out or produces no usable speech.
+- **`listening`** – A wake word was detected and Andika is capturing the request. Listening confirmation cue.
+- **`processing`** – A final transcription was published and the device is waiting for NLP. Thinking cue.
+- **`speaking`** – Izwi speech is playing for a response, announcement, alarm, or reminder. Announcements first play a notification cue.
+
+**Example:**
+
+```text
+idle
+```
+
+**State Transitions:**
 
 A normal spoken interaction follows:
 
@@ -460,25 +542,27 @@ A normal spoken interaction follows:
 idle -> listening -> processing -> speaking -> idle
 ```
 
-An empty transcription or listening timeout follows `listening -> idle` and
-plays the cancellation cue. Media is temporarily ducked while cues and speech
-play; the configured volume and its MQTT state do not change. `set_volume`
-commands play a short feedback tick after applying the new volume.
+An empty transcription or listening timeout follows:
 
-The device also plays a ready cue after MQTT and all configured components have
-started and availability is published as `online`. During graceful shutdown it
-stops capture and active playback, publishes availability as `offline`, plays a
-shutdown cue, and then disconnects from MQTT.
+```text
+listening -> idle
+```
 
-The bundled cues come from Kenney's
-[Interface Sounds](https://kenney.nl/assets/interface-sounds) pack, released
-under [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/). The exact
-source-file mapping and license are included in
-`oremi_device/sounds/LICENSE.txt`.
+**Notes:**
 
-An external NLP service can publish a response to the same node's
-`processing/result` topic. A response containing only `message` is spoken with
-the active Oremi Izwi voice:
+- Media is temporarily ducked while cues and speech play; the configured volume and its MQTT state do not change.
+- `set_volume` commands play a short feedback tick after applying the new volume.
+- The device plays a ready cue after MQTT and all configured components have started and availability is published as `online`.
+- During graceful shutdown it stops capture and active playback, publishes availability as `offline`, plays a shutdown cue, and then disconnects from MQTT.
+- The bundled cues come from Kenney's [Interface Sounds](https://kenney.nl/assets/interface-sounds) pack, released under [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/). The exact source-file mapping and license are included in `oremi_device/sounds/LICENSE.txt`.
+
+### NLP Integration
+
+An external NLP service can publish a response to the same node's `processing/result` topic:
+
+- Topic: `<OREMI_DEVICE_MQTT_TOPIC>/nodes/<OREMI_DEVICE_NODE_ID>/processing/result`
+
+A response containing only `message` is spoken with the active Oremi Izwi voice:
 
 ```json
 {
@@ -486,12 +570,32 @@ the active Oremi Izwi voice:
 }
 ```
 
-#### NLP Device Commands
+#### NLP Response Model
 
-For explicit device behavior, include a `commands` array. Commands execute in
-array order. When the array is present, the device does not automatically speak
-the top-level `message`; add a `speak` or `announce` command when speech is
-required. Unknown command types and unknown fields are rejected.
+```typescript
+interface NLPResponse {
+  /** Optional text for clients and logs */
+  message?: string;
+  /** Optional commands array for explicit device behavior */
+  commands?: Command[];
+}
+
+type Command =
+  | SpeakCommand
+  | AnnounceCommand
+  | PlayCommand
+  | PauseCommand
+  | ResumeCommand
+  | StopCommand
+  | AlarmCommand
+  | ReminderCommand
+  | CancelScheduledCommand
+  | SetVolumeCommand
+  | MuteCommand
+  | SetVoiceCommand;
+```
+
+For explicit device behavior, include a `commands` array. Commands execute in array order. When the array is present, the device does not automatically speak the top-level `message`; add a `speak` or `announce` command when speech is required. Unknown command types and unknown fields are rejected.
 
 ```json
 {
@@ -503,36 +607,111 @@ required. Unknown command types and unknown fields are rejected.
 }
 ```
 
-The supported commands are:
+#### Command Models
 
-| Type               | Required fields       | Optional fields           | Behavior                                                            |
-| ------------------ | --------------------- | ------------------------- | ------------------------------------------------------------------- |
-| `speak`            | `text`                | `voice`                   | Synthesizes a conversational response while ducking active media.   |
-| `announce`         | `text`                | `voice`                   | Synthesizes a foreground announcement while ducking active media.   |
-| `play`             | `url`                 | None                      | Interrupts current playback and plays an HTTP or HTTPS media URL.   |
-| `pause`            | None                  | None                      | Pauses current playback.                                            |
-| `resume`           | None                  | None                      | Resumes paused playback.                                            |
-| `stop`             | None                  | None                      | Stops current playback.                                             |
-| `alarm`            | `id`, `at`            | `message`, `url`, `voice` | Schedules an announcement, followed by an optional alarm media URL. |
-| `reminder`         | `id`, `at`, `message` | `voice`                   | Schedules a spoken announcement.                                    |
-| `cancel_scheduled` | `id`                  | None                      | Cancels an alarm or reminder with the matching ID.                  |
-| `set_volume`       | `volume`              | None                      | Sets speaker volume to an integer percentage from `0` to `100`.     |
-| `mute`             | `muted`               | None                      | Mutes when `true` and unmutes when `false`.                         |
-| `set_voice`        | `voice`               | None                      | Selects a voice available for the active device language.           |
+```typescript
+/** Synthesizes a conversational response while ducking active media */
+interface SpeakCommand {
+  type: 'speak';
+  /** Text to synthesize */
+  text: string;
+  /** Optional voice name (defaults to active voice) */
+  voice?: string;
+}
 
-`voice` defaults to the active voice. A command-specific voice must exist in
-Izwi's voice list. The Home Assistant voice selector and `set_voice` only accept
-voices matching the active device language.
+/** Synthesizes a foreground announcement while ducking active media */
+interface AnnounceCommand {
+  type: 'announce';
+  /** Text to synthesize */
+  text: string;
+  /** Optional voice name (defaults to active voice) */
+  voice?: string;
+}
+
+/** Interrupts current playback and plays a media URL */
+interface PlayCommand {
+  type: 'play';
+  /** HTTP or HTTPS audio URL */
+  url: string;
+}
+
+/** Pauses current playback */
+interface PauseCommand {
+  type: 'pause';
+}
+
+/** Resumes paused playback */
+interface ResumeCommand {
+  type: 'resume';
+}
+
+/** Stops current playback */
+interface StopCommand {
+  type: 'stop';
+}
+
+/** Schedules an announcement followed by an optional alarm media URL */
+interface AlarmCommand {
+  type: 'alarm';
+  /** Unique identifier (letters, digits, underscores, hyphens, max 64 chars) */
+  id: string;
+  /** Timezone-aware ISO 8601 timestamp */
+  at: string;
+  /** Optional announcement message */
+  message?: string;
+  /** Optional alarm media URL */
+  url?: string;
+  /** Optional voice name (defaults to active voice) */
+  voice?: string;
+}
+
+/** Schedules a spoken announcement */
+interface ReminderCommand {
+  type: 'reminder';
+  /** Unique identifier (letters, digits, underscores, hyphens, max 64 chars) */
+  id: string;
+  /** Timezone-aware ISO 8601 timestamp */
+  at: string;
+  /** Announcement message */
+  message: string;
+  /** Optional voice name (defaults to active voice) */
+  voice?: string;
+}
+
+/** Cancels an alarm or reminder with the matching ID */
+interface CancelScheduledCommand {
+  type: 'cancel_scheduled';
+  /** ID of the scheduled item to cancel */
+  id: string;
+}
+
+/** Sets speaker volume to an integer percentage from 0 to 100 */
+interface SetVolumeCommand {
+  type: 'set_volume';
+  /** Volume percentage (0-100) */
+  volume: number;
+}
+
+/** Mutes or unmutes the speaker */
+interface MuteCommand {
+  type: 'mute';
+  /** true to mute, false to unmute */
+  muted: boolean;
+}
+
+/** Selects a voice available for the active device language */
+interface SetVoiceCommand {
+  type: 'set_voice';
+  /** Voice name matching the active device language */
+  voice: string;
+}
+```
+
+`voice` defaults to the active voice. A command-specific voice must exist in Izwi's voice list. The Home Assistant voice selector and `set_voice` only accept voices matching the active device language.
 
 ##### Speech And Playback
 
-Use `speak` for conversational responses and `announce` for notifications.
-Both play over active media. While speech is playing, the device temporarily
-reduces the media stream to 25% of its current gain so the message remains
-clear. Speech itself uses the normal speaker gain. The configured volume and
-its MQTT/Home Assistant state do not change, and media gain is restored even
-when synthesis fails or playback is canceled. Spoken alarms and reminders use
-the same ducking behavior.
+Use `speak` for conversational responses and `announce` for notifications. Both play over active media. While speech is playing, the device temporarily reduces the media stream to 25% of its current gain so the message remains clear. Speech itself uses the normal speaker gain. The configured volume and its MQTT/Home Assistant state do not change, and media gain is restored even when synthesis fails or playback is canceled. Spoken alarms and reminders use the same ducking behavior.
 
 ```json
 {
@@ -543,15 +722,11 @@ the same ducking behavior.
 }
 ```
 
-Player commands can be combined in the same ordered array, although `pause` and
-`resume` are normally sent as separate responses while media is playing.
+Player commands can be combined in the same ordered array, although `pause` and `resume` are normally sent as separate responses while media is playing.
 
 ##### Alarms And Reminders
 
-The `at` field must be a timezone-aware ISO 8601 timestamp. An alarm or reminder
-scheduled in the past runs as soon as the command is processed. IDs contain
-letters, digits, underscores, or hyphens and are at most 64 characters. Sending
-another `alarm` or `reminder` with the same ID replaces the previous schedule.
+The `at` field must be a timezone-aware ISO 8601 timestamp. An alarm or reminder scheduled in the past runs as soon as the command is processed. IDs contain letters, digits, underscores, or hyphens and are at most 64 characters. Sending another `alarm` or `reminder` with the same ID replaces the previous schedule.
 
 ```json
 {
@@ -581,32 +756,54 @@ Cancel either scheduled item by ID:
 }
 ```
 
-Schedules are held in device memory and are lost when the process restarts.
-The NLP service should retain or recreate schedules when persistence is
-required.
+Schedules are held in device memory and are lost when the process restarts. The NLP service should retain or recreate schedules when persistence is required.
 
-Invalid JSON, unavailable voices, naive timestamps, values outside their
-documented ranges, and non-HTTP media URLs are rejected. Izwi speech uses the
-`/api/synthesize/stream` endpoint: short requests use GET query parameters,
-while long requests use a POST JSON body. The active voice defaults to the
-first available voice matching the device language.
+Invalid JSON, unavailable voices, naive timestamps, values outside their documented ranges, and non-HTTP media URLs are rejected. Izwi speech uses the `/api/synthesize/stream` endpoint: short requests use GET query parameters, while long requests use a POST JSON body. The active voice defaults to the first available voice matching the device language.
 
 ### Device Controls
 
-Node availability is retained at
-`oremi/device/nodes/<node-id>/available` with an `online` or `offline` payload.
+Node availability is retained at `<OREMI_DEVICE_MQTT_TOPIC>/nodes/<OREMI_DEVICE_NODE_ID>/available` with an `online` or `offline` payload.
 
-| Command topic                                      | State topic                                          | Payload                                                   |
-| -------------------------------------------------- | ---------------------------------------------------- | --------------------------------------------------------- |
-| `oremi/device/nodes/<node-id>/language/set`        | `oremi/device/nodes/<node-id>/language/state`        | A UTF-8 language string. Discovery offers `fr` and `en`.  |
-| `oremi/device/nodes/<node-id>/voice/set`           | `oremi/device/nodes/<node-id>/voice/state`           | An Izwi voice matching the active device language.        |
-| `oremi/device/nodes/<node-id>/microphone/set`      | `oremi/device/nodes/<node-id>/microphone/state`      | A microphone name exposed by discovery.                   |
-| `oremi/device/nodes/<node-id>/microphone/mute/set` | `oremi/device/nodes/<node-id>/microphone/mute/state` | `ON` mutes capture; `OFF` unmutes it.                     |
-| `oremi/device/nodes/<node-id>/speaker/set`         | `oremi/device/nodes/<node-id>/speaker/state`         | A speaker name exposed by discovery.                      |
-| `oremi/device/nodes/<node-id>/speaker/mute/set`    | `oremi/device/nodes/<node-id>/speaker/mute/state`    | `ON` mutes the speaker; `OFF` unmutes it.                 |
-| `oremi/device/nodes/<node-id>/speaker/volume/set`  | `oremi/device/nodes/<node-id>/speaker/volume/state`  | Integer percentage from `0` to `100`.                     |
-| `oremi/device/nodes/<node-id>/player/play/set`     | `oremi/device/nodes/<node-id>/player/state`          | An HTTP or HTTPS audio URL; state is `playing` or `idle`. |
-| `oremi/device/nodes/<node-id>/player/stop/set`     | `oremi/device/nodes/<node-id>/player/state`          | Any payload stops playback.                               |
+#### Language
+
+- **Command topic:** `<OREMI_DEVICE_MQTT_TOPIC>/nodes/<OREMI_DEVICE_NODE_ID>/language/set`
+- **State topic:** `<OREMI_DEVICE_MQTT_TOPIC>/nodes/<OREMI_DEVICE_NODE_ID>/language/state`
+- **Payload:** A UTF-8 language string. Discovery offers `fr` and `en`.
+
+#### Voice
+
+- **Command topic:** `<OREMI_DEVICE_MQTT_TOPIC>/nodes/<OREMI_DEVICE_NODE_ID>/voice/set`
+- **State topic:** `<OREMI_DEVICE_MQTT_TOPIC>/nodes/<OREMI_DEVICE_NODE_ID>/voice/state`
+- **Payload:** An Izwi voice matching the active device language.
+
+#### Microphone
+
+- **Select command:** `<OREMI_DEVICE_MQTT_TOPIC>/nodes/<OREMI_DEVICE_NODE_ID>/microphone/set`
+- **Select state:** `<OREMI_DEVICE_MQTT_TOPIC>/nodes/<OREMI_DEVICE_NODE_ID>/microphone/state`
+- **Select payload:** A microphone name exposed by discovery.
+- **Mute command:** `<OREMI_DEVICE_MQTT_TOPIC>/nodes/<OREMI_DEVICE_NODE_ID>/microphone/mute/set`
+- **Mute state:** `<OREMI_DEVICE_MQTT_TOPIC>/nodes/<OREMI_DEVICE_NODE_ID>/microphone/mute/state`
+- **Mute payload:** `ON` mutes capture; `OFF` unmutes it.
+
+#### Speaker
+
+- **Select command:** `<OREMI_DEVICE_MQTT_TOPIC>/nodes/<OREMI_DEVICE_NODE_ID>/speaker/set`
+- **Select state:** `<OREMI_DEVICE_MQTT_TOPIC>/nodes/<OREMI_DEVICE_NODE_ID>/speaker/state`
+- **Select payload:** A speaker name exposed by discovery.
+- **Mute command:** `<OREMI_DEVICE_MQTT_TOPIC>/nodes/<OREMI_DEVICE_NODE_ID>/speaker/mute/set`
+- **Mute state:** `<OREMI_DEVICE_MQTT_TOPIC>/nodes/<OREMI_DEVICE_NODE_ID>/speaker/mute/state`
+- **Mute payload:** `ON` mutes the speaker; `OFF` unmutes it.
+- **Volume command:** `<OREMI_DEVICE_MQTT_TOPIC>/nodes/<OREMI_DEVICE_NODE_ID>/speaker/volume/set`
+- **Volume state:** `<OREMI_DEVICE_MQTT_TOPIC>/nodes/<OREMI_DEVICE_NODE_ID>/speaker/volume/state`
+- **Volume payload:** Integer percentage from `0` to `100`.
+
+#### Player
+
+- **Play command:** `<OREMI_DEVICE_MQTT_TOPIC>/nodes/<OREMI_DEVICE_NODE_ID>/player/play/set`
+- **State topic:** `<OREMI_DEVICE_MQTT_TOPIC>/nodes/<OREMI_DEVICE_NODE_ID>/player/state`
+- **Play payload:** An HTTP or HTTPS audio URL; state is `playing` or `idle`.
+- **Stop command:** `<OREMI_DEVICE_MQTT_TOPIC>/nodes/<OREMI_DEVICE_NODE_ID>/player/stop/set`
+- **Stop payload:** Any payload stops playback.
 
 For example, disable processing for this node with:
 
