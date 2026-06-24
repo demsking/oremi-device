@@ -15,9 +15,13 @@
 # Andika and Ohunerin intentionally share WebSocket/audio lifecycle behavior.
 # pylint: disable=duplicate-code
 import asyncio
+import io
 import json
+import math
 import ssl
 import urllib.parse
+import wave
+from array import array
 from collections.abc import Awaitable
 from collections.abc import Callable
 from typing import Any
@@ -82,6 +86,10 @@ class AndikaTranscriber:
 
     async for message in self.websocket:
       payload = json.loads(message)
+
+      if isinstance(payload.get("text"), str):
+        payload["text"] = payload["text"].strip()
+
       field, transcription = self.parse_transcription(payload)
 
       if field:
@@ -89,14 +97,10 @@ class AndikaTranscriber:
 
         if field == "partial":
           if transcription:
-            self.mqtt_client.publish_event(
-              PARTIAL_TRANSCRIPTION_TOPIC, mqtt_message, qos=1, retain=False, props=props
-            )
+            self.mqtt_client.publish_event(PARTIAL_TRANSCRIPTION_TOPIC, mqtt_message, qos=1, retain=False, props=props)
         else:
           if transcription:
-            self.mqtt_client.publish_event(
-              FINAL_TRANSCRIPTION_TOPIC, mqtt_message, qos=1, retain=False, props=props
-            )
+            self.mqtt_client.publish_event(FINAL_TRANSCRIPTION_TOPIC, mqtt_message, qos=1, retain=False, props=props)
 
           if self.conversation_event_handler:
             await self.conversation_event_handler("processing" if transcription else "cancelled")
@@ -105,6 +109,129 @@ class AndikaTranscriber:
             self.transcription_complete_event.set()
       else:
         logger.debug(f"Ignoring unknown Andika result payload: {payload}")
+
+
+class WhisperCppListener:
+  """Capture one utterance and submit it to a whisper.cpp HTTP server."""
+
+  def __init__(
+    self,
+    settings: DeviceSettings,
+    mqtt_client: MQTTClient,
+    audio_stream: Audio,
+    transcription_complete_event: asyncio.Event,
+    conversation_event_handler: Callable[[ConversationEvent], Awaitable[None]] | None = None,
+  ) -> None:
+    self.settings = settings
+    self.mqtt_client = mqtt_client
+    self.audio_stream = audio_stream
+    self.transcription_complete_event = transcription_complete_event
+    self.conversation_event_handler = conversation_event_handler
+
+  @staticmethod
+  def _rms(data: bytes) -> float:
+    samples = array("h")
+    samples.frombytes(data)
+
+    if not samples:
+      return 0
+
+    return math.sqrt(sum(sample * sample for sample in samples) / len(samples))
+
+  @staticmethod
+  def _wav(audio: bytes, samplerate: int) -> bytes:
+    output = io.BytesIO()
+
+    with wave.open(output, "wb") as wav_file:
+      wav_file.setnchannels(1)
+      wav_file.setsampwidth(2)
+      wav_file.setframerate(samplerate)
+      wav_file.writeframes(audio)
+
+    return output.getvalue()
+
+  async def _capture(self) -> bytes:
+    audio = bytearray()
+    speech_started = False
+    silence_duration = 0.0
+    audio_queue = self.audio_stream.subscribe()
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + self.settings.conversation_timeout
+
+    try:
+      async with self.audio_stream:
+        while self.audio_stream.is_active():
+          remaining = deadline - loop.time()
+
+          if remaining <= 0:
+            break
+
+          try:
+            data = await asyncio.wait_for(self.audio_stream.data(audio_queue), timeout=remaining)
+          except TimeoutError:
+            break
+
+          audio.extend(data)
+          chunk_duration = len(data) / (2 * self.audio_stream.samplerate)
+
+          if self._rms(data) >= self.settings.whisper_silence_threshold:
+            speech_started = True
+            silence_duration = 0
+          elif speech_started:
+            silence_duration += chunk_duration
+
+            if silence_duration >= self.settings.whisper_silence_duration:
+              break
+    finally:
+      self.audio_stream.unsubscribe(audio_queue)
+
+    return bytes(audio) if speech_started else b""
+
+  async def listening(self) -> None:
+    self.mqtt_client.set_availability(True)
+    logger.info(f"Listening from {self.audio_stream.device_name} device for whisper.cpp...")
+
+    try:
+      audio = await self._capture()
+
+      if not audio:
+        if self.conversation_event_handler:
+          await self.conversation_event_handler("cancelled")
+        return
+
+      if self.conversation_event_handler:
+        await self.conversation_event_handler("processing")
+
+      endpoint = f"{str(self.settings.whisper_url).rstrip('/')}/inference"
+      verify = self.settings.cert_file if self.settings.cert_file else True
+
+      async with httpx.AsyncClient(verify=verify, timeout=self.settings.conversation_timeout) as client:
+        response = await client.post(
+          endpoint,
+          files={"file": ("utterance.wav", self._wav(audio, self.audio_stream.samplerate), "audio/wav")},
+          data={"language": self.settings.language, "response_format": "json"},
+        )
+        response.raise_for_status()
+        payload = response.json()
+
+      transcription = payload.get("text", "").strip()
+
+      if transcription:
+        payload["text"] = transcription
+        props = Properties(PacketTypes.PUBLISH)
+        props.MessageExpiryInterval = self.settings.delay
+
+        logger.debug(payload)
+        self.mqtt_client.publish_event(FINAL_TRANSCRIPTION_TOPIC, json.dumps(payload), qos=1, retain=False, props=props)
+      elif self.conversation_event_handler:
+        await self.conversation_event_handler("cancelled")
+    except Exception as error:
+      logger.error(f"whisper.cpp transcription error: {error}")
+
+      if self.conversation_event_handler:
+        await self.conversation_event_handler("cancelled")
+    finally:
+      self.transcription_complete_event.set()
 
 
 class AndikaComponent(AudioStreamComponent):
@@ -138,6 +265,9 @@ class AndikaComponent(AudioStreamComponent):
     return None
 
   def _get_supported_models(self) -> list[AndikaSupportedModel]:
+    if not self.settings.andika_host:
+      return []
+
     endpoint = (
       f"https://{self.settings.andika_host}:{self.settings.andika_port}/api/models"
       if self.settings.cert_file
@@ -194,12 +324,16 @@ class AndikaComponent(AudioStreamComponent):
       logger.warning("Andika component started without configuration; using defaults.")
       config = AndikaConfig()
 
-    logger.info(f"Andika Server Host: {self.settings.andika_host}")
-    logger.info(f"Andika Server Port: {self.settings.andika_port}")
-    logger.info(f"Andika Model: {config.model}")
-    logger.info(f"Andika Samplerate: {config.samplerate}")
+    if self.settings.transcription_backend == "whisper.cpp":
+      logger.info(f"whisper.cpp Server URL: {self.settings.whisper_url}")
+      logger.info(f"whisper.cpp Language: {self.settings.language}")
+    else:
+      logger.info(f"Andika Server Host: {self.settings.andika_host}")
+      logger.info(f"Andika Server Port: {self.settings.andika_port}")
+      logger.info(f"Andika Model: {config.model}")
+      logger.info(f"Andika Samplerate: {config.samplerate}")
 
-    supported_models = self._get_supported_models()
+    supported_models = self._get_supported_models() if self.settings.transcription_backend == "andika" else []
 
     if supported_models:
       supported_model_ids = ", ".join(model.id for model in supported_models)
@@ -293,10 +427,7 @@ class AndikaComponent(AudioStreamComponent):
         await self._conversation_event_handler("listening")
 
       try:
-        if (
-          active_stream_container["stream"] is not None
-          and not device_state["microphone_muted"]
-        ):
+        if active_stream_container["stream"] is not None and not device_state["microphone_muted"]:
           self._start_listening()
 
         try:
@@ -324,6 +455,10 @@ class AndikaComponent(AudioStreamComponent):
     mqtt_client: MQTTClient,
     shared_resources: dict[str, Any],
   ) -> None:
+    if self.settings.transcription_backend == "whisper.cpp":
+      await self._run_whisper(mqtt_client, shared_resources)
+      return
+
     loop = asyncio.get_running_loop()
     active_stream_container = shared_resources["active_stream_container"]
     self._wakeword_event = shared_resources["wakeword_event"]
@@ -349,9 +484,7 @@ class AndikaComponent(AudioStreamComponent):
         ) as websocket:
           self._websocket = websocket
           retry_delay = 2.0
-          logger.info(
-            f"Connected to Oremi Andika server at {self.settings.andika_host}:{self.settings.andika_port}"
-          )
+          logger.info(f"Connected to Oremi Andika server at {self.settings.andika_host}:{self.settings.andika_port}")
 
           transcriber = AndikaTranscriber(
             self.settings,
@@ -399,3 +532,23 @@ class AndikaComponent(AudioStreamComponent):
         break
 
       retry_delay = min(retry_delay * 2, 60.0)
+
+  async def _run_whisper(self, mqtt_client: MQTTClient, shared_resources: dict[str, Any]) -> None:
+    active_stream_container = shared_resources["active_stream_container"]
+    self._wakeword_event = shared_resources["wakeword_event"]
+    self._conversation_event_handler = shared_resources.get("conversation_event_handler")
+    self._handle_task_done = shared_resources["handle_task_done"]
+    audio_stream = active_stream_container["stream"]
+
+    if audio_stream is None:
+      logger.warning("whisper.cpp transcription started without an active microphone")
+    else:
+      self.audio_listener = WhisperCppListener(
+        self.settings,
+        mqtt_client,
+        audio_stream,
+        self._transcription_complete_event,
+        self._conversation_event_handler,
+      )
+
+    await self._activate_on_wakeword(active_stream_container, shared_resources["device_state"])

@@ -47,6 +47,7 @@ dev = [
   "autopep8>=2.3.2",
   "bandit>=1.8.3",
   "classify-imports>=4.2.0",
+  "graphifyy>=0.8.46",
   "pylint>=3.3.7",
   "pyroma>=4.2",
   "pytest>=8.3.5",

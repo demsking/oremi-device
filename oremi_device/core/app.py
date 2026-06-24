@@ -100,8 +100,13 @@ async def start() -> None:
   logger.info(f"Configuration Node ID: {settings.node_id}")
   logger.info(f"Configuration Ohunerin Host: {settings.ohunerin_host}")
   logger.info(f"Configuration Ohunerin Port: {settings.ohunerin_port}")
-  logger.info(f"Configuration Andika Host: {settings.andika_host}")
-  logger.info(f"Configuration Andika Port: {settings.andika_port}")
+  logger.info(f"Configuration Transcription Backend: {settings.transcription_backend}")
+
+  if settings.transcription_backend == "andika":
+    logger.info(f"Configuration Andika Host: {settings.andika_host}")
+    logger.info(f"Configuration Andika Port: {settings.andika_port}")
+  else:
+    logger.info(f"Configuration whisper.cpp URL: {settings.whisper_url}")
 
   if settings.izwi_url:
     logger.info(f"Configuration Izwi URL: {settings.izwi_url}")

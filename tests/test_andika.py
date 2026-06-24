@@ -14,15 +14,21 @@
 # ==============================================================================
 import asyncio
 import json
+import wave
+from array import array
+from io import BytesIO
 from unittest.mock import ANY
+from unittest.mock import AsyncMock
 from unittest.mock import MagicMock
 from unittest.mock import patch
 
+import httpx
 import pytest
 
 from oremi_device.components import COMPONENTS
 from oremi_device.components.andika import AndikaComponent
 from oremi_device.components.andika import AndikaTranscriber
+from oremi_device.components.andika import WhisperCppListener
 from oremi_device.core.models import AndikaConfig
 from oremi_device.core.settings import DeviceSettings
 
@@ -117,6 +123,22 @@ async def test_andika_transcriber_publishes_final_results() -> None:
   )
   assert transcription_complete_event.is_set()
   assert conversation_events == ["processing"]
+
+
+@pytest.mark.asyncio
+async def test_andika_transcriber_trims_final_text() -> None:
+  mqtt_client = MagicMock()
+  websocket = AsyncMessages([json.dumps({"text": " bonjour oremi\n", "confidence": 0.9})])
+
+  await AndikaTranscriber(_make_settings(), mqtt_client, websocket).transcribing()
+
+  mqtt_client.publish_event.assert_called_once_with(
+    "transcription/result",
+    json.dumps({"text": "bonjour oremi", "confidence": 0.9}),
+    qos=1,
+    retain=False,
+    props=ANY,
+  )
 
 
 @pytest.mark.asyncio
@@ -408,3 +430,136 @@ def test_andika_get_supported_models_returns_empty_on_error() -> None:
 
   with patch("oremi_device.components.andika.httpx.get", side_effect=RuntimeError("offline")):
     assert component._get_supported_models() == []  # noqa: SLF001
+
+
+class WhisperAudioStub:
+  def __init__(self, chunks: list[bytes]) -> None:
+    self.chunks = asyncio.Queue()
+    self.samplerate = 16000
+    self.device_name = "Test microphone"
+    self.subscribed_queue = None
+
+    for chunk in chunks:
+      self.chunks.put_nowait(chunk)
+
+  async def __aenter__(self):
+    return self
+
+  async def __aexit__(self, exc_type, exc, traceback):
+    return None
+
+  def subscribe(self):
+    self.subscribed_queue = self.chunks
+    return self.chunks
+
+  def unsubscribe(self, queue) -> None:
+    assert queue is self.subscribed_queue
+
+  def is_active(self) -> bool:
+    return True
+
+  async def data(self, queue):
+    return await queue.get()
+
+
+@pytest.mark.asyncio
+async def test_whisper_listener_stops_after_post_speech_silence() -> None:
+  speech = array("h", [1000] * 8000).tobytes()
+  silence = array("h", [0] * 8000).tobytes()
+  listener = WhisperCppListener(
+    _make_settings(
+      transcription_backend="whisper.cpp",
+      whisper_url="http://whisper:8080",
+      whisper_silence_duration=1,
+    ),
+    MagicMock(),
+    WhisperAudioStub([speech, silence, silence]),
+    asyncio.Event(),
+  )
+
+  captured = await listener._capture()  # noqa: SLF001
+
+  assert captured == speech + silence + silence
+
+
+@pytest.mark.asyncio
+async def test_whisper_listener_posts_wav_and_publishes_result() -> None:
+  settings = _make_settings(
+    transcription_backend="whisper.cpp",
+    whisper_url="http://whisper:8080",
+  )
+  mqtt_client = MagicMock()
+  complete = asyncio.Event()
+  events = []
+  response = MagicMock()
+  response.json.return_value = {"text": " bonjour oremi\n"}
+  client = AsyncMock()
+  client.post.return_value = response
+  client_context = AsyncMock()
+  client_context.__aenter__.return_value = client
+
+  async def handle_event(event: str) -> None:
+    events.append(event)
+
+  listener = WhisperCppListener(
+    settings,
+    mqtt_client,
+    WhisperAudioStub([]),
+    complete,
+    handle_event,
+  )
+  listener._capture = AsyncMock(return_value=array("h", [1000] * 160).tobytes())  # type: ignore[method-assign]
+
+  with patch("oremi_device.components.andika.httpx.AsyncClient", return_value=client_context):
+    await listener.listening()
+
+  response.raise_for_status.assert_called_once()
+  _, kwargs = client.post.call_args
+  assert client.post.call_args.args == ("http://whisper:8080/inference",)
+  assert kwargs["data"] == {"language": "fr", "response_format": "json"}
+  wav_data = kwargs["files"]["file"][1]
+
+  with wave.open(BytesIO(wav_data), "rb") as wav_file:
+    assert wav_file.getnchannels() == 1
+    assert wav_file.getsampwidth() == 2
+    assert wav_file.getframerate() == 16000
+
+  mqtt_client.publish_event.assert_called_once_with(
+    "transcription/result",
+    json.dumps({"text": "bonjour oremi"}),
+    qos=1,
+    retain=False,
+    props=ANY,
+  )
+  assert events == ["processing"]
+  assert complete.is_set()
+
+
+@pytest.mark.asyncio
+async def test_whisper_listener_cancels_conversation_on_request_error() -> None:
+  mqtt_client = MagicMock()
+  complete = asyncio.Event()
+  events = []
+  client = AsyncMock()
+  client.post.side_effect = httpx.ConnectError("offline")
+  client_context = AsyncMock()
+  client_context.__aenter__.return_value = client
+
+  async def handle_event(event: str) -> None:
+    events.append(event)
+
+  listener = WhisperCppListener(
+    _make_settings(transcription_backend="whisper.cpp", whisper_url="http://whisper:8080"),
+    mqtt_client,
+    WhisperAudioStub([]),
+    complete,
+    handle_event,
+  )
+  listener._capture = AsyncMock(return_value=array("h", [1000] * 160).tobytes())  # type: ignore[method-assign]
+
+  with patch("oremi_device.components.andika.httpx.AsyncClient", return_value=client_context):
+    await listener.listening()
+
+  assert events == ["processing", "cancelled"]
+  assert complete.is_set()
+  mqtt_client.publish_event.assert_not_called()

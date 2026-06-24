@@ -13,9 +13,104 @@ preferred device becomes available again.
 
 - Python 3.12, or Docker
 - An MQTT broker
-- Running Ohunerin and Andika servers
+- Running Ohunerin and either Andika or whisper.cpp
 - A microphone unless `OREMI_DEVICE_MICROPHONE_ENABLED=false` is set
 - Optional speaker hardware for the MQTT speaker controls
+
+## Deploying whisper.cpp with Docker
+
+The official [`ghcr.io/ggml-org/whisper.cpp:main`](https://github.com/ggml-org/whisper.cpp#docker)
+image provides local, CPU-based Whisper transcription. Keep downloaded models
+in a host directory so container replacement does not download them again:
+
+```bash
+mkdir -p whisper/models whisper/audios
+
+# English-only model
+docker run --rm \
+  -v "$(pwd)/whisper/models:/models" \
+  ghcr.io/ggml-org/whisper.cpp:main \
+  "./models/download-ggml-model.sh base.en /models"
+
+# Multilingual model used for French
+docker run --rm \
+  -v "$(pwd)/whisper/models:/models" \
+  ghcr.io/ggml-org/whisper.cpp:main \
+  "./models/download-ggml-model.sh base /models"
+```
+
+`base.en` is optimized for English only. French requires the multilingual
+`base` model; a model whose name ends in `.en` must not be used for French.
+
+### Running English and French servers
+
+Each `whisper-server` process loads one model. Run two containers when both
+languages must be available:
+
+```bash
+# English: http://localhost:8080
+docker run -d --name whisper-en --restart unless-stopped \
+  -p 8080:8080 \
+  -v "$(pwd)/whisper/models:/models:ro" \
+  ghcr.io/ggml-org/whisper.cpp:main \
+  "whisper-server --host 0.0.0.0 --port 8080 -m /models/ggml-base.en.bin -l en"
+
+# French: http://localhost:8081
+docker run -d --name whisper-fr --restart unless-stopped \
+  -p 8081:8080 \
+  -v "$(pwd)/whisper/models:/models:ro" \
+  ghcr.io/ggml-org/whisper.cpp:main \
+  "whisper-server --host 0.0.0.0 --port 8080 -m /models/ggml-base.bin -l fr"
+```
+
+The server must bind to `0.0.0.0` inside its container. Binding it to
+`127.0.0.1` makes it unreachable through Docker's published port. Do not expose
+these unauthenticated HTTP endpoints to an untrusted network.
+
+Submit an audio file to either server's `/inference` endpoint:
+
+```bash
+curl --fail --form "file=@whisper/audios/input.wav" \
+  --form "response_format=json" http://localhost:8080/inference
+
+curl --fail --form "file=@whisper/audios/input.wav" \
+  --form "response_format=json" http://localhost:8081/inference
+```
+
+The stock whisper.cpp server accepts complete audio files over HTTP rather than
+Andika's streaming WebSocket protocol. Select Oremi Device's native HTTP adapter
+and point it at the server for the active language:
+
+```dotenv
+OREMI_DEVICE_TRANSCRIPTION_BACKEND=whisper.cpp
+OREMI_DEVICE_WHISPER_URL=http://localhost:8080
+OREMI_DEVICE_LANGUAGE=en
+```
+
+For French, use `http://localhost:8081` and `OREMI_DEVICE_LANGUAGE=fr` with the
+two-server example above. When Oremi Device itself runs in Docker, replace
+`localhost` with the whisper.cpp container name on a shared Docker network, or
+use the host address with host networking.
+
+After a wake word, Oremi Device records until it observes
+`OREMI_DEVICE_WHISPER_SILENCE_DURATION` seconds below
+`OREMI_DEVICE_WHISPER_SILENCE_THRESHOLD`, or until
+`OREMI_DEVICE_CONVERSATION_TIMEOUT` expires. It then submits an in-memory WAV to
+`/inference` and publishes the resulting text to the same MQTT topic used by
+Andika. whisper.cpp provides final results only, so no
+`transcription/partial` messages are published with this backend.
+
+### Benchmarking
+
+Download `small.en` with the model command above, replacing `base.en` with
+`small.en`, then benchmark it with four threads:
+
+```bash
+docker run --rm \
+  -v "$(pwd)/whisper/models:/models" \
+  ghcr.io/ggml-org/whisper.cpp:main \
+  "whisper-bench -m /models/ggml-small.en.bin -t 4"
+```
 
 ## Installation
 
@@ -95,33 +190,43 @@ take precedence over `.env` values.
 | ---------------------------- | -------------------------------------------------- |
 | `OREMI_DEVICE_NODE_ID`       | Unique node identifier used in MQTT device topics. |
 | `OREMI_DEVICE_OHUNERIN_HOST` | Ohunerin server host or IP address.                |
-| `OREMI_DEVICE_ANDIKA_HOST`   | Andika server host or IP address.                  |
 | `OREMI_DEVICE_MQTT_BROKER`   | MQTT broker host or IP address.                    |
+
+The transcription backend has one additional required setting:
+
+| Backend       | Required environment variable | Description                       |
+| ------------- | ----------------------------- | --------------------------------- |
+| `andika`      | `OREMI_DEVICE_ANDIKA_HOST`    | Andika server host or IP address. |
+| `whisper.cpp` | `OREMI_DEVICE_WHISPER_URL`    | whisper.cpp HTTP server base URL. |
 
 ### Optional Settings
 
-| Environment variable                   | Default                    | Description                                                                   |
-| -------------------------------------- | -------------------------- | ----------------------------------------------------------------------------- |
-| `OREMI_DEVICE_LANGUAGE`                | `fr`                       | Processing language; supported values are `fr` and `en`.                      |
-| `OREMI_DEVICE_MICROPHONE_DEVICE_INDEX` | Auto                       | Preferred microphone index.                                                   |
-| `OREMI_DEVICE_MICROPHONE_DEVICE`       | Auto                       | Preferred microphone name; takes precedence over the index.                   |
-| `OREMI_DEVICE_MICROPHONE_ENABLED`      | `true`                     | Enable microphone initialization and audio capture.                           |
-| `OREMI_DEVICE_SPEAKER_ENABLED`         | `true`                     | Enable speaker initialization and MQTT speaker controls.                      |
-| `OREMI_DEVICE_DELAY`                   | `3`                        | Sound-event cooldown in seconds and transcription message expiry interval.    |
-| `OREMI_DEVICE_CONVERSATION_TIMEOUT`    | `15`                       | Maximum seconds to wait for a final transcription after a wake word.          |
-| `OREMI_DEVICE_OHUNERIN_PORT`           | `5023`                     | Ohunerin server port.                                                         |
-| `OREMI_DEVICE_OHUNERIN_THRESHOLD`      | `0.65`                     | Minimum accepted Ohunerin confidence score.                                   |
-| `OREMI_DEVICE_ANDIKA_PORT`             | `5315`                     | Andika server port.                                                           |
-| `OREMI_DEVICE_ANDIKA_MODEL`            | `vosk-model-small-fr-0.22` | Vosk model identifier sent to Andika.                                         |
-| `OREMI_DEVICE_ANDIKA_SAMPLERATE`       | `16000`                    | Audio sample rate sent to Andika.                                             |
-| `OREMI_DEVICE_IZWI_URL`                | Unset                      | Izwi base URL. When unset, speech synthesis and voice discovery are disabled. |
-| `OREMI_DEVICE_CERT_FILE`               | Unset                      | CA certificate for TLS connections to Oremi services.                         |
-| `OREMI_DEVICE_MQTT_PORT`               | `1883`                     | MQTT broker port.                                                             |
-| `OREMI_DEVICE_MQTT_USERNAME`           | Unset                      | MQTT username.                                                                |
-| `OREMI_DEVICE_MQTT_PASSWORD`           | Unset                      | MQTT password.                                                                |
-| `OREMI_DEVICE_MQTT_TOPIC`              | `oremi/device`             | Base topic for events, availability, and controls.                            |
-| `OREMI_DEVICE_MQTT_DISCOVERY`          | `true`                     | Enable Home Assistant MQTT discovery.                                         |
-| `OREMI_DEVICE_MQTT_DISCOVERY_PREFIX`   | `homeassistant`            | Home Assistant discovery topic prefix.                                        |
+| Environment variable                     | Default                    | Description                                                                   |
+| ---------------------------------------- | -------------------------- | ----------------------------------------------------------------------------- |
+| `OREMI_DEVICE_LANGUAGE`                  | `fr`                       | Processing language; supported values are `fr` and `en`.                      |
+| `OREMI_DEVICE_MICROPHONE_DEVICE_INDEX`   | Auto                       | Preferred microphone index.                                                   |
+| `OREMI_DEVICE_MICROPHONE_DEVICE`         | Auto                       | Preferred microphone name; takes precedence over the index.                   |
+| `OREMI_DEVICE_MICROPHONE_ENABLED`        | `true`                     | Enable microphone initialization and audio capture.                           |
+| `OREMI_DEVICE_SPEAKER_ENABLED`           | `true`                     | Enable speaker initialization and MQTT speaker controls.                      |
+| `OREMI_DEVICE_DELAY`                     | `3`                        | Sound-event cooldown in seconds and transcription message expiry interval.    |
+| `OREMI_DEVICE_CONVERSATION_TIMEOUT`      | `15`                       | Maximum seconds to wait for a final transcription after a wake word.          |
+| `OREMI_DEVICE_TRANSCRIPTION_BACKEND`     | `andika`                   | Transcriber: `andika` or `whisper.cpp`.                                       |
+| `OREMI_DEVICE_OHUNERIN_PORT`             | `5023`                     | Ohunerin server port.                                                         |
+| `OREMI_DEVICE_OHUNERIN_THRESHOLD`        | `0.65`                     | Minimum accepted Ohunerin confidence score.                                   |
+| `OREMI_DEVICE_ANDIKA_PORT`               | `5315`                     | Andika server port.                                                           |
+| `OREMI_DEVICE_ANDIKA_MODEL`              | `vosk-model-small-fr-0.22` | Vosk model identifier sent to Andika.                                         |
+| `OREMI_DEVICE_ANDIKA_SAMPLERATE`         | `16000`                    | Audio sample rate sent to Andika.                                             |
+| `OREMI_DEVICE_WHISPER_URL`               | Unset                      | whisper.cpp server URL; required for the `whisper.cpp` backend.               |
+| `OREMI_DEVICE_WHISPER_SILENCE_THRESHOLD` | `500`                      | PCM RMS level above which whisper.cpp capture counts as speech.               |
+| `OREMI_DEVICE_WHISPER_SILENCE_DURATION`  | `1.0`                      | Seconds of silence that finish a whisper.cpp utterance.                       |
+| `OREMI_DEVICE_IZWI_URL`                  | Unset                      | Izwi base URL. When unset, speech synthesis and voice discovery are disabled. |
+| `OREMI_DEVICE_CERT_FILE`                 | Unset                      | CA certificate for TLS connections to Oremi services.                         |
+| `OREMI_DEVICE_MQTT_PORT`                 | `1883`                     | MQTT broker port.                                                             |
+| `OREMI_DEVICE_MQTT_USERNAME`             | Unset                      | MQTT username.                                                                |
+| `OREMI_DEVICE_MQTT_PASSWORD`             | Unset                      | MQTT password.                                                                |
+| `OREMI_DEVICE_MQTT_TOPIC`                | `oremi/device`             | Base topic for events, availability, and controls.                            |
+| `OREMI_DEVICE_MQTT_DISCOVERY`            | `true`                     | Enable Home Assistant MQTT discovery.                                         |
+| `OREMI_DEVICE_MQTT_DISCOVERY_PREFIX`     | `homeassistant`            | Home Assistant discovery topic prefix.                                        |
 
 Positive numeric values and valid port ranges are checked at startup. Boolean
 values accept standard forms such as `true` and `false`. For example, a `.env`
@@ -183,7 +288,7 @@ node prefix.
 | `event`                 | JSON detection event | Wake words and ambient sounds, distinguished by the payload's `type` field.                                |
 | `transcription/partial` | JSON transcription   | Non-retained partial Andika result, QoS 1.                                                                 |
 | `transcription/result`  | JSON transcription   | Non-retained final Andika result, QoS 1. This is also the Home Assistant transcription sensor state topic. |
-| `conversation/state`    | UTF-8 state           | Retained lifecycle state: `idle`, `listening`, `processing`, or `speaking`.                                |
+| `conversation/state`    | UTF-8 state          | Retained lifecycle state: `idle`, `listening`, `processing`, or `speaking`.                                |
 
 The `event` topic carries the detected-sound model for both wake words and
 ambient sounds:
@@ -247,12 +352,12 @@ A final response is published as:
 
 The retained `conversation/state` topic exposes the interaction lifecycle:
 
-| State | Meaning | Sound cue |
-| ----- | ------- | --------- |
-| `idle` | No conversation is active. | Cancellation cue when listening times out or produces no usable speech. |
-| `listening` | A wake word was detected and Andika is capturing the request. | Listening confirmation cue. |
-| `processing` | A final transcription was published and the device is waiting for NLP. | Thinking cue. |
-| `speaking` | Izwi speech is playing for a response, announcement, alarm, or reminder. | Announcements first play a notification cue. |
+| State        | Meaning                                                                  | Sound cue                                                               |
+| ------------ | ------------------------------------------------------------------------ | ----------------------------------------------------------------------- |
+| `idle`       | No conversation is active.                                               | Cancellation cue when listening times out or produces no usable speech. |
+| `listening`  | A wake word was detected and Andika is capturing the request.            | Listening confirmation cue.                                             |
+| `processing` | A final transcription was published and the device is waiting for NLP.   | Thinking cue.                                                           |
+| `speaking`   | Izwi speech is playing for a response, announcement, alarm, or reminder. | Announcements first play a notification cue.                            |
 
 A normal spoken interaction follows:
 
@@ -305,20 +410,20 @@ required. Unknown command types and unknown fields are rejected.
 
 The supported commands are:
 
-| Type               | Required fields       | Optional fields           | Behavior                                                                 |
-| ------------------ | --------------------- | ------------------------- | ------------------------------------------------------------------------ |
-| `speak`            | `text`                | `voice`                   | Synthesizes a conversational response while ducking active media.        |
-| `announce`         | `text`                | `voice`                   | Synthesizes a foreground announcement while ducking active media.        |
-| `play`             | `url`                 | None                      | Interrupts current playback and plays an HTTP or HTTPS media URL.        |
-| `pause`            | None                  | None                      | Pauses current playback.                                                 |
-| `resume`           | None                  | None                      | Resumes paused playback.                                                 |
-| `stop`             | None                  | None                      | Stops current playback.                                                  |
-| `alarm`            | `id`, `at`            | `message`, `url`, `voice` | Schedules an announcement, followed by an optional alarm media URL.      |
-| `reminder`         | `id`, `at`, `message` | `voice`                   | Schedules a spoken announcement.                                         |
-| `cancel_scheduled` | `id`                  | None                      | Cancels an alarm or reminder with the matching ID.                       |
-| `set_volume`       | `volume`              | None                      | Sets speaker volume to an integer percentage from `0` to `100`.          |
-| `mute`             | `muted`               | None                      | Mutes when `true` and unmutes when `false`.                              |
-| `set_voice`        | `voice`               | None                      | Selects a voice available for the active device language.                |
+| Type               | Required fields       | Optional fields           | Behavior                                                            |
+| ------------------ | --------------------- | ------------------------- | ------------------------------------------------------------------- |
+| `speak`            | `text`                | `voice`                   | Synthesizes a conversational response while ducking active media.   |
+| `announce`         | `text`                | `voice`                   | Synthesizes a foreground announcement while ducking active media.   |
+| `play`             | `url`                 | None                      | Interrupts current playback and plays an HTTP or HTTPS media URL.   |
+| `pause`            | None                  | None                      | Pauses current playback.                                            |
+| `resume`           | None                  | None                      | Resumes paused playback.                                            |
+| `stop`             | None                  | None                      | Stops current playback.                                             |
+| `alarm`            | `id`, `at`            | `message`, `url`, `voice` | Schedules an announcement, followed by an optional alarm media URL. |
+| `reminder`         | `id`, `at`, `message` | `voice`                   | Schedules a spoken announcement.                                    |
+| `cancel_scheduled` | `id`                  | None                      | Cancels an alarm or reminder with the matching ID.                  |
+| `set_volume`       | `volume`              | None                      | Sets speaker volume to an integer percentage from `0` to `100`.     |
+| `mute`             | `muted`               | None                      | Mutes when `true` and unmutes when `false`.                         |
+| `set_voice`        | `voice`               | None                      | Selects a voice available for the active device language.           |
 
 `voice` defaults to the active voice. A command-specific voice must exist in
 Izwi's voice list. The Home Assistant voice selector and `set_voice` only accept

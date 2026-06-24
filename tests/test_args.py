@@ -39,6 +39,8 @@ def test_settings_defaults() -> None:
   assert settings.ohunerin_threshold == 0.25
   assert settings.andika_model == "vosk-model-small-fr-0.22"
   assert settings.andika_samplerate == 16000
+  assert settings.transcription_backend == "andika"
+  assert settings.whisper_url is None
   assert settings.izwi_url is None
 
 
@@ -79,6 +81,31 @@ def test_invalid_settings_are_rejected(field: str, value: object) -> None:
     DeviceSettings(_env_file=None, **REQUIRED_SETTINGS, **{field: value})
 
 
+def test_whisper_backend_does_not_require_andika_host() -> None:
+  settings = DeviceSettings(
+    _env_file=None,
+    node_id="test-node",
+    ohunerin_host="localhost",
+    mqtt_broker="localhost",
+    transcription_backend="whisper.cpp",
+    whisper_url="http://whisper:8080",
+  )
+
+  assert settings.andika_host is None
+  assert str(settings.whisper_url) == "http://whisper:8080/"
+
+
+def test_whisper_backend_requires_url() -> None:
+  with pytest.raises(ValidationError, match="OREMI_DEVICE_WHISPER_URL is required"):
+    DeviceSettings(
+      _env_file=None,
+      node_id="test-node",
+      ohunerin_host="localhost",
+      mqtt_broker="localhost",
+      transcription_backend="whisper.cpp",
+    )
+
+
 def test_settings_errors_are_formatted_without_technical_details(monkeypatch: pytest.MonkeyPatch) -> None:
   for name in tuple(os.environ):
     if name.startswith("OREMI_DEVICE_"):
@@ -92,7 +119,6 @@ def test_settings_errors_are_formatted_without_technical_details(monkeypatch: py
   assert issues == [
     "OREMI_DEVICE_LANGUAGE must be one of: fr, en",
     "OREMI_DEVICE_OHUNERIN_HOST is required",
-    "OREMI_DEVICE_ANDIKA_HOST is required",
     "OREMI_DEVICE_IZWI_URL must be a valid HTTP or HTTPS URL",
     "OREMI_DEVICE_NODE_ID is required",
     "OREMI_DEVICE_MQTT_BROKER is required",

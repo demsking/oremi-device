@@ -12,7 +12,7 @@ services:
     command: sleep infinity
 
   detector:
-    image: demsking/oremi-ohunerin
+    image: demsking/oremi-ohunerin:4.0.0b4
     ports:
       - 45023:5023
 

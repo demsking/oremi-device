@@ -16,6 +16,7 @@ from typing import Literal
 
 from pydantic import AnyHttpUrl
 from pydantic import Field
+from pydantic import model_validator
 from pydantic import ValidationError
 from pydantic_settings import BaseSettings
 from pydantic_settings import SettingsConfigDict
@@ -42,6 +43,9 @@ def format_settings_errors(error: ValidationError) -> list[str]:
     error_type = detail.get("type")
     context = detail.get("ctx", {})
 
+    if not location and error_type == "value_error":
+      issues.append(str(context.get("error", "Invalid transcription backend configuration")))
+      continue
     if error_type == "missing":
       message = "is required"
     elif field == "language" and error_type == "literal_error":
@@ -87,10 +91,14 @@ class DeviceSettings(BaseSettings):
   ohunerin_port: int = Field(default=5023, gt=0, le=65535)
   ohunerin_threshold: float = Field(default=0.25, gt=0)
 
-  andika_host: str
+  transcription_backend: Literal["andika", "whisper.cpp"] = "andika"
+  andika_host: str | None = None
   andika_port: int = Field(default=5315, gt=0, le=65535)
   andika_model: AndikaModel = "vosk-model-small-fr-0.22"
   andika_samplerate: int = Field(default=16000, gt=0)
+  whisper_url: AnyHttpUrl | None = None
+  whisper_silence_threshold: int = Field(default=500, ge=0)
+  whisper_silence_duration: float = Field(default=1.0, gt=0)
 
   izwi_url: AnyHttpUrl | None = None
 
@@ -104,6 +112,16 @@ class DeviceSettings(BaseSettings):
   mqtt_topic: str = "oremi/device"
   mqtt_discovery: bool = True
   mqtt_discovery_prefix: str = "homeassistant"
+
+  @model_validator(mode="after")
+  def validate_transcription_backend(self) -> "DeviceSettings":
+    if self.transcription_backend == "andika" and not self.andika_host:
+      raise ValueError("OREMI_DEVICE_ANDIKA_HOST is required when using the Andika transcription backend")
+
+    if self.transcription_backend == "whisper.cpp" and not self.whisper_url:
+      raise ValueError("OREMI_DEVICE_WHISPER_URL is required when using the whisper.cpp transcription backend")
+
+    return self
 
 
 def load_settings() -> DeviceSettings:  # type: ignore
