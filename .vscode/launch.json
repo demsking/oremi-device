@@ -2,13 +2,28 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "Debug",
+      "name": "Debug with Andika",
       "type": "debugpy",
       "request": "launch",
       "module": "oremi_device",
       "cwd": "${workspaceFolder}",
       "envFile": "${workspaceFolder}/.env",
-      "justMyCode": true
+      "justMyCode": true,
+      "env": {
+        "OREMI_DEVICE_TRANSCRIPTION_BACKEND": "andika"
+      }
+    },
+    {
+      "name": "Debug with whisper.cpp",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "oremi_device",
+      "cwd": "${workspaceFolder}",
+      "envFile": "${workspaceFolder}/.env",
+      "justMyCode": true,
+      "env": {
+        "OREMI_DEVICE_TRANSCRIPTION_BACKEND": "whisper.cpp"
+      }
     }
   ]
 }
