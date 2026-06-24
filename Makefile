@@ -2,7 +2,7 @@ APP_NAME := $(shell python metadata.py name)
 APP_VERSION := $(shell python metadata.py version)
 IMAGE_NAME := demsking/$(APP_NAME)
 
-COMPOSE_SERVICES := andika detector mosquitto
+COMPOSE_SERVICES := andika detector mosquitto whisper whisper-model
 
 .PHONY: all clean build dist
 

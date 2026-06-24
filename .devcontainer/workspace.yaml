@@ -29,4 +29,24 @@ services:
       - 41883:1883
     volumes:
       - ../mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf
+
+  whisper-model:
+    image: ghcr.io/ggml-org/whisper.cpp:main
+    volumes:
+      - whisper-models:/models
+    command:
+      - ./models/download-ggml-model.sh base /models
+
+  whisper:
+    image: ghcr.io/ggml-org/whisper.cpp:main
+    restart: unless-stopped
+    volumes:
+      - whisper-models:/models:ro
+    command:
+      - whisper-server --host 0.0.0.0 --port 8080 -m /models/ggml-base.bin
+    depends_on:
+      - whisper-model
+
+volumes:
+  whisper-models:
 ...

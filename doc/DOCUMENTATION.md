@@ -203,7 +203,8 @@ services:
     image: ghcr.io/ggml-org/whisper.cpp:main
     volumes:
       - whisper-models:/models
-    command: './models/download-ggml-model.sh base /models'
+    command:
+      - ./models/download-ggml-model.sh base /models
 
   whisper:
     image: ghcr.io/ggml-org/whisper.cpp:main
@@ -212,7 +213,8 @@ services:
       - '8080:8080'
     volumes:
       - whisper-models:/models:ro
-    command: 'whisper-server --host 0.0.0.0 --port 8080 -m /models/ggml-base.bin'
+    command:
+      - whisper-server --host 0.0.0.0 --port 8080 -m /models/ggml-base.bin
     depends_on:
       whisper-model:
         condition: service_completed_successfully
