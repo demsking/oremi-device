@@ -227,8 +227,8 @@ class MQTTClient:  # pylint: disable=too-many-public-methods
         Defaults to ``['fr', 'en']`` when not provided.
       microphone_enabled: Whether microphone controls should be advertised.
       speaker_enabled: Whether speaker controls should be advertised.
-      voices: Izwi voices matching the active device language.
-      current_voice: Currently selected Izwi voice.
+      voices: Speech synthesis voices matching the active device language.
+      current_voice: Currently selected speech synthesis voice.
     """
     if not self.discovery_prefix:
       return

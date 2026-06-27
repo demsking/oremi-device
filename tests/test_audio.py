@@ -86,10 +86,10 @@ async def test_main_audio_device_error() -> None:
     speaker_enabled=True,
   )
 
-  with patch('oremi_device.load_settings', return_value=fake_settings), \
-       patch('oremi_device.Audio', side_effect=AudioDeviceError("No device")), \
+  with patch('oremi_device.core.app.load_settings', return_value=fake_settings), \
+       patch('oremi_device.core.app.Audio', side_effect=AudioDeviceError("No device")), \
        patch('sys.exit', side_effect=SystemExit(1)) as mock_exit, \
-       patch('oremi_device.MQTTClient') as mock_mqtt_cls:
+       patch('oremi_device.core.app.MQTTClient') as mock_mqtt_cls:
     mock_mqtt_cls.return_value.connect = MagicMock()
     mock_mqtt_cls.return_value.set_availability = MagicMock()
     mock_mqtt_cls.return_value.client.connect_callback = MagicMock(return_value=lambda f: f)

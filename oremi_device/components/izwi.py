@@ -14,24 +14,11 @@
 # ==============================================================================
 import json
 import urllib.parse
-from dataclasses import dataclass
-from typing import Literal
 
 import httpx
-from pydantic import BaseModel
 
-
-class IzwiVoice(BaseModel):
-  name: str
-  description: str
-  primary_language: str
-
-
-@dataclass(frozen=True)
-class IzwiSynthesisRequest:
-  url: str
-  method: Literal["GET", "POST"]
-  body: str | None = None
+from ..core.tts import TTSSynthesisRequest
+from ..core.tts import TTSVoice
 
 
 class IzwiClient:
@@ -41,25 +28,19 @@ class IzwiClient:
     self.base_url = url.rstrip("/")
     self.ca_file = ca_file
 
-  async def get_voices(self) -> list[IzwiVoice]:
+  async def get_voices(self) -> list[TTSVoice]:
     async with httpx.AsyncClient(verify=self.ca_file or True) as client:
       response = await client.get(f"{self.base_url}/api/voices")
       response.raise_for_status()
-      return [IzwiVoice.model_validate(voice) for voice in response.json()]
+      return [TTSVoice.model_validate(voice) for voice in response.json()]
 
-  def synthesize_request(self, text: str, voice: str) -> IzwiSynthesisRequest:
+  def synthesize_request(self, text: str, voice: str) -> TTSSynthesisRequest:
     query = urllib.parse.urlencode({"voice": voice, "input": text})
     endpoint = f"{self.base_url}/api/synthesize/stream"
     url = f"{endpoint}?{query}"
 
     if len(url) <= self.MAX_GET_URL_LENGTH:
-      return IzwiSynthesisRequest(url=url, method="GET")
+      return TTSSynthesisRequest(url=url, method="GET")
 
     body = json.dumps({"voice": voice, "input": text})
-    return IzwiSynthesisRequest(url=endpoint, method="POST", body=body)
-
-
-def voices_for_language(voices: list[IzwiVoice], language: str) -> list[IzwiVoice]:
-  language_names = {"en": "english", "fr": "french"}
-  expected = language_names.get(language, language).lower()
-  return [voice for voice in voices if voice.primary_language.strip().lower().startswith(expected)]
+    return TTSSynthesisRequest(url=endpoint, method="POST", body=body)

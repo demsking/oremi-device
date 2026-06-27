@@ -41,7 +41,9 @@ def test_settings_defaults() -> None:
   assert settings.andika_samplerate == 16000
   assert settings.transcription_backend == "andika"
   assert settings.whisper_url is None
+  assert settings.tts_backend == "izwi"
   assert settings.izwi_url is None
+  assert settings.edge_tts_url is None
 
 
 def test_settings_are_loaded_from_environment(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -53,7 +55,10 @@ def test_settings_are_loaded_from_environment(monkeypatch: pytest.MonkeyPatch) -
   monkeypatch.setenv("OREMI_DEVICE_MICROPHONE_DEVICE", "USB Microphone")
   monkeypatch.setenv("OREMI_DEVICE_MICROPHONE_DEVICE_INDEX", "2")
   monkeypatch.setenv("OREMI_DEVICE_ANDIKA_SAMPLERATE", "48000")
-  monkeypatch.setenv("OREMI_DEVICE_IZWI_URL", "http://izwi:5215")
+  monkeypatch.setenv("OREMI_DEVICE_TTS_BACKEND", "edge-tts")
+  monkeypatch.setenv("OREMI_DEVICE_EDGE_TTS_URL", "http://edge-tts:5050")
+  monkeypatch.setenv("OREMI_DEVICE_EDGE_TTS_API_KEY", "test-key")
+  monkeypatch.setenv("OREMI_DEVICE_EDGE_TTS_LOCALE", "fr-FR")
 
   settings = DeviceSettings(_env_file=None)
 
@@ -62,7 +67,10 @@ def test_settings_are_loaded_from_environment(monkeypatch: pytest.MonkeyPatch) -
   assert settings.microphone_device == "USB Microphone"
   assert settings.microphone_device_index == 2
   assert settings.andika_samplerate == 48000
-  assert str(settings.izwi_url) == "http://izwi:5215/"
+  assert settings.tts_backend == "edge-tts"
+  assert str(settings.edge_tts_url) == "http://edge-tts:5050/"
+  assert settings.edge_tts_api_key == "test-key"
+  assert settings.edge_tts_locale == "fr-FR"
 
 
 @pytest.mark.parametrize(
@@ -74,6 +82,9 @@ def test_settings_are_loaded_from_environment(monkeypatch: pytest.MonkeyPatch) -
     ("andika_model", "unsupported"),
     ("andika_samplerate", 0),
     ("izwi_url", "not-a-url"),
+    ("edge_tts_url", "not-a-url"),
+    ("edge_tts_speed", 0.0),
+    ("edge_tts_response_format", "ogg"),
   ],
 )
 def test_invalid_settings_are_rejected(field: str, value: object) -> None:
@@ -104,6 +115,11 @@ def test_whisper_backend_requires_url() -> None:
       mqtt_broker="localhost",
       transcription_backend="whisper.cpp",
     )
+
+
+def test_edge_tts_backend_requires_url() -> None:
+  with pytest.raises(ValidationError, match="OREMI_DEVICE_EDGE_TTS_URL is required"):
+    DeviceSettings(_env_file=None, **REQUIRED_SETTINGS, tts_backend="edge-tts")
 
 
 def test_settings_errors_are_formatted_without_technical_details(monkeypatch: pytest.MonkeyPatch) -> None:

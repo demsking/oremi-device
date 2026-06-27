@@ -27,9 +27,8 @@ from pydantic import ValidationError
 from ..components import COMPONENTS
 from ..components.base import AudioStreamComponent
 from ..components.base import Component
+from ..components.edge_tts import OpenAIEdgeTTSClient
 from ..components.izwi import IzwiClient
-from ..components.izwi import IzwiVoice
-from ..components.izwi import voices_for_language
 from ..utils.logger import logger
 from .audio import Audio
 from .audio import AudioDeviceError
@@ -56,6 +55,8 @@ from .settings import load_settings
 from .speaker import Speaker
 from .speaker import SpeakerDeviceError
 from .speaker import SpeakerPlaybackError
+from .tts import TTSVoice
+from .tts import voices_for_language
 
 
 def listening_task_failed(task: asyncio.Task) -> bool:
@@ -108,7 +109,9 @@ async def start() -> None:
   else:
     logger.info(f"Configuration whisper.cpp URL: {settings.whisper_url}")
 
-  if settings.izwi_url:
+  if settings.tts_backend == "edge-tts" and settings.edge_tts_url:
+    logger.info(f"Configuration Edge-TTS URL: {settings.edge_tts_url}")
+  elif settings.izwi_url:
     logger.info(f"Configuration Izwi URL: {settings.izwi_url}")
 
   logger.info(f"Configuration Secure Connection: {'Enabled' if settings.cert_file else 'Disabled'}")
@@ -175,17 +178,34 @@ async def start() -> None:
   else:
     logger.info("Speaker disabled — skipping speaker initialisation.")
 
-  izwi_client = IzwiClient(str(settings.izwi_url), ca_file=settings.cert_file) if settings.izwi_url else None
-  izwi_voices: list[IzwiVoice] = []
+  edge_tts_locale = settings.edge_tts_locale or {"fr": "fr-FR", "en": "en-US"}.get(settings.language)
+  tts_client: IzwiClient | OpenAIEdgeTTSClient | None
 
-  if izwi_client and speaker_enabled:
+  if settings.tts_backend == "edge-tts" and settings.edge_tts_url:
+    tts_client = OpenAIEdgeTTSClient(
+      str(settings.edge_tts_url),
+      api_key=settings.edge_tts_api_key,
+      ca_file=settings.cert_file,
+      locale=edge_tts_locale,
+      model=settings.edge_tts_model,
+      response_format=settings.edge_tts_response_format,
+      speed=settings.edge_tts_speed,
+    )
+  elif settings.izwi_url:
+    tts_client = IzwiClient(str(settings.izwi_url), ca_file=settings.cert_file)
+  else:
+    tts_client = None
+
+  tts_voices: list[TTSVoice] = []
+
+  if tts_client and speaker_enabled:
     try:
-      izwi_voices = await izwi_client.get_voices()
-      logger.info(f"Izwi voices: {', '.join(voice.name for voice in izwi_voices) or 'None'}")
+      tts_voices = await tts_client.get_voices()
+      logger.info(f"Speech synthesis voices: {', '.join(voice.name for voice in tts_voices) or 'None'}")
     except (ValidationError, OSError, ValueError) as error:
-      logger.warning(f"Failed to fetch Izwi voices: {error}")
+      logger.warning(f"Failed to fetch speech synthesis voices: {error}")
     except Exception as error:
-      logger.warning(f"Failed to connect to Izwi: {error}")
+      logger.warning(f"Failed to connect to speech synthesis backend: {error}")
 
   # ── MQTT client ──────────────────────────────────────────────────────────────
   mqtt_client = MQTTClient(
@@ -218,7 +238,7 @@ async def start() -> None:
     "volume": speaker.volume if speaker else 1.0,
   }
   language_state: dict = {"language": settings.language}
-  initial_voices = voices_for_language(izwi_voices, settings.language)
+  initial_voices = voices_for_language(tts_voices, settings.language)
   voice_state: dict = {"voice": initial_voices[0].name if initial_voices else ""}
   conversation_state: dict[str, ConversationState] = {"state": "idle"}
   playback_task: asyncio.Task | None = None
@@ -226,9 +246,15 @@ async def start() -> None:
   scheduled_tasks: dict[str, asyncio.Task] = {}
 
   def active_voice_names() -> list[str]:
-    return [voice.name for voice in voices_for_language(izwi_voices, language_state["language"])]
+    return [voice.name for voice in voices_for_language(tts_voices, language_state["language"])]
 
-  async def play_media(media_url: str, *, method: str = "GET", body: str | None = None) -> None:
+  async def play_media(
+    media_url: str,
+    *,
+    method: str = "GET",
+    body: str | None = None,
+    headers: dict[str, str] | None = None,
+  ) -> None:
     if speaker is None:
       logger.error("Cannot play media because no compatible speaker is available")
       return
@@ -236,13 +262,13 @@ async def start() -> None:
     mqtt_client.set_player_state("playing")
 
     try:
-      await asyncio.to_thread(speaker.play_url, media_url, method=method, body=body)
+      await asyncio.to_thread(speaker.play_url, media_url, method=method, body=body, headers=headers)
     except SpeakerPlaybackError as error:
       logger.error(f"Media playback failed: {error}")
     finally:
       mqtt_client.set_player_state("idle")
 
-  async def play_speech(media_url: str, *, method: str, body: str | None) -> None:
+  async def play_speech(media_url: str, *, method: str, body: str | None, headers: dict[str, str] | None) -> None:
     if speaker is None:
       logger.error("Cannot play speech because no compatible speaker is available")
       conversation_state["state"] = "idle"
@@ -258,6 +284,7 @@ async def start() -> None:
         media_url,
         method=method,
         body=body,
+        headers=headers,
         interrupt=False,
         duckable=False,
       ),
@@ -359,7 +386,7 @@ async def start() -> None:
       client.subscribe(mqtt_client.get_player_stop_command_topic())
       client.subscribe(mqtt_client.get_processing_result_topic())
 
-      if izwi_voices:
+      if tts_voices:
         client.subscribe(mqtt_client.get_voice_command_topic())
 
     mqtt_client.set_conversation_state(conversation_state["state"])
@@ -397,7 +424,7 @@ async def start() -> None:
           current_language=language_state["language"],
           microphone_enabled=microphone_enabled,
           speaker_enabled=speaker_enabled,
-          voices=active_voice_names() if izwi_client else None,
+          voices=active_voice_names() if tts_client else None,
           current_voice=voice_state["voice"],
         )
       except Exception as error:
@@ -500,16 +527,16 @@ async def start() -> None:
         logger.warning("Ignoring invalid NLP processing response")
         loop.call_soon_threadsafe(lambda: loop.create_task(handle_conversation_event("cancelled")))
 
-    elif izwi_voices and topic == mqtt_client.get_voice_command_topic():
+    elif tts_voices and topic == mqtt_client.get_voice_command_topic():
       try:
         voice = message.payload.decode("utf-8").strip()
 
         if voice in active_voice_names():
           loop.call_soon_threadsafe(voice_change_queue.put_nowait, voice)
         else:
-          logger.warning(f"Ignoring unavailable Izwi voice: {voice}")
+          logger.warning(f"Ignoring unavailable speech synthesis voice: {voice}")
       except UnicodeDecodeError as error:
-        logger.warning(f"Ignoring invalid Izwi voice command: {error}")
+        logger.warning(f"Ignoring invalid speech synthesis voice command: {error}")
 
   def handle_task_done(task: asyncio.Task) -> None:
     try:
@@ -595,7 +622,7 @@ async def start() -> None:
           current_language=language_state["language"],
           microphone_enabled=microphone_enabled,
           speaker_enabled=speaker_enabled,
-          voices=active_voice_names() if izwi_client else None,
+          voices=active_voice_names() if tts_client else None,
           current_voice=voice_state["voice"],
         )
 
@@ -727,7 +754,7 @@ async def start() -> None:
             current_language=language_state["language"],
             microphone_enabled=microphone_enabled,
             speaker_enabled=speaker_enabled,
-            voices=active_voice_names() if izwi_client else None,
+            voices=active_voice_names() if tts_client else None,
             current_voice=voice_state["voice"],
           )
         except Exception as error:
@@ -812,7 +839,7 @@ async def start() -> None:
 
       language_change_task = loop.create_task(language_change_queue.get())
       processing_task = loop.create_task(processing_queue.get()) if speaker_enabled else None
-      voice_change_task = loop.create_task(voice_change_queue.get()) if izwi_voices else None
+      voice_change_task = loop.create_task(voice_change_queue.get()) if tts_voices else None
       tasks.append(language_change_task)
 
       if processing_task is not None:
@@ -972,23 +999,23 @@ async def start() -> None:
             speech_task = None
 
           if isinstance(command, (SpeakCommand, AnnounceCommand)):
-            if izwi_client is None or not voice_state["voice"]:
-              logger.error("Cannot synthesize speech because no Izwi voice is available")
+            if tts_client is None or not voice_state["voice"]:
+              logger.error("Cannot synthesize speech because no speech synthesis voice is available")
               continue
 
             voice = command.voice or voice_state["voice"]
 
-            if voice not in {item.name for item in izwi_voices}:
-              logger.warning(f"Ignoring unavailable Izwi voice: {voice}")
+            if voice not in {item.name for item in tts_voices}:
+              logger.warning(f"Ignoring unavailable speech synthesis voice: {voice}")
               continue
 
             if isinstance(command, AnnounceCommand):
               await play_sound_cue("announcement")
 
-            synthesis = izwi_client.synthesize_request(command.text, voice)
+            synthesis = tts_client.synthesize_request(command.text, voice)
             speech_task = loop.create_task(
-              play_speech(synthesis.url, method=synthesis.method, body=synthesis.body),
-              name="Izwi Announcement Task" if isinstance(command, AnnounceCommand) else "Izwi Speech Task",
+              play_speech(synthesis.url, method=synthesis.method, body=synthesis.body, headers=synthesis.headers),
+              name="Speech Announcement Task" if isinstance(command, AnnounceCommand) else "Speech Synthesis Task",
             )
           elif isinstance(command, PlayCommand):
             if not response_started_playback and speaker is not None:
@@ -1037,7 +1064,7 @@ async def start() -> None:
               voice_state["voice"] = command.voice
               mqtt_client.publish_voice_state(command.voice)
             else:
-              logger.warning(f"Ignoring unavailable Izwi voice: {command.voice}")
+              logger.warning(f"Ignoring unavailable speech synthesis voice: {command.voice}")
 
         if speech_task is None and conversation_state["state"] == "processing":
           conversation_state["state"] = "idle"
@@ -1045,7 +1072,7 @@ async def start() -> None:
       elif voice_change_task is not None and voice_change_task in done:
         voice_state["voice"] = voice_change_task.result()
         mqtt_client.publish_voice_state(voice_state["voice"])
-        logger.info(f"Izwi voice switched to: {voice_state['voice']}")
+        logger.info(f"Speech synthesis voice switched to: {voice_state['voice']}")
       elif language_change_task is not None and language_change_task in done:
         new_language = language_change_task.result()
         language_state["language"] = new_language
@@ -1091,7 +1118,7 @@ async def start() -> None:
               current_language=new_language,
               microphone_enabled=microphone_enabled,
               speaker_enabled=speaker_enabled,
-              voices=available_voices if izwi_client else None,
+              voices=available_voices if tts_client else None,
               current_voice=voice_state["voice"],
             )
           except Exception as error:

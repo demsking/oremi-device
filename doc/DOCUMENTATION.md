@@ -273,6 +273,89 @@ services:
 Then set `OREMI_DEVICE_LANGUAGE=en`. Keep using the multilingual `base` model
 for French and other non-English languages.
 
+#### Compose With Edge-TTS
+
+Use this stack when spoken responses should be synthesized by the
+OpenAI-compatible Edge-TTS container:
+
+```yaml
+services:
+  oremi-device:
+    image: demsking/oremi-device
+    restart: unless-stopped
+    devices:
+      - /dev/snd:/dev/snd
+    environment:
+      LOG_LEVEL: info
+      OREMI_DEVICE_NODE_ID: living-room
+      OREMI_DEVICE_LANGUAGE: fr
+      OREMI_DEVICE_OHUNERIN_HOST: ohunerin
+      OREMI_DEVICE_OHUNERIN_PORT: 5023
+      OREMI_DEVICE_TRANSCRIPTION_BACKEND: andika
+      OREMI_DEVICE_ANDIKA_HOST: andika
+      OREMI_DEVICE_ANDIKA_PORT: 5315
+      OREMI_DEVICE_ANDIKA_MODEL: vosk-model-small-fr-0.22
+      OREMI_DEVICE_ANDIKA_SAMPLERATE: 16000
+      OREMI_DEVICE_TTS_BACKEND: edge-tts
+      OREMI_DEVICE_EDGE_TTS_URL: http://edge-tts:5050
+      OREMI_DEVICE_EDGE_TTS_API_KEY: your_api_key_here
+      OREMI_DEVICE_EDGE_TTS_LOCALE: fr-FR
+      OREMI_DEVICE_MQTT_BROKER: mosquitto
+      OREMI_DEVICE_MQTT_PORT: 1883
+      OREMI_DEVICE_MQTT_TOPIC: oremi/device
+      OREMI_DEVICE_MQTT_DISCOVERY: 'true'
+    depends_on:
+      - ohunerin
+      - andika
+      - edge-tts
+      - mosquitto
+
+  ohunerin:
+    image: demsking/oremi-ohunerin:4.0.0b4
+    restart: unless-stopped
+    ports:
+      - '5023:5023'
+
+  andika:
+    image: demsking/oremi-andika
+    restart: unless-stopped
+    ports:
+      - '5315:5315'
+    volumes:
+      - vosk-models:/usr/share/vosk
+
+  edge-tts:
+    image: travisvn/openai-edge-tts:latest
+    restart: unless-stopped
+    ports:
+      - '5050:5050'
+    environment:
+      API_KEY: your_api_key_here
+      PORT: 5050
+
+  mosquitto:
+    image: eclipse-mosquitto:2.0.18
+    restart: unless-stopped
+    ports:
+      - '1883:1883'
+    volumes:
+      - ./compose/mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+
+volumes:
+  vosk-models:
+```
+
+Save it as `docker-compose.edge-tts.yaml`, then start it:
+
+```bash
+docker compose -f docker-compose.edge-tts.yaml up -d
+docker compose -f docker-compose.edge-tts.yaml logs -f edge-tts oremi-device
+```
+
+Use a locale matching `OREMI_DEVICE_LANGUAGE`, for example `fr-FR` for French
+or `en-US` for English. The Edge-TTS API key only needs to match the `API_KEY`
+configured on the Edge-TTS service.
+
 ## Configuration
 
 Configuration is loaded from environment variables with the `OREMI_DEVICE_` prefix.
@@ -325,7 +408,20 @@ The transcription backend has one additional required setting:
 
 #### Speech Synthesis
 
+- **`OREMI_DEVICE_TTS_BACKEND`** – Speech synthesis backend: `izwi` or `edge-tts`. Default: `izwi`.
+
+##### Oremi Izwi
+
 - **`OREMI_DEVICE_IZWI_URL`** – Oremi Izwi base URL. When unset, speech synthesis and voice discovery are disabled. Default: Unset.
+
+##### Edge-TTS
+
+- **`OREMI_DEVICE_EDGE_TTS_URL`** – OpenAI-compatible Edge-TTS base URL; required when `OREMI_DEVICE_TTS_BACKEND=edge-tts`. Default: Unset.
+- **`OREMI_DEVICE_EDGE_TTS_API_KEY`** – Bearer token sent to Edge-TTS. Default: `your_api_key_here`.
+- **`OREMI_DEVICE_EDGE_TTS_LOCALE`** – Edge voice locale requested from `/v1/voices`. Default: `fr-FR` for French and `en-US` for English.
+- **`OREMI_DEVICE_EDGE_TTS_MODEL`** – Model value sent to `/v1/audio/speech`. Default: `tts-1`.
+- **`OREMI_DEVICE_EDGE_TTS_RESPONSE_FORMAT`** – Audio format requested from Edge-TTS: `mp3`, `opus`, `aac`, `flac`, `wav`, or `pcm`. Default: `mp3`.
+- **`OREMI_DEVICE_EDGE_TTS_SPEED`** – Speech speed sent to Edge-TTS. Default: `1.0`.
 
 #### MQTT
 
@@ -348,7 +444,9 @@ file for a device without local audio hardware can contain:
 OREMI_DEVICE_NODE_ID=living-room
 OREMI_DEVICE_OHUNERIN_HOST=ohunerin
 OREMI_DEVICE_ANDIKA_HOST=andika
-OREMI_DEVICE_IZWI_URL=http://izwi:5215
+OREMI_DEVICE_TTS_BACKEND=edge-tts
+OREMI_DEVICE_EDGE_TTS_URL=http://edge-tts:5050
+OREMI_DEVICE_EDGE_TTS_API_KEY=your_api_key_here
 OREMI_DEVICE_MQTT_BROKER=mqtt
 OREMI_DEVICE_MICROPHONE_ENABLED=false
 OREMI_DEVICE_SPEAKER_ENABLED=false
@@ -562,7 +660,7 @@ An external NLP service can publish a response to the same node's `processing/re
 
 - Topic: `<OREMI_DEVICE_MQTT_TOPIC>/nodes/<OREMI_DEVICE_NODE_ID>/processing/result`
 
-A response containing only `message` is spoken with the active Oremi Izwi voice:
+A response containing only `message` is spoken with the active speech synthesis voice:
 
 ```json
 {
@@ -707,7 +805,7 @@ interface SetVoiceCommand {
 }
 ```
 
-`voice` defaults to the active voice. A command-specific voice must exist in Izwi's voice list. The Home Assistant voice selector and `set_voice` only accept voices matching the active device language.
+`voice` defaults to the active voice. A command-specific voice must exist in the configured speech synthesis backend's voice list. The Home Assistant voice selector and `set_voice` only accept voices matching the active device language.
 
 ##### Speech And Playback
 
@@ -758,7 +856,7 @@ Cancel either scheduled item by ID:
 
 Schedules are held in device memory and are lost when the process restarts. The NLP service should retain or recreate schedules when persistence is required.
 
-Invalid JSON, unavailable voices, naive timestamps, values outside their documented ranges, and non-HTTP media URLs are rejected. Izwi speech uses the `/api/synthesize/stream` endpoint: short requests use GET query parameters, while long requests use a POST JSON body. The active voice defaults to the first available voice matching the device language.
+Invalid JSON, unavailable voices, naive timestamps, values outside their documented ranges, and non-HTTP media URLs are rejected. Izwi speech uses the `/api/synthesize/stream` endpoint: short requests use GET query parameters, while long requests use a POST JSON body. Edge-TTS speech uses its OpenAI-compatible `/v1/audio/speech` endpoint with Bearer authentication. The active voice defaults to the first available voice matching the device language.
 
 ### Device Controls
 
@@ -774,7 +872,7 @@ Node availability is retained at `<OREMI_DEVICE_MQTT_TOPIC>/nodes/<OREMI_DEVICE_
 
 - **Command topic:** `<OREMI_DEVICE_MQTT_TOPIC>/nodes/<OREMI_DEVICE_NODE_ID>/voice/set`
 - **State topic:** `<OREMI_DEVICE_MQTT_TOPIC>/nodes/<OREMI_DEVICE_NODE_ID>/voice/state`
-- **Payload:** An Izwi voice matching the active device language.
+- **Payload:** A speech synthesis voice matching the active device language.
 
 #### Microphone
 
@@ -863,7 +961,8 @@ MQTT discovery is enabled by default. On MQTT connection, Oremi Device publishes
 retained discovery configurations below `homeassistant` for:
 
 - language selection
-- Izwi voice selection, filtered by the active language when Izwi is configured
+- speech synthesis voice selection, filtered by the active language when a TTS
+  backend is configured
 - microphone selection and mute state
 - speaker selection, mute state, and volume
 - Ohunerin wake-word and sound sensors

@@ -1,5 +1,5 @@
 ---
-name: oremi-device-dev
+name: dev-oremi-device
 
 services:
   devcontainer:
@@ -48,6 +48,15 @@ services:
       - whisper-models:/models:ro
     command:
       - whisper-server --host 0.0.0.0 --port 8080 -m /models/ggml-base.bin
+
+  edge-tts:
+    image: travisvn/openai-edge-tts:latest
+    restart: unless-stopped
+    ports:
+      - '45050:5050'
+    environment:
+      API_KEY: your_api_key_here
+      PORT: 5050
 
 volumes:
   whisper-models:

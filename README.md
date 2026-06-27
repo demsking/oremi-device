@@ -6,7 +6,7 @@ Oremi Device captures microphone audio and connects it to Oremi services:
 
 - **Oremi Ohunerin** detects wake words and environmental sounds.
 - **Oremi Andika** transcribes speech after Ohunerin detects a wake word.
-- **Oremi Izwi** synthesizes spoken NLP responses when configured.
+- **Oremi Izwi** or an OpenAI-compatible Edge-TTS server synthesizes spoken NLP responses when configured.
 - **MQTT** exposes events, device controls, availability, and Home Assistant
   discovery entities.
 

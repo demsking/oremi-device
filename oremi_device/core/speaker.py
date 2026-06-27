@@ -146,6 +146,7 @@ class Speaker:
     *,
     method: str = "GET",
     body: str | None = None,
+    headers: dict[str, str] | None = None,
     interrupt: bool = True,
     duckable: bool = True,
   ) -> None:
@@ -157,6 +158,7 @@ class Speaker:
       media_url,
       method=method,
       body=body,
+      headers=headers,
       interrupt=interrupt,
       duckable=duckable,
     )
@@ -176,6 +178,7 @@ class Speaker:
     *,
     method: str = "GET",
     body: str | None = None,
+    headers: dict[str, str] | None = None,
     interrupt: bool,
     duckable: bool,
   ) -> None:
@@ -185,6 +188,14 @@ class Speaker:
 
     if method == "POST" and body is None:
       raise SpeakerPlaybackError("POST media playback requires a request body")
+
+    if headers:
+      for name, value in headers.items():
+        if "\r" in name or "\n" in name or ":" in name:
+          raise SpeakerPlaybackError("HTTP header names cannot contain separators")
+
+        if "\r" in value or "\n" in value:
+          raise SpeakerPlaybackError("HTTP header values cannot contain line breaks")
 
     if interrupt:
       self.stop()
@@ -208,6 +219,10 @@ class Speaker:
           (body or "").encode("utf-8").hex(),
         ]
       )
+
+    if headers:
+      header_lines = "".join(f"{name}: {value}\r\n" for name, value in headers.items())
+      command.extend(["-headers", header_lines])
 
     command.extend(
       [

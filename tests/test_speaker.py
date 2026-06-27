@@ -87,6 +87,7 @@ def test_select_output(mock_query_devices, mock_check_output) -> None:
       {"name": "Microphone", "max_output_channels": 0},
       {"name": "USB Speaker", "max_output_channels": 2},
     ],
+    {"name": "USB Speaker", "max_output_channels": 2},
   ]
   speaker = Speaker()
 
@@ -201,6 +202,27 @@ def test_play_url_supports_post_stream(mock_output_stream, mock_query_devices) -
   assert command[command.index("-content_type") + 1] == "application/json"
   expected_body = '{"voice":"af_heart","input":"long text"}'.encode("utf-8").hex()
   assert command[command.index("-post_data") + 1] == expected_body
+
+
+@patch("sounddevice.query_devices", return_value={"name": "Speaker", "max_output_channels": 2})
+@patch("sounddevice.RawOutputStream")
+def test_play_url_forwards_http_headers(mock_output_stream, mock_query_devices) -> None:
+  speaker = Speaker()
+  process = MagicMock()
+  process.stdout.read.return_value = b""
+  process.wait.return_value = 0
+  process.poll.return_value = 0
+
+  with patch("oremi_device.core.speaker.subprocess.Popen", return_value=process) as popen:
+    speaker.play_url(
+      "https://edge-tts.local/v1/audio/speech",
+      method="POST",
+      body='{"input":"hello"}',
+      headers={"Authorization": "Bearer secret"},
+    )
+
+  command = popen.call_args.args[0]
+  assert command[command.index("-headers") + 1] == "Authorization: Bearer secret\r\n"
 
 
 @patch("sounddevice.query_devices", return_value={"name": "Speaker", "max_output_channels": 2})

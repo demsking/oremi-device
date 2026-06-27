@@ -17,11 +17,12 @@ import urllib.parse
 import pytest
 from pydantic import ValidationError
 
+from oremi_device.components.edge_tts import OpenAIEdgeTTSClient
 from oremi_device.components.izwi import IzwiClient
-from oremi_device.components.izwi import IzwiVoice
-from oremi_device.components.izwi import voices_for_language
 from oremi_device.core.models import ProcessingResponse
 from oremi_device.core.models import SpeakCommand
+from oremi_device.core.tts import TTSVoice
+from oremi_device.core.tts import voices_for_language
 
 
 def test_processing_message_defaults_to_speech() -> None:
@@ -140,9 +141,42 @@ def test_izwi_long_synthesis_uses_streaming_post() -> None:
 
 def test_voices_are_filtered_by_device_language() -> None:
   voices = [
-    IzwiVoice(name="af_heart", description="Warm", primary_language="English"),
-    IzwiVoice(name="ff_siwis", description="French", primary_language="French (France)"),
+    TTSVoice(name="af_heart", description="Warm", primary_language="English"),
+    TTSVoice(name="ff_siwis", description="French", primary_language="French (France)"),
+    TTSVoice(name="fr-FR-DeniseNeural", description="French", primary_language="fr-FR"),
   ]
 
-  assert [voice.name for voice in voices_for_language(voices, "fr")] == ["ff_siwis"]
+  assert [voice.name for voice in voices_for_language(voices, "fr")] == ["ff_siwis", "fr-FR-DeniseNeural"]
   assert [voice.name for voice in voices_for_language(voices, "en")] == ["af_heart"]
+
+
+def test_edge_tts_synthesis_uses_openai_speech_endpoint() -> None:
+  client = OpenAIEdgeTTSClient("http://edge-tts:5050/", api_key="secret", locale="fr-FR")
+  request = client.synthesize_request("bonjour", "fr-FR-DeniseNeural")
+
+  assert request.method == "POST"
+  assert request.url == "http://edge-tts:5050/v1/audio/speech"
+  assert request.headers == {"Authorization": "Bearer secret"}
+  assert request.body is not None
+  assert '"model": "tts-1"' in request.body
+  assert '"input": "bonjour"' in request.body
+  assert '"voice": "fr-FR-DeniseNeural"' in request.body
+  assert '"response_format": "mp3"' in request.body
+
+
+def test_edge_tts_voice_parser_accepts_edge_voice_metadata() -> None:
+  client = OpenAIEdgeTTSClient("http://edge-tts:5050", api_key="secret")
+
+  voice = client._parse_voice(  # noqa: SLF001
+    {
+      "ShortName": "fr-FR-DeniseNeural",
+      "FriendlyName": "Microsoft Denise Online (Natural) - French (France)",
+      "Locale": "fr-FR",
+    }
+  )
+
+  assert voice == TTSVoice(
+    name="fr-FR-DeniseNeural",
+    description="Microsoft Denise Online (Natural) - French (France)",
+    primary_language="fr-FR",
+  )

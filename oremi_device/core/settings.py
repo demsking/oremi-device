@@ -54,6 +54,10 @@ def format_settings_errors(error: ValidationError) -> list[str]:
       message = "contains an unsupported model identifier"
     elif field == "izwi_url" and error_type in ("url_parsing", "url_scheme"):
       message = "must be a valid HTTP or HTTPS URL"
+    elif field == "edge_tts_url" and error_type in ("url_parsing", "url_scheme"):
+      message = "must be a valid HTTP or HTTPS URL"
+    elif field in ("tts_backend", "edge_tts_response_format") and error_type == "literal_error":
+      message = "has an unsupported value"
     elif error_type == "greater_than":
       message = f"must be greater than {context['gt']}"
     elif error_type == "greater_than_equal":
@@ -100,7 +104,14 @@ class DeviceSettings(BaseSettings):
   whisper_silence_threshold: int = Field(default=500, ge=0)
   whisper_silence_duration: float = Field(default=1.0, gt=0)
 
+  tts_backend: Literal["izwi", "edge-tts"] = "izwi"
   izwi_url: AnyHttpUrl | None = None
+  edge_tts_url: AnyHttpUrl | None = None
+  edge_tts_api_key: str = "your_api_key_here"
+  edge_tts_locale: str | None = None
+  edge_tts_model: str = "tts-1"
+  edge_tts_response_format: Literal["mp3", "opus", "aac", "flac", "wav", "pcm"] = "mp3"
+  edge_tts_speed: float = Field(default=1.0, ge=0.25, le=4.0)
 
   cert_file: str | None = None
   node_id: str
@@ -114,12 +125,15 @@ class DeviceSettings(BaseSettings):
   mqtt_discovery_prefix: str = "homeassistant"
 
   @model_validator(mode="after")
-  def validate_transcription_backend(self) -> "DeviceSettings":
+  def validate_backends(self) -> "DeviceSettings":
     if self.transcription_backend == "andika" and not self.andika_host:
       raise ValueError("OREMI_DEVICE_ANDIKA_HOST is required when using the Andika transcription backend")
 
     if self.transcription_backend == "whisper.cpp" and not self.whisper_url:
       raise ValueError("OREMI_DEVICE_WHISPER_URL is required when using the whisper.cpp transcription backend")
+
+    if self.tts_backend == "edge-tts" and not self.edge_tts_url:
+      raise ValueError("OREMI_DEVICE_EDGE_TTS_URL is required when using the Edge-TTS speech synthesis backend")
 
     return self
 
