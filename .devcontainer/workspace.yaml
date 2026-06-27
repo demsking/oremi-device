@@ -10,8 +10,17 @@ services:
     volumes:
       - ..:/workspaces:cached
     command: sleep infinity
+    environment:
+      OREMI_DEVICE_WHISPER_URL: http://whisper:8080
+      OREMI_DEVICE_EDGE_TTS_URL: http://edge-tts:5050
+      OREMI_DEVICE_OHUNERIN_HOST: ohunerin
+      OREMI_DEVICE_OHUNERIN_PORT: 5023
+      OREMI_DEVICE_ANDIKA_HOST: andika
+      OREMI_DEVICE_ANDIKA_PORT: 5315
+      OREMI_DEVICE_MQTT_BROKER: mosquitto
+      OREMI_DEVICE_MQTT_PORT: 1883
 
-  detector:
+  ohunerin:
     image: demsking/oremi-ohunerin:4.0.0b4
     ports:
       - 45023:5023
@@ -57,6 +66,88 @@ services:
     environment:
       API_KEY: your_api_key_here
       PORT: 5050
+
+  ollama:
+    tty: true
+    image: ollama/ollama
+    restart: always
+    runtime: nvidia
+    volumes:
+      - ~/.ollama:/root/.ollama
+    ports:
+      - 41434:11434
+    environment:
+      CUDA_VISIBLE_DEVICES: 0
+
+  isinmi:
+    image: demsking/oremi-isinmi-agent
+    restart: always
+    depends_on:
+      - ollama
+    ports:
+      - 47337:7337
+    environment:
+      LOG_LEVEL: 'DEBUG'
+      OLLAMA_BASEURL: http://ollama:11434
+    volumes:
+      - ./volumes/isinmi:/var/config/oremi-isinmi-agent
+
+  weather:
+    image: demsking/oremi-weather-agent
+    restart: always
+    depends_on:
+      - ollama
+    ports:
+      - 41777:1777
+    environment:
+      LOG_LEVEL: 'DEBUG'
+      OLLAMA_BASEURL: http://ollama:11434
+
+  rediyo:
+    image: demsking/oremi-rediyo-agent
+    restart: always
+    depends_on:
+      - ollama
+    ports:
+      - 49170:9170
+    volumes:
+      - ~/.config/oremi-rediyo-agent:/var/cache/oremi-rediyo-agent
+    environment:
+      LOG_LEVEL: 'DEBUG'
+      OLLAMA_BASEURL: http://ollama:11434
+
+  kansa:
+    image: demsking/oremi-kansa-agent
+    restart: always
+    depends_on:
+      - ollama
+    ports:
+      - 44940:4940
+    volumes:
+      - ~/.config/oremi-kansa-agent:/var/cache/oremi-kansa-agent
+    environment:
+      LOG_LEVEL: 'DEBUG'
+      OLLAMA_BASEURL: http://ollama:11434
+
+  akorin:
+    image: demsking/oremi-akorin:1.0.0b2
+    depends_on:
+      - isinmi
+      - weather
+      - mosquitto
+      - rediyo
+      - kansa
+      - ollama
+    environment:
+      LOG_LEVEL: DEBUG
+      MQTT_BROKER: mosquitto
+      MQTT_PORT: 1883
+      MQTT_CLIENT_ID: oremi-akorin
+      ISINMI_URL: http://isinmi:7337
+      WEATHER_URL: http://weather:1777
+      REDIYO_URL: http://rediyo:9170
+      KANSA_URL: http://kansa:4940
+      OLLAMA_HOST: http://ollama:11434
 
 volumes:
   whisper-models:

@@ -7,8 +7,17 @@
   "workspaceFolder": "/workspaces",
   "runServices": [
     "andika",
-    "detector",
-    "mosquitto"
+    "ohunerin",
+    "mosquitto",
+    "whisper-model",
+    "whisper",
+    "edge-tts",
+    "kansa",
+    "rediyo",
+    "weather",
+    "isinmi",
+    "ollama",
+    "akorin"
   ],
   "shutdownAction": "stopCompose",
   "mounts": [
@@ -16,7 +25,10 @@
     "source=${localEnv:XDG_RUNTIME_DIR}/pulse/native,target=/var/config/pulse/native,type=bind,consistency=cached",
     "source=${localEnv:HOME}/.config/pulse/cookie,target=/var/config/pulse/cookie,type=bind,consistency=cached"
   ],
-  "postCreateCommand": "make install",
+  "postCreateCommand": [
+    "uv export --no-hashes --no-emit-project --format requirements-txt > /tmp/requirements.txt && pip install --user -r /tmp/requirements.txt",
+    "make install"
+  ],
   "customizations": {
     "vscode": {
       "extensions": [
@@ -25,7 +37,8 @@
         "ms-python.python",
         "ms-python.vscode-pylance",
         "esbenp.prettier-vscode",
-        "eamodio.gitlens"
+        "eamodio.gitlens",
+        "openai.chatgpt"
       ],
       "settings": {
         "files.exclude": {

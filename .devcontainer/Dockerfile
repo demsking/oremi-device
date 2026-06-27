@@ -12,8 +12,8 @@ RUN apt-get update \
     git \
     curl \
     make \
-    libusb-1.0-0 \
     libportaudio2 \
+    ffmpeg \
     pulseaudio-utils \
   && rm -rf /var/lib/apt/lists/*
 
@@ -24,6 +24,7 @@ RUN useradd --create-home --shell /bin/bash devuser \
 # Switch to the devuser
 USER devuser
 WORKDIR /workspaces
+
 RUN uv --generate-shell-completion bash >> ~/.bash_completion
 
 CMD ["bash"]
