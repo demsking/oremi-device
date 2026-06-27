@@ -53,6 +53,9 @@ ENV LOG_LEVEL="info"
 ENV LOG_FILE=
 
 ENV OREMI_DEVICE_LANGUAGE="fr"
+ENV OREMI_DEVICE_DATA="/var/lib/oremi-device"
+
+VOLUME /var/lib/oremi-device
 
 WORKDIR /opt/oremi
 ENTRYPOINT ["/opt/oremi/bin/entrypoint.sh"]

@@ -52,6 +52,7 @@ from .mqtt import MQTTClient
 from .package import APP_NAME
 from .package import APP_VERSION
 from .settings import load_settings
+from .settings import update_runtime_settings_cache
 from .speaker import Speaker
 from .speaker import SpeakerDeviceError
 from .speaker import SpeakerPlaybackError
@@ -75,11 +76,7 @@ def classify_supervisor_done(
   listening_tasks: dict[asyncio.Task, object],
   component_tasks: dict[asyncio.Task, object],
 ) -> Literal["recover_audio", "exit", "continue"]:
-  unexpected_listening_tasks = [
-    task
-    for task in done
-    if task in listening_tasks and listening_task_failed(task)
-  ]
+  unexpected_listening_tasks = [task for task in done if task in listening_tasks and listening_task_failed(task)]
 
   if unexpected_listening_tasks and not any(task in component_tasks for task in done):
     return "recover_audio"
@@ -171,10 +168,17 @@ async def start() -> None:
 
   if speaker_enabled:
     try:
-      speaker = Speaker()
+      speaker = Speaker(settings.speaker_device, volume=settings.speaker_volume, muted=settings.speaker_muted)
       logger.info(f"Active Speaker Device: {speaker.device_name}")
     except SpeakerDeviceError as error:
       logger.warning(str(error))
+
+      if settings.speaker_device:
+        try:
+          speaker = Speaker(volume=settings.speaker_volume, muted=settings.speaker_muted)
+          logger.info(f"Active Speaker Device: {speaker.device_name}")
+        except SpeakerDeviceError as fallback_error:
+          logger.warning(str(fallback_error))
   else:
     logger.info("Speaker disabled — skipping speaker initialisation.")
 
@@ -231,15 +235,24 @@ async def start() -> None:
   processing_queue: asyncio.Queue[ProcessingResponse] = asyncio.Queue()
   voice_change_queue: asyncio.Queue[str] = asyncio.Queue()
   wakeword_event = asyncio.Event()
-  device_state: dict = {"microphone_muted": False}
+  device_state: dict = {"microphone_muted": settings.microphone_muted}
+
   speaker_state: dict = {
     "device": speaker.device_name if speaker else "",
-    "muted": speaker.muted if speaker else False,
-    "volume": speaker.volume if speaker else 1.0,
+    "muted": speaker.muted if speaker else settings.speaker_muted,
+    "volume": speaker.volume if speaker else settings.speaker_volume,
   }
+
   language_state: dict = {"language": settings.language}
   initial_voices = voices_for_language(tts_voices, settings.language)
-  voice_state: dict = {"voice": initial_voices[0].name if initial_voices else ""}
+  initial_voice_names = [voice.name for voice in initial_voices]
+
+  voice_state: dict = {
+    "voice": (
+      settings.tts_voice if settings.tts_voice in initial_voice_names else initial_voices[0].name if initial_voices else ""
+    )
+  }
+
   conversation_state: dict[str, ConversationState] = {"state": "idle"}
   playback_task: asyncio.Task | None = None
   speech_task: asyncio.Task | None = None
@@ -904,9 +917,24 @@ async def start() -> None:
           if not success:
             logger.info("Explicit switch failed. Attempting to auto-select any compatible microphone...")
             await change_audio_device(None)
+          else:
+            curr_stream = active_stream_container["stream"]
+
+            if curr_stream is not None:
+              settings.microphone_device = curr_stream.device_name
+              settings.microphone_device_index = None
+
+              await asyncio.to_thread(
+                update_runtime_settings_cache,
+                settings,
+                microphone_device=curr_stream.device_name,
+              )
       elif microphone_mute_task is not None and microphone_mute_task in done:
         muted = microphone_mute_task.result()
         device_state["microphone_muted"] = muted
+        settings.microphone_muted = muted
+
+        await asyncio.to_thread(update_runtime_settings_cache, settings, microphone_muted=muted)
         mqtt_client.set_mute_state(muted)
 
         if muted:
@@ -940,6 +968,12 @@ async def start() -> None:
             speaker.select_device(requested_speaker)
 
           speaker_state["device"] = speaker.device_name
+          settings.speaker_device = speaker.device_name
+          await asyncio.to_thread(
+            update_runtime_settings_cache,
+            settings,
+            speaker_device=speaker.device_name,
+          )
           mqtt_client.set_speaker_state(speaker.device_name)
           logger.info(f"Speaker switched to: {speaker.device_name}")
         except SpeakerDeviceError as error:
@@ -948,6 +982,8 @@ async def start() -> None:
       elif speaker_mute_task is not None and speaker_mute_task in done:
         muted = speaker_mute_task.result()
         speaker_state["muted"] = muted
+        settings.speaker_muted = muted
+        await asyncio.to_thread(update_runtime_settings_cache, settings, speaker_muted=muted)
 
         if speaker:
           speaker.set_muted(muted)
@@ -957,6 +993,8 @@ async def start() -> None:
       elif speaker_volume_task is not None and speaker_volume_task in done:
         volume = speaker_volume_task.result()
         speaker_state["volume"] = volume
+        settings.speaker_volume = volume
+        await asyncio.to_thread(update_runtime_settings_cache, settings, speaker_volume=volume)
 
         if speaker:
           speaker.set_volume(volume)
@@ -1071,6 +1109,8 @@ async def start() -> None:
           mqtt_client.set_conversation_state("idle")
       elif voice_change_task is not None and voice_change_task in done:
         voice_state["voice"] = voice_change_task.result()
+        settings.tts_voice = voice_state["voice"]
+        await asyncio.to_thread(update_runtime_settings_cache, settings, tts_voice=voice_state["voice"])
         mqtt_client.publish_voice_state(voice_state["voice"])
         logger.info(f"Speech synthesis voice switched to: {voice_state['voice']}")
       elif language_change_task is not None and language_change_task in done:
@@ -1088,6 +1128,14 @@ async def start() -> None:
 
         if voice_state["voice"]:
           mqtt_client.publish_voice_state(voice_state["voice"])
+
+        settings.tts_voice = voice_state["voice"] or None
+        await asyncio.to_thread(
+          update_runtime_settings_cache,
+          settings,
+          language=new_language,
+          tts_voice=settings.tts_voice,
+        )
 
         # Republish HA discovery so the select shows the new current value
         if mqtt_client.discovery_prefix:

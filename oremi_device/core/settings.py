@@ -12,15 +12,21 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
+import json
+import os
+from pathlib import Path
+from typing import Any
 from typing import Literal
 
 from pydantic import AnyHttpUrl
+from pydantic import BaseModel
 from pydantic import Field
 from pydantic import model_validator
 from pydantic import ValidationError
 from pydantic_settings import BaseSettings
 from pydantic_settings import SettingsConfigDict
 
+from ..utils.logger import logger
 from .models import AndikaModel
 
 
@@ -87,7 +93,11 @@ class DeviceSettings(BaseSettings):
   microphone_device_index: int | None = None
   microphone_device: str | None = None
   microphone_enabled: bool = True
+  microphone_muted: bool = False
   speaker_enabled: bool = True
+  speaker_device: str | None = None
+  speaker_muted: bool = False
+  speaker_volume: float = Field(default=1.0, ge=0, le=1)
   delay: int = Field(default=3, gt=0)
   conversation_timeout: float = Field(default=15.0, gt=0)
 
@@ -112,9 +122,11 @@ class DeviceSettings(BaseSettings):
   edge_tts_model: str = "tts-1"
   edge_tts_response_format: Literal["mp3", "opus", "aac", "flac", "wav", "pcm"] = "mp3"
   edge_tts_speed: float = Field(default=1.0, ge=0.25, le=4.0)
+  tts_voice: str | None = None
 
   cert_file: str | None = None
   node_id: str
+  data: Path | None = None
 
   mqtt_broker: str
   mqtt_port: int = Field(default=1883, gt=0, le=65535)
@@ -138,8 +150,83 @@ class DeviceSettings(BaseSettings):
     return self
 
 
+class RuntimeSettingsCache(BaseModel):
+  """Runtime settings changed through MQTT/Home Assistant controls."""
+
+  language: Literal["fr", "en"] | None = None
+  microphone_device: str | None = None
+  microphone_muted: bool | None = None
+  speaker_device: str | None = None
+  speaker_muted: bool | None = None
+  speaker_volume: float | None = Field(default=None, ge=0, le=1)
+  tts_voice: str | None = None
+
+
+def get_settings_cache_file(settings: DeviceSettings) -> Path:
+  if settings.data is not None:
+    return settings.data / f"{settings.node_id}.json"
+
+  data_home = Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local" / "share"))
+
+  return data_home / "oremi-device" / f"{settings.node_id}.json"
+
+
+def read_runtime_settings_cache(settings: DeviceSettings) -> RuntimeSettingsCache:
+  cache_file = get_settings_cache_file(settings)
+
+  if not cache_file.exists():
+    return RuntimeSettingsCache()
+
+  try:
+    content = json.loads(cache_file.read_text(encoding="utf-8"))
+  except (OSError, json.JSONDecodeError) as error:
+    logger.warning(f"Ignoring unreadable runtime settings cache {cache_file}: {error}")
+    return RuntimeSettingsCache()
+
+  try:
+    return RuntimeSettingsCache.model_validate(content)
+  except ValidationError as error:
+    logger.warning(f"Ignoring invalid runtime settings cache {cache_file}: {error}")
+    return RuntimeSettingsCache()
+
+
+def apply_runtime_settings_cache(settings: DeviceSettings, cache: RuntimeSettingsCache) -> DeviceSettings:
+  for field, value in cache.model_dump(exclude_none=True).items():
+    setattr(settings, field, value)
+
+  if cache.microphone_device is not None:
+    settings.microphone_device_index = None
+
+  return settings
+
+
+def update_runtime_settings_cache(settings: DeviceSettings, **updates: Any) -> None:
+  cache = read_runtime_settings_cache(settings)
+  values = cache.model_dump()
+  values.update(updates)
+
+  try:
+    updated_cache = RuntimeSettingsCache.model_validate(values)
+  except ValidationError as error:
+    logger.warning(f"Not caching invalid runtime settings update: {error}")
+    return
+
+  cache_file = get_settings_cache_file(settings)
+
+  try:
+    cache_file.parent.mkdir(parents=True, exist_ok=True)
+    cache_file.write_text(
+      json.dumps(updated_cache.model_dump(exclude_none=True), sort_keys=True, indent=2) + "\n",
+      encoding="utf-8",
+    )
+  except OSError as error:
+    logger.warning(f"Failed to write runtime settings cache {cache_file}: {error}")
+
+
 def load_settings() -> DeviceSettings:  # type: ignore
   try:
-    return DeviceSettings()  # type: ignore
+    settings = DeviceSettings()  # type: ignore
   except ValidationError as error:
     raise SettingsError(format_settings_errors(error)) from None
+
+  return apply_runtime_settings_cache(settings, read_runtime_settings_cache(settings))

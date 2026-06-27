@@ -55,6 +55,7 @@ Andika, and MQTT services:
 docker run --rm -it \
   --network host \
   --device /dev/snd:/dev/snd \
+  -v oremi-device-data:/var/lib/oremi-device \
   -e OREMI_DEVICE_NODE_ID=living-room \
   -e OREMI_DEVICE_OHUNERIN_HOST=127.0.0.1 \
   -e OREMI_DEVICE_ANDIKA_HOST=127.0.0.1 \
@@ -71,7 +72,8 @@ cookie mounted into the container.
 
 The examples below run Oremi Device with its required services on one Docker
 network. They mount `/dev/snd` into the device container so ALSA microphones are
-available inside the container.
+available inside the container and keep Oremi Device runtime settings in the
+`oremi-device-data` volume.
 
 Create a minimal Mosquitto configuration first:
 
@@ -95,6 +97,8 @@ services:
     restart: unless-stopped
     devices:
       - /dev/snd:/dev/snd
+    volumes:
+      - oremi-device-data:/var/lib/oremi-device
     environment:
       LOG_LEVEL: info
       OREMI_DEVICE_NODE_ID: living-room
@@ -138,6 +142,7 @@ services:
       - ./compose/mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
 
 volumes:
+  oremi-device-data:
   vosk-models:
 ```
 
@@ -174,6 +179,8 @@ services:
     restart: unless-stopped
     devices:
       - /dev/snd:/dev/snd
+    volumes:
+      - oremi-device-data:/var/lib/oremi-device
     environment:
       LOG_LEVEL: info
       OREMI_DEVICE_NODE_ID: living-room
@@ -228,6 +235,7 @@ services:
       - ./compose/mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
 
 volumes:
+  oremi-device-data:
   whisper-models:
 ```
 
@@ -285,6 +293,8 @@ services:
     restart: unless-stopped
     devices:
       - /dev/snd:/dev/snd
+    volumes:
+      - oremi-device-data:/var/lib/oremi-device
     environment:
       LOG_LEVEL: info
       OREMI_DEVICE_NODE_ID: living-room
@@ -342,6 +352,7 @@ services:
       - ./compose/mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
 
 volumes:
+  oremi-device-data:
   vosk-models:
 ```
 
@@ -381,6 +392,10 @@ The transcription backend has one additional required setting:
 - **`OREMI_DEVICE_MICROPHONE_DEVICE`** – Preferred microphone name; takes precedence over the index. Default: Auto.
 - **`OREMI_DEVICE_MICROPHONE_ENABLED`** – Enable microphone initialization and audio capture. Default: `true`.
 - **`OREMI_DEVICE_SPEAKER_ENABLED`** – Enable speaker initialization and MQTT speaker controls. Default: `true`.
+- **`OREMI_DEVICE_DATA`** – Directory used to persist runtime settings changed through
+  MQTT/Home Assistant controls. Oremi Device stores them in `<node-id>.json` inside this directory.
+  Default: `$XDG_DATA_HOME/oremi-device`, or `~/.local/share/oremi-device` when `XDG_DATA_HOME` is unset.
+  The Docker image sets this to `/var/lib/oremi-device`.
 
 #### Language & Transcription
 
@@ -939,6 +954,7 @@ $ oremi-device
 docker run --rm -it \
   --network host \
   --device /dev/snd:/dev/snd \
+  -v oremi-device-data:/var/lib/oremi-device \
   -e LOG_LEVEL=DEBUG \
   -e LOG_FILE=/var/log/oremi-device.log \
   -e OREMI_DEVICE_NODE_ID=living-room \
@@ -975,6 +991,11 @@ corresponding retained discovery configs are cleared.
 
 Set `OREMI_DEVICE_MQTT_DISCOVERY=false` to disable discovery or set
 `OREMI_DEVICE_MQTT_DISCOVERY_PREFIX` when Home Assistant uses a custom prefix.
+Changes made through the discovered Home Assistant controls are cached by
+Oremi Device and applied on restart. The cache includes language, microphone
+device and mute state, speaker device, speaker mute and volume, and speech
+synthesis voice. Mount the data directory or set `OREMI_DEVICE_DATA` to a
+persistent path when running in a container.
 The transcription sensor follows the node's `transcription/result` topic and
 extracts its state from the final JSON payload's `text` field.
 
