@@ -35,10 +35,11 @@
         "charliermarsh.ruff",
         "ms-python.pylint",
         "ms-python.python",
-        "ms-python.vscode-pylance",
         "esbenp.prettier-vscode",
         "eamodio.gitlens",
-        "openai.chatgpt"
+        "openai.chatgpt",
+        "ms-pyright.pyright",
+        "ms-python.debugpy"
       ],
       "settings": {
         "files.exclude": {
