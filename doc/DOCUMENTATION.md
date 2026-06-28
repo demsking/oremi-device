@@ -39,6 +39,9 @@ After installation, you can run the device directly:
 
 ```bash
 $ export OREMI_DEVICE_NODE_ID=living-room
+$ export OREMI_DEVICE_LANGUAGE=fr
+$ export OREMI_DEVICE_LOCATION="Douala, Cameroon"
+$ export OREMI_DEVICE_PREFERRED_CURRENCY=XAF
 $ export OREMI_DEVICE_OHUNERIN_HOST=localhost
 $ export OREMI_DEVICE_ANDIKA_HOST=localhost
 $ export OREMI_DEVICE_MQTT_BROKER=localhost
@@ -57,6 +60,9 @@ docker run --rm -it \
   --device /dev/snd:/dev/snd \
   -v oremi-device-data:/var/lib/oremi-device \
   -e OREMI_DEVICE_NODE_ID=living-room \
+  -e OREMI_DEVICE_LANGUAGE=fr \
+  -e "OREMI_DEVICE_LOCATION=Douala, Cameroon" \
+  -e OREMI_DEVICE_PREFERRED_CURRENCY=XAF \
   -e OREMI_DEVICE_OHUNERIN_HOST=127.0.0.1 \
   -e OREMI_DEVICE_ANDIKA_HOST=127.0.0.1 \
   -e OREMI_DEVICE_MQTT_BROKER=127.0.0.1 \
@@ -103,6 +109,14 @@ services:
       LOG_LEVEL: info
       OREMI_DEVICE_NODE_ID: living-room
       OREMI_DEVICE_LANGUAGE: fr
+      OREMI_DEVICE_LOCATION: Douala, Cameroon
+      OREMI_DEVICE_TEMPERATURE_UNIT: celsius
+      OREMI_DEVICE_PREFERRED_CURRENCY: XAF
+      OREMI_DEVICE_MEASUREMENT_SYSTEM: metric
+      OREMI_DEVICE_DISTANCE_UNIT: kilometer
+      OREMI_DEVICE_TIME_FORMAT: 24h
+      OREMI_DEVICE_DATE_FORMAT: DD/MM/YYYY
+      OREMI_DEVICE_FIRST_DAY_OF_WEEK: monday
       OREMI_DEVICE_OHUNERIN_HOST: ohunerin
       OREMI_DEVICE_OHUNERIN_PORT: 5023
       OREMI_DEVICE_TRANSCRIPTION_BACKEND: andika
@@ -185,6 +199,14 @@ services:
       LOG_LEVEL: info
       OREMI_DEVICE_NODE_ID: living-room
       OREMI_DEVICE_LANGUAGE: fr
+      OREMI_DEVICE_LOCATION: Douala, Cameroon
+      OREMI_DEVICE_TEMPERATURE_UNIT: celsius
+      OREMI_DEVICE_PREFERRED_CURRENCY: XAF
+      OREMI_DEVICE_MEASUREMENT_SYSTEM: metric
+      OREMI_DEVICE_DISTANCE_UNIT: kilometer
+      OREMI_DEVICE_TIME_FORMAT: 24h
+      OREMI_DEVICE_DATE_FORMAT: DD/MM/YYYY
+      OREMI_DEVICE_FIRST_DAY_OF_WEEK: monday
       OREMI_DEVICE_OHUNERIN_HOST: ohunerin
       OREMI_DEVICE_OHUNERIN_PORT: 5023
       OREMI_DEVICE_TRANSCRIPTION_BACKEND: whisper.cpp
@@ -299,6 +321,14 @@ services:
       LOG_LEVEL: info
       OREMI_DEVICE_NODE_ID: living-room
       OREMI_DEVICE_LANGUAGE: fr
+      OREMI_DEVICE_LOCATION: Douala, Cameroon
+      OREMI_DEVICE_TEMPERATURE_UNIT: celsius
+      OREMI_DEVICE_PREFERRED_CURRENCY: XAF
+      OREMI_DEVICE_MEASUREMENT_SYSTEM: metric
+      OREMI_DEVICE_DISTANCE_UNIT: kilometer
+      OREMI_DEVICE_TIME_FORMAT: 24h
+      OREMI_DEVICE_DATE_FORMAT: DD/MM/YYYY
+      OREMI_DEVICE_FIRST_DAY_OF_WEEK: monday
       OREMI_DEVICE_OHUNERIN_HOST: ohunerin
       OREMI_DEVICE_OHUNERIN_PORT: 5023
       OREMI_DEVICE_TRANSCRIPTION_BACKEND: andika
@@ -397,12 +427,29 @@ The transcription backend has one additional required setting:
   Default: `$XDG_DATA_HOME/oremi-device`, or `~/.local/share/oremi-device` when `XDG_DATA_HOME` is unset.
   The Docker image sets this to `/var/lib/oremi-device`.
 
-#### Language & Transcription
+#### Transcription
 
-- **`OREMI_DEVICE_LANGUAGE`** – Processing language; supported values are `fr` and `en`. Default: `fr`.
 - **`OREMI_DEVICE_TRANSCRIPTION_BACKEND`** – Transcriber: `andika` or `whisper.cpp`. Default: `andika`.
 - **`OREMI_DEVICE_DELAY`** – Sound-event cooldown in seconds and transcription message expiry interval. Default: `3`.
 - **`OREMI_DEVICE_CONVERSATION_TIMEOUT`** – Maximum seconds to wait for a final transcription after a wake word. Default: `15`.
+
+#### Device Context
+
+These preferences are published as a retained MQTT device-context document and
+are exposed through Home Assistant controls when MQTT discovery is enabled.
+Services that need user preferences can subscribe to the context topic and
+react when it changes.
+
+- **`OREMI_DEVICE_LANGUAGE`** – Processing language; supported values are `fr` and `en`. Default: `fr`.
+- **`OREMI_DEVICE_LOCATION`** – Free-form address or place description for the device. Default: empty.
+  The retained device-context timezone is inferred from this value and falls back to `Africa/Douala`.
+- **`OREMI_DEVICE_TEMPERATURE_UNIT`** – Preferred temperature unit: `celsius` or `fahrenheit`. Default: `celsius`.
+- **`OREMI_DEVICE_PREFERRED_CURRENCY`** – Preferred ISO 4217 currency code. Default: `XAF`.
+- **`OREMI_DEVICE_MEASUREMENT_SYSTEM`** – Preferred measurement system: `metric` or `imperial`. Default: `metric`.
+- **`OREMI_DEVICE_DISTANCE_UNIT`** – Preferred distance unit: `kilometer` or `mile`. Default: `kilometer`.
+- **`OREMI_DEVICE_TIME_FORMAT`** – Preferred time format: `12h` or `24h`. Default: `24h`.
+- **`OREMI_DEVICE_DATE_FORMAT`** – Preferred date format: `DD/MM/YYYY`, `MM/DD/YYYY`, or `YYYY-MM-DD`. Default: `DD/MM/YYYY`.
+- **`OREMI_DEVICE_FIRST_DAY_OF_WEEK`** – Preferred first day of week: `monday`, `sunday`, or `saturday`. Default: `monday`.
 
 #### Ohunerin Wake Word
 
@@ -457,6 +504,15 @@ file for a device without local audio hardware can contain:
 
 ```dotenv
 OREMI_DEVICE_NODE_ID=living-room
+OREMI_DEVICE_LANGUAGE=fr
+OREMI_DEVICE_LOCATION=Douala, Cameroon
+OREMI_DEVICE_TEMPERATURE_UNIT=celsius
+OREMI_DEVICE_PREFERRED_CURRENCY=XAF
+OREMI_DEVICE_MEASUREMENT_SYSTEM=metric
+OREMI_DEVICE_DISTANCE_UNIT=kilometer
+OREMI_DEVICE_TIME_FORMAT=24h
+OREMI_DEVICE_DATE_FORMAT=DD/MM/YYYY
+OREMI_DEVICE_FIRST_DAY_OF_WEEK=monday
 OREMI_DEVICE_OHUNERIN_HOST=ohunerin
 OREMI_DEVICE_ANDIKA_HOST=andika
 OREMI_DEVICE_TTS_BACKEND=edge-tts
@@ -497,7 +553,9 @@ updates Home Assistant discovery options when devices appear or disappear.
 
 The microphone mute control pauses audio streaming without stopping the service
 connections. A language command updates the retained MQTT state and reconnects
-Ohunerin with the newly selected language.
+Ohunerin with the newly selected language. Device-context commands update the
+retained context document so subscribing services can immediately react to
+preference changes.
 
 ## MQTT
 
@@ -877,11 +935,39 @@ Invalid JSON, unavailable voices, naive timestamps, values outside their documen
 
 Node availability is retained at `<OREMI_DEVICE_MQTT_TOPIC>/nodes/<OREMI_DEVICE_NODE_ID>/available` with an `online` or `offline` payload.
 
-#### Language
+#### Device Context
 
-- **Command topic:** `<OREMI_DEVICE_MQTT_TOPIC>/nodes/<OREMI_DEVICE_NODE_ID>/language/set`
-- **State topic:** `<OREMI_DEVICE_MQTT_TOPIC>/nodes/<OREMI_DEVICE_NODE_ID>/language/state`
-- **Payload:** A UTF-8 language string. Discovery offers `fr` and `en`.
+- **Aggregate state topic:** `<OREMI_DEVICE_MQTT_TOPIC>/nodes/<OREMI_DEVICE_NODE_ID>/context/state`
+- **Aggregate payload:** Retained JSON object containing `language`, `location`,
+  `timezone`, `temperature_unit`, `preferred_currency`, `measurement_system`,
+  `distance_unit`, `time_format`, `date_format`, and `first_day_of_week`.
+- **Field command topic:** `<OREMI_DEVICE_MQTT_TOPIC>/nodes/<OREMI_DEVICE_NODE_ID>/context/<field>/set`
+- **Field state topic:** `<OREMI_DEVICE_MQTT_TOPIC>/nodes/<OREMI_DEVICE_NODE_ID>/context/<field>/state`
+- **Text fields:** `location`, `timezone`, and `preferred_currency`.
+- **Select fields:** `language`, `temperature_unit`, `measurement_system`,
+  `distance_unit`, `time_format`, `date_format`, and `first_day_of_week`.
+
+The legacy language topics, `<OREMI_DEVICE_MQTT_TOPIC>/nodes/<OREMI_DEVICE_NODE_ID>/language/set`
+and `<OREMI_DEVICE_MQTT_TOPIC>/nodes/<OREMI_DEVICE_NODE_ID>/language/state`, are
+still accepted and updated for compatibility. Home Assistant discovery exposes
+language through the device-context control.
+
+Example aggregate payload:
+
+```json
+{
+  "language": "fr",
+  "location": "12 Rue de Rivoli, Paris",
+  "timezone": "Europe/Paris",
+  "temperature_unit": "celsius",
+  "preferred_currency": "EUR",
+  "measurement_system": "metric",
+  "distance_unit": "kilometer",
+  "time_format": "24h",
+  "date_format": "DD/MM/YYYY",
+  "first_day_of_week": "monday"
+}
+```
 
 #### Voice
 
@@ -976,7 +1062,8 @@ docker run --rm -it \
 MQTT discovery is enabled by default. On MQTT connection, Oremi Device publishes
 retained discovery configurations below `homeassistant` for:
 
-- language selection
+- device context controls for language, location, timezone, units, currency,
+  date/time preferences, and first day of week
 - speech synthesis voice selection, filtered by the active language when a TTS
   backend is configured
 - microphone selection and mute state
@@ -992,10 +1079,10 @@ corresponding retained discovery configs are cleared.
 Set `OREMI_DEVICE_MQTT_DISCOVERY=false` to disable discovery or set
 `OREMI_DEVICE_MQTT_DISCOVERY_PREFIX` when Home Assistant uses a custom prefix.
 Changes made through the discovered Home Assistant controls are cached by
-Oremi Device and applied on restart. The cache includes language, microphone
-device and mute state, speaker device, speaker mute and volume, and speech
-synthesis voice. Mount the data directory or set `OREMI_DEVICE_DATA` to a
-persistent path when running in a container.
+Oremi Device and applied on restart. The cache includes language, device
+context preferences, microphone device and mute state, speaker device, speaker
+mute and volume, and speech synthesis voice. Mount the data directory or set
+`OREMI_DEVICE_DATA` to a persistent path when running in a container.
 The transcription sensor follows the node's `transcription/result` topic and
 extracts its state from the final JSON payload's `text` field.
 

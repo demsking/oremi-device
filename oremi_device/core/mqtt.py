@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
+# pylint: disable=invalid-name
 import json
 from typing import Literal
 
@@ -28,6 +29,42 @@ from .package import APP_VERSION
 # Each element: (ha_domain, entity_slug, payload_dict)
 # e.g. ("sensor", "wakeword", {"name": "Wakeword", ...})
 HAEntity = tuple[str, str, dict]
+
+DEVICE_CONTEXT_OPTIONS: dict[str, list[str]] = {
+  "language": ["fr", "en"],
+  "temperature_unit": ["celsius", "fahrenheit"],
+  "measurement_system": ["metric", "imperial"],
+  "distance_unit": ["kilometer", "mile"],
+  "time_format": ["12h", "24h"],
+  "date_format": ["DD/MM/YYYY", "MM/DD/YYYY", "YYYY-MM-DD"],
+  "first_day_of_week": ["monday", "sunday", "saturday"],
+}
+
+DEVICE_CONTEXT_TEXT_FIELDS = ("location", "preferred_currency")
+
+DEVICE_CONTEXT_LABELS = {
+  "language": "Language",
+  "location": "Location",
+  "temperature_unit": "Temperature unit",
+  "preferred_currency": "Preferred currency",
+  "measurement_system": "Measurement system",
+  "distance_unit": "Distance unit",
+  "time_format": "Time format",
+  "date_format": "Date format",
+  "first_day_of_week": "First day of week",
+}
+
+DEVICE_CONTEXT_ICONS = {
+  "language": "mdi:translate",
+  "location": "mdi:map-marker",
+  "temperature_unit": "mdi:thermometer",
+  "preferred_currency": "mdi:cash",
+  "measurement_system": "mdi:ruler-square",
+  "distance_unit": "mdi:map-marker-distance",
+  "time_format": "mdi:clock-outline",
+  "date_format": "mdi:calendar-month",
+  "first_day_of_week": "mdi:calendar-week",
+}
 
 
 class MQTTClient:  # pylint: disable=too-many-public-methods
@@ -170,6 +207,15 @@ class MQTTClient:  # pylint: disable=too-many-public-methods
     """Return the instance-scoped MQTT topic for the current language state."""
     return self.parse_node_topic("language/state")
 
+  def get_device_context_state_topic(self) -> str:
+    return self.parse_node_topic("context/state")
+
+  def get_device_context_command_topic(self, field: str) -> str:
+    return self.parse_node_topic(f"context/{field}/set")
+
+  def get_device_context_field_state_topic(self, field: str) -> str:
+    return self.parse_node_topic(f"context/{field}/state")
+
   def get_processing_result_topic(self) -> str:
     return self.parse_node_topic("processing/result")
 
@@ -201,6 +247,7 @@ class MQTTClient:  # pylint: disable=too-many-public-methods
     speaker_volume: float = 1.0,
     current_language: str = "fr",
     supported_languages: list[str] | None = None,
+    device_context: dict[str, str] | None = None,
     microphone_enabled: bool = True,
     speaker_enabled: bool = True,
     voices: list[str] | None = None,
@@ -225,6 +272,8 @@ class MQTTClient:  # pylint: disable=too-many-public-methods
       current_language: The currently active language code (e.g. ``'fr'``).
       supported_languages: List of language codes to present in the HA select.
         Defaults to ``['fr', 'en']`` when not provided.
+      device_context: Mutable app preferences published for subscribers and
+        exposed as Home Assistant controls.
       microphone_enabled: Whether microphone controls should be advertised.
       speaker_enabled: Whether speaker controls should be advertised.
       voices: Speech synthesis voices matching the active device language.
@@ -243,27 +292,62 @@ class MQTTClient:  # pylint: disable=too-many-public-methods
       logger.debug(f"Publishing HA entity discovery: {discovery_topic}")
       self.client.publish(discovery_topic, json.dumps(payload), retain=True)
 
-    # ── Device-level: language select ────────────────────────────────────────
-    # See https://www.home-assistant.io/integrations/select.mqtt/
-    languages = supported_languages or ["fr", "en"]
-    language_payload = {
-      "name": "Language",
-      "unique_id": f"{node_id}_language",
-      "state_topic": self.get_language_state_topic(),
-      "command_topic": self.get_language_command_topic(),
-      "availability_topic": self.parse_node_topic("available"),
-      "payload_available": "online",
-      "payload_not_available": "offline",
-      "options": languages,
-      "icon": "mdi:translate",
-      "device": device,
-    }
+    if device_context is None:
+      languages = supported_languages or ["fr", "en"]
+      language_payload = {
+        "name": "Language",
+        "unique_id": f"{node_id}_language",
+        "state_topic": self.get_language_state_topic(),
+        "command_topic": self.get_language_command_topic(),
+        "availability_topic": self.parse_node_topic("available"),
+        "payload_available": "online",
+        "payload_not_available": "offline",
+        "options": languages,
+        "icon": "mdi:translate",
+        "device": device,
+      }
+      language_topic = f"{self.discovery_prefix}/select/{node_id}/language/config"
+      self.client.publish(language_topic, json.dumps(language_payload), retain=True)
 
-    language_topic = f"{self.discovery_prefix}/select/{node_id}/language/config"
-    self.client.publish(language_topic, json.dumps(language_payload), retain=True)
-
-    # Publish the current language state
+    # Keep the legacy language state topic updated while the app-level
+    # discovery path uses the device-context language control.
     self.client.publish(self.get_language_state_topic(), current_language, retain=True)
+
+    if device_context is not None:
+      for field in DEVICE_CONTEXT_TEXT_FIELDS:
+        payload = {
+          "name": DEVICE_CONTEXT_LABELS[field],
+          "unique_id": f"{node_id}_{field}",
+          "state_topic": self.get_device_context_field_state_topic(field),
+          "command_topic": self.get_device_context_command_topic(field),
+          "availability_topic": self.parse_node_topic("available"),
+          "payload_available": "online",
+          "payload_not_available": "offline",
+          "icon": DEVICE_CONTEXT_ICONS[field],
+          "device": device,
+        }
+        topic = f"{self.discovery_prefix}/text/{node_id}/{field}/config"
+        self.client.publish(topic, json.dumps(payload), retain=True)
+        self.publish_device_context_value(field, device_context[field])
+
+      for field, options in DEVICE_CONTEXT_OPTIONS.items():
+        payload = {
+          "name": DEVICE_CONTEXT_LABELS[field],
+          "unique_id": f"{node_id}_{field}",
+          "state_topic": self.get_device_context_field_state_topic(field),
+          "command_topic": self.get_device_context_command_topic(field),
+          "availability_topic": self.parse_node_topic("available"),
+          "payload_available": "online",
+          "payload_not_available": "offline",
+          "options": options,
+          "icon": DEVICE_CONTEXT_ICONS[field],
+          "device": device,
+        }
+        topic = f"{self.discovery_prefix}/select/{node_id}/{field}/config"
+        self.client.publish(topic, json.dumps(payload), retain=True)
+        self.publish_device_context_value(field, device_context[field])
+
+      self.publish_device_context(device_context)
 
     if voices is not None:
       voice_payload = {
@@ -408,6 +492,12 @@ class MQTTClient:  # pylint: disable=too-many-public-methods
     """Publish the current language state to the instance-scoped topic."""
     logger.debug(f"Publishing language state: {language}")
     self.client.publish(self.get_language_state_topic(), language, retain=True)
+
+  def publish_device_context(self, context: dict[str, str]) -> None:
+    self.client.publish(self.get_device_context_state_topic(), json.dumps(context, sort_keys=True), retain=True)
+
+  def publish_device_context_value(self, field: str, value: str) -> None:
+    self.client.publish(self.get_device_context_field_state_topic(field), value, retain=True)
 
   def publish_voice_state(self, voice: str) -> None:
     self.client.publish(self.get_voice_state_topic(), voice, retain=True)

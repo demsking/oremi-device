@@ -183,6 +183,65 @@ def test_publish_discovery_configs_no_entities(mock_mqtt_class) -> None:
 
 
 @patch("paho.mqtt.client.Client")
+def test_publish_discovery_configs_adds_device_context_controls(mock_mqtt_class) -> None:
+  client = MQTTClient(
+    broker="localhost",
+    port=1883,
+    topic="oremi/device",
+    node_id="kitchen",
+    discovery_prefix="homeassistant",
+  )
+  mock_client_instance = mock_mqtt_class.return_value
+  mock_client_instance.publish = MagicMock()
+  device_context = {
+    "language": "en",
+    "location": "12 Rue de Rivoli, Paris",
+    "timezone": "America/New_York",
+    "temperature_unit": "fahrenheit",
+    "preferred_currency": "USD",
+    "measurement_system": "imperial",
+    "distance_unit": "mile",
+    "time_format": "12h",
+    "date_format": "MM/DD/YYYY",
+    "first_day_of_week": "sunday",
+  }
+
+  client.publish_discovery_configs(
+    input_devices=[],
+    current_device="",
+    device_context=device_context,
+    microphone_enabled=False,
+    speaker_enabled=False,
+    current_language="en",
+  )
+
+  published = {call.args[0]: call.args[1] for call in mock_client_instance.publish.call_args_list}
+  language_config = json.loads(published["homeassistant/select/oremi-device-kitchen/language/config"])
+  location_config = json.loads(published["homeassistant/text/oremi-device-kitchen/location/config"])
+  timezone_config = json.loads(published["homeassistant/text/oremi-device-kitchen/timezone/config"])
+  temperature_config = json.loads(published["homeassistant/select/oremi-device-kitchen/temperature_unit/config"])
+  context_payload = json.loads(published["oremi/device/nodes/kitchen/context/state"])
+
+  assert language_config["name"] == "Language"
+  assert language_config["options"] == ["fr", "en"]
+  assert language_config["state_topic"] == "oremi/device/nodes/kitchen/context/language/state"
+  assert language_config["command_topic"] == "oremi/device/nodes/kitchen/context/language/set"
+  assert location_config["name"] == "Location"
+  assert location_config["state_topic"] == "oremi/device/nodes/kitchen/context/location/state"
+  assert location_config["command_topic"] == "oremi/device/nodes/kitchen/context/location/set"
+  assert timezone_config["name"] == "Timezone"
+  assert timezone_config["state_topic"] == "oremi/device/nodes/kitchen/context/timezone/state"
+  assert timezone_config["command_topic"] == "oremi/device/nodes/kitchen/context/timezone/set"
+  assert temperature_config["options"] == ["celsius", "fahrenheit"]
+  assert temperature_config["state_topic"] == "oremi/device/nodes/kitchen/context/temperature_unit/state"
+  assert published["oremi/device/nodes/kitchen/context/language/state"] == "en"
+  assert published["oremi/device/nodes/kitchen/context/location/state"] == "12 Rue de Rivoli, Paris"
+  assert published["oremi/device/nodes/kitchen/context/preferred_currency/state"] == "USD"
+  assert published["oremi/device/nodes/kitchen/context/temperature_unit/state"] == "fahrenheit"
+  assert context_payload == device_context
+
+
+@patch("paho.mqtt.client.Client")
 def test_disabled_audio_discovery(mock_mqtt_class) -> None:
   client = MQTTClient(
     broker="localhost",

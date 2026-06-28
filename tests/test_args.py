@@ -14,10 +14,12 @@
 # ==============================================================================
 import json
 import os
+from types import SimpleNamespace
 
 import pytest
 from pydantic import ValidationError
 
+from oremi_device.core.geocode import get_location_geocode
 from oremi_device.core.settings import apply_runtime_settings_cache
 from oremi_device.core.settings import DeviceSettings
 from oremi_device.core.settings import format_settings_errors
@@ -25,6 +27,7 @@ from oremi_device.core.settings import load_settings
 from oremi_device.core.settings import read_runtime_settings_cache
 from oremi_device.core.settings import RuntimeSettingsCache
 from oremi_device.core.settings import update_runtime_settings_cache
+from oremi_device.core.timezone import infer_timezone_from_coordinates
 
 
 REQUIRED_SETTINGS = {
@@ -46,6 +49,15 @@ def test_settings_defaults() -> None:
   settings = DeviceSettings(_env_file=None, **REQUIRED_SETTINGS)
 
   assert settings.microphone_enabled is True
+  assert settings.location == ""
+  assert settings.context["timezone"] == "Africa/Douala"
+  assert settings.temperature_unit == "celsius"
+  assert settings.preferred_currency == "XAF"
+  assert settings.measurement_system == "metric"
+  assert settings.distance_unit == "kilometer"
+  assert settings.time_format == "24h"
+  assert settings.date_format == "DD/MM/YYYY"
+  assert settings.first_day_of_week == "monday"
   assert settings.speaker_enabled is True
   assert settings.microphone_device is None
   assert settings.microphone_device_index is None
@@ -69,6 +81,14 @@ def test_settings_are_loaded_from_environment(monkeypatch: pytest.MonkeyPatch) -
   monkeypatch.setenv("OREMI_DEVICE_ANDIKA_HOST", "andika")
   monkeypatch.setenv("OREMI_DEVICE_MQTT_BROKER", "mqtt")
   monkeypatch.setenv("OREMI_DEVICE_MICROPHONE_ENABLED", "false")
+  monkeypatch.setenv("OREMI_DEVICE_LOCATION", "12 Rue de Rivoli, Paris")
+  monkeypatch.setenv("OREMI_DEVICE_TEMPERATURE_UNIT", "fahrenheit")
+  monkeypatch.setenv("OREMI_DEVICE_PREFERRED_CURRENCY", "usd")
+  monkeypatch.setenv("OREMI_DEVICE_MEASUREMENT_SYSTEM", "imperial")
+  monkeypatch.setenv("OREMI_DEVICE_DISTANCE_UNIT", "mile")
+  monkeypatch.setenv("OREMI_DEVICE_TIME_FORMAT", "12h")
+  monkeypatch.setenv("OREMI_DEVICE_DATE_FORMAT", "MM/DD/YYYY")
+  monkeypatch.setenv("OREMI_DEVICE_FIRST_DAY_OF_WEEK", "sunday")
   monkeypatch.setenv("OREMI_DEVICE_MICROPHONE_DEVICE", "USB Microphone")
   monkeypatch.setenv("OREMI_DEVICE_MICROPHONE_DEVICE_INDEX", "2")
   monkeypatch.setenv("OREMI_DEVICE_ANDIKA_SAMPLERATE", "48000")
@@ -81,6 +101,27 @@ def test_settings_are_loaded_from_environment(monkeypatch: pytest.MonkeyPatch) -
 
   assert settings.node_id == "kitchen"
   assert settings.microphone_enabled is False
+  assert settings.location == "12 Rue de Rivoli, Paris"
+  assert settings.context["timezone"] == "Europe/Paris"
+  assert settings.temperature_unit == "fahrenheit"
+  assert settings.preferred_currency == "USD"
+  assert settings.measurement_system == "imperial"
+  assert settings.distance_unit == "mile"
+  assert settings.time_format == "12h"
+  assert settings.date_format == "MM/DD/YYYY"
+  assert settings.first_day_of_week == "sunday"
+  assert settings.context == {
+    "language": "fr",
+    "location": "12 Rue de Rivoli, Paris",
+    "timezone": "Europe/Paris",
+    "temperature_unit": "fahrenheit",
+    "preferred_currency": "USD",
+    "measurement_system": "imperial",
+    "distance_unit": "mile",
+    "time_format": "12h",
+    "date_format": "MM/DD/YYYY",
+    "first_day_of_week": "sunday",
+  }
   assert settings.microphone_device == "USB Microphone"
   assert settings.microphone_device_index == 2
   assert settings.andika_samplerate == 48000
@@ -95,6 +136,13 @@ def test_settings_are_loaded_from_environment(monkeypatch: pytest.MonkeyPatch) -
   [
     ("conversation_timeout", 0),
     ("language", "de"),
+    ("temperature_unit", "kelvin"),
+    ("preferred_currency", "EURO"),
+    ("measurement_system", "customary"),
+    ("distance_unit", "meter"),
+    ("time_format", "24-hour"),
+    ("date_format", "YYYY/MM/DD"),
+    ("first_day_of_week", "friday"),
     ("ohunerin_threshold", 0),
     ("andika_model", "unsupported"),
     ("andika_samplerate", 0),
@@ -122,6 +170,43 @@ def test_whisper_backend_does_not_require_andika_host() -> None:
 
   assert settings.andika_host is None
   assert str(settings.whisper_url) == "http://whisper:8080/"
+
+
+def test_get_location_geocode_normalizes_location(monkeypatch: pytest.MonkeyPatch) -> None:
+  result = object()
+  calls = []
+
+  def geocode(location: str) -> object:
+    calls.append(location)
+    return result
+
+  monkeypatch.setattr("oremi_device.core.geocode._geocoder", SimpleNamespace(geocode=geocode))
+
+  assert get_location_geocode("  12 Rue de Rivoli, Paris  ") is result
+  assert calls == ["12 Rue de Rivoli, Paris"]
+
+
+def test_timezone_is_inferred_from_coordinates(monkeypatch: pytest.MonkeyPatch) -> None:
+  calls = []
+
+  def timezone_at(*, lat: float, lng: float) -> str:
+    calls.append({"lat": lat, "lng": lng})
+    return "Europe/Paris"
+
+  monkeypatch.setattr("oremi_device.core.timezone._timezone_finder", SimpleNamespace(timezone_at=timezone_at))
+
+  assert infer_timezone_from_coordinates(latitude=48.8566, longitude=2.3522) == "Europe/Paris"
+  assert calls == [{"lat": 48.8566, "lng": 2.3522}]
+
+
+@pytest.mark.parametrize("timezone", [None, "Invalid/Timezone"])
+def test_invalid_timezone_coordinates_return_none(monkeypatch: pytest.MonkeyPatch, timezone: str | None) -> None:
+  monkeypatch.setattr(
+    "oremi_device.core.timezone._timezone_finder",
+    SimpleNamespace(timezone_at=lambda *, lat, lng: timezone),
+  )
+
+  assert infer_timezone_from_coordinates(latitude=0.0, longitude=0.0) is None
 
 
 def test_whisper_backend_requires_url() -> None:
@@ -167,6 +252,14 @@ def test_runtime_settings_cache_overrides_mutable_settings(tmp_path, monkeypatch
     json.dumps(
       {
         "language": "en",
+        "location": "12 Rue de Rivoli, Paris",
+        "temperature_unit": "fahrenheit",
+        "preferred_currency": "usd",
+        "measurement_system": "imperial",
+        "distance_unit": "mile",
+        "time_format": "12h",
+        "date_format": "MM/DD/YYYY",
+        "first_day_of_week": "sunday",
         "microphone_device": "USB Microphone",
         "microphone_muted": True,
         "speaker_device": "USB Speaker",
@@ -189,6 +282,15 @@ def test_runtime_settings_cache_overrides_mutable_settings(tmp_path, monkeypatch
   settings = load_settings()
 
   assert settings.language == "en"
+  assert settings.location == "12 Rue de Rivoli, Paris"
+  assert settings.context["timezone"] == "Europe/Paris"
+  assert settings.temperature_unit == "fahrenheit"
+  assert settings.preferred_currency == "USD"
+  assert settings.measurement_system == "imperial"
+  assert settings.distance_unit == "mile"
+  assert settings.time_format == "12h"
+  assert settings.date_format == "MM/DD/YYYY"
+  assert settings.first_day_of_week == "sunday"
   assert settings.microphone_device == "USB Microphone"
   assert settings.microphone_device_index is None
   assert settings.microphone_muted is True
@@ -202,11 +304,17 @@ def test_runtime_settings_cache_update_preserves_existing_values(tmp_path) -> No
   settings = DeviceSettings(_env_file=None, **REQUIRED_SETTINGS, data=tmp_path)
   cache_file = tmp_path / "test-node.json"
 
-  update_runtime_settings_cache(settings, language="en", speaker_volume=0.4)
+  update_runtime_settings_cache(
+    settings,
+    language="en",
+    location="12 Rue de Rivoli, Paris",
+    speaker_volume=0.4,
+  )
   update_runtime_settings_cache(settings, speaker_muted=True)
 
   assert json.loads(cache_file.read_text(encoding="utf-8")) == {
     "language": "en",
+    "location": "12 Rue de Rivoli, Paris",
     "speaker_muted": True,
     "speaker_volume": 0.4,
   }

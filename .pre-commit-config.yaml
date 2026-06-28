@@ -108,6 +108,7 @@ repos:
       - id: ruff
         name: 'Ruff Linter'
         description: 'Runs Ruff, an extremely fast Python linter.'
+        exclude: ^typings/
 
   - repo: https://github.com/pre-commit/pygrep-hooks
     rev: v1.10.0

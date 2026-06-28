@@ -21,13 +21,19 @@ from typing import Literal
 from pydantic import AnyHttpUrl
 from pydantic import BaseModel
 from pydantic import Field
+from pydantic import field_validator
 from pydantic import model_validator
 from pydantic import ValidationError
 from pydantic_settings import BaseSettings
 from pydantic_settings import SettingsConfigDict
 
 from ..utils.logger import logger
+from .geocode import get_location_geocode
 from .models import AndikaModel
+from .timezone import infer_timezone_from_coordinates
+
+
+DEFAULT_TIMEZONE = "Africa/Douala"
 
 
 class SettingsError(Exception):
@@ -56,6 +62,8 @@ def format_settings_errors(error: ValidationError) -> list[str]:
       message = "is required"
     elif field == "language" and error_type == "literal_error":
       message = "must be one of: fr, en"
+    elif field == "preferred_currency" and error_type == "string_pattern_mismatch":
+      message = "must be a three-letter ISO 4217 currency code"
     elif field == "andika_model" and error_type == "literal_error":
       message = "contains an unsupported model identifier"
     elif field == "izwi_url" and error_type in ("url_parsing", "url_scheme"):
@@ -90,6 +98,14 @@ class DeviceSettings(BaseSettings):
   model_config = SettingsConfigDict(env_prefix="OREMI_DEVICE_", env_file=".env", extra="ignore")
 
   language: Literal["fr", "en"] = "fr"
+  location: str = ""
+  temperature_unit: Literal["celsius", "fahrenheit"] = "celsius"
+  preferred_currency: str = Field(default="XAF", pattern=r"^[A-Z]{3}$")
+  measurement_system: Literal["metric", "imperial"] = "metric"
+  distance_unit: Literal["kilometer", "mile"] = "kilometer"
+  time_format: Literal["12h", "24h"] = "24h"
+  date_format: Literal["DD/MM/YYYY", "MM/DD/YYYY", "YYYY-MM-DD"] = "DD/MM/YYYY"
+  first_day_of_week: Literal["monday", "sunday", "saturday"] = "monday"
   microphone_device_index: int | None = None
   microphone_device: str | None = None
   microphone_enabled: bool = True
@@ -136,6 +152,38 @@ class DeviceSettings(BaseSettings):
   mqtt_discovery: bool = True
   mqtt_discovery_prefix: str = "homeassistant"
 
+  @property
+  def context(self) -> dict[str, Any]:
+    context = {
+      "language": self.language,
+      "location": self.location,
+      "timezone": DEFAULT_TIMEZONE,
+      "temperature_unit": self.temperature_unit,
+      "preferred_currency": self.preferred_currency,
+      "measurement_system": self.measurement_system,
+      "distance_unit": self.distance_unit,
+      "time_format": self.time_format,
+      "date_format": self.date_format,
+      "first_day_of_week": self.first_day_of_week,
+    }
+
+    location = get_location_geocode(self.location)
+
+    if location:
+      context["latitude"] = location.latitude
+      context["longitude"] = location.longitude
+      context["address"] = location.address
+      context["timezone"] = (
+        infer_timezone_from_coordinates(latitude=location.latitude, longitude=location.longitude) or DEFAULT_TIMEZONE
+      )
+
+    return context
+
+  @field_validator("preferred_currency", mode="before")
+  @classmethod
+  def normalize_preferred_currency(cls, value: str) -> str:
+    return value.upper() if isinstance(value, str) else value
+
   @model_validator(mode="after")
   def validate_backends(self) -> "DeviceSettings":
     if self.transcription_backend == "andika" and not self.andika_host:
@@ -154,12 +202,25 @@ class RuntimeSettingsCache(BaseModel):
   """Runtime settings changed through MQTT/Home Assistant controls."""
 
   language: Literal["fr", "en"] | None = None
+  location: str | None = None
+  temperature_unit: Literal["celsius", "fahrenheit"] | None = None
+  preferred_currency: str | None = Field(default=None, pattern=r"^[A-Z]{3}$")
+  measurement_system: Literal["metric", "imperial"] | None = None
+  distance_unit: Literal["kilometer", "mile"] | None = None
+  time_format: Literal["12h", "24h"] | None = None
+  date_format: Literal["DD/MM/YYYY", "MM/DD/YYYY", "YYYY-MM-DD"] | None = None
+  first_day_of_week: Literal["monday", "sunday", "saturday"] | None = None
   microphone_device: str | None = None
   microphone_muted: bool | None = None
   speaker_device: str | None = None
   speaker_muted: bool | None = None
   speaker_volume: float | None = Field(default=None, ge=0, le=1)
   tts_voice: str | None = None
+
+  @field_validator("preferred_currency", mode="before")
+  @classmethod
+  def normalize_preferred_currency(cls, value: str | None) -> str | None:
+    return value.upper() if isinstance(value, str) else value
 
 
 def get_settings_cache_file(settings: DeviceSettings) -> Path:

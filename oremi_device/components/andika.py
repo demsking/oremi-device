@@ -306,6 +306,7 @@ class AndikaComponent(AudioStreamComponent):
         "samplerate": config.samplerate,
         "show-words": False,
         "max-alternatives": 0,
+        "language": self.settings.language,
       }
     )
 

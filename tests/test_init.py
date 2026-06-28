@@ -54,6 +54,7 @@ def test_build_connection_uri_default() -> None:
   params = urllib.parse.parse_qs(parsed.query)
   assert params["features"] == ["wakeword-detection,sound-detection"]
   assert params["language"] == ["fr"]
+  assert "timezone" not in params
 
 
 def test_build_connection_uri_secure() -> None:
@@ -71,6 +72,7 @@ def test_build_connection_uri_secure() -> None:
   params = urllib.parse.parse_qs(parsed.query)
   assert params["features"] == ["wakeword-detection,sound-detection"]
   assert params["language"] == ["en"]
+  assert "timezone" not in params
 
 
 def test_build_connection_uri_with_ohunerin_config() -> None:
@@ -85,6 +87,7 @@ def test_build_connection_uri_with_ohunerin_config() -> None:
   params = urllib.parse.parse_qs(parsed.query)
   assert params["features"] == ["wakeword-detection,sound-detection"]
   assert params["language"] == ["fr"]
+  assert "temperature-unit" not in params
   assert "wakewords" not in params
   assert "discriminants" not in params
   assert "allowlist" not in params
@@ -135,6 +138,8 @@ def test_build_andika_connection_uri_default() -> None:
   params = urllib.parse.parse_qs(parsed.query)
   assert params["model"] == ["vosk-model-small-fr-0.22"]
   assert params["samplerate"] == ["16000"]
+  assert params["language"] == ["fr"]
+  assert "timezone" not in params
 
 
 def test_build_andika_connection_uri_with_config() -> None:
@@ -155,6 +160,8 @@ def test_build_andika_connection_uri_with_config() -> None:
   assert params["samplerate"] == ["16000"]
   assert params["show-words"] == ["False"]
   assert params["max-alternatives"] == ["0"]
+  assert params["language"] == ["fr"]
+  assert "temperature-unit" not in params
 
 
 def test_andika_ha_entities() -> None:

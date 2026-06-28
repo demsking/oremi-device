@@ -18,6 +18,7 @@ import signal
 import sys
 from datetime import datetime
 from datetime import timezone
+from typing import Any
 from typing import Literal
 
 import sounddevice as sd
@@ -48,10 +49,14 @@ from .models import ReminderCommand
 from .models import SetVoiceCommand
 from .models import SetVolumeCommand
 from .models import SpeakCommand
+from .mqtt import DEVICE_CONTEXT_OPTIONS
+from .mqtt import DEVICE_CONTEXT_TEXT_FIELDS
 from .mqtt import MQTTClient
 from .package import APP_NAME
 from .package import APP_VERSION
+from .settings import DeviceSettings
 from .settings import load_settings
+from .settings import RuntimeSettingsCache
 from .settings import update_runtime_settings_cache
 from .speaker import Speaker
 from .speaker import SpeakerDeviceError
@@ -87,40 +92,154 @@ def classify_supervisor_done(
   return "continue"
 
 
-async def start() -> None:
-  settings = load_settings()
+def build_device_context(settings: DeviceSettings) -> dict[str, str]:
+  return settings.context.copy()
 
-  loop = asyncio.get_running_loop()
 
-  # Log initial configuration
-  logger.info(f"Starting {APP_NAME}/{APP_VERSION}")
-  logger.info(f"Log level: {logging.getLevelName(logger.getEffectiveLevel())}")
-  logger.info(f"Configuration Node ID: {settings.node_id}")
-  logger.info(f"Configuration Ohunerin Host: {settings.ohunerin_host}")
-  logger.info(f"Configuration Ohunerin Port: {settings.ohunerin_port}")
-  logger.info(f"Configuration Transcription Backend: {settings.transcription_backend}")
+def validate_device_context_value(field: str, value: str) -> str | None:
+  if field not in (*DEVICE_CONTEXT_TEXT_FIELDS, *DEVICE_CONTEXT_OPTIONS):
+    logger.warning(f"Ignoring unsupported device context command: {field}")
+    return None
+
+  normalized = value.strip()
+
+  if field == "preferred_currency":
+    normalized = normalized.upper()
+
+  try:
+    RuntimeSettingsCache.model_validate({field: normalized})
+  except ValidationError as error:
+    logger.warning(f"Ignoring invalid device context command for {field}: {error}")
+    return None
+
+  return normalized
+
+
+def format_setting_value(value: object) -> str:
+  if value is None or value == "":
+    return "unset"
+
+  if isinstance(value, bool):
+    return "enabled" if value else "disabled"
+
+  return str(value)
+
+
+def format_settings_group(values: dict[str, Any]) -> str:
+  return ", ".join(f"{key}={format_setting_value(value)}" for key, value in values.items())
+
+
+def log_startup_settings(settings: DeviceSettings) -> None:
+  context = build_device_context(settings)
+  transcription_settings: dict[str, object] = {
+    "backend": settings.transcription_backend,
+  }
 
   if settings.transcription_backend == "andika":
-    logger.info(f"Configuration Andika Host: {settings.andika_host}")
-    logger.info(f"Configuration Andika Port: {settings.andika_port}")
+    transcription_settings.update(
+      {
+        "host": settings.andika_host,
+        "port": settings.andika_port,
+        "model": settings.andika_model,
+        "samplerate": settings.andika_samplerate,
+      }
+    )
   else:
-    logger.info(f"Configuration whisper.cpp URL: {settings.whisper_url}")
+    transcription_settings["url"] = settings.whisper_url
 
-  if settings.tts_backend == "edge-tts" and settings.edge_tts_url:
-    logger.info(f"Configuration Edge-TTS URL: {settings.edge_tts_url}")
-  elif settings.izwi_url:
-    logger.info(f"Configuration Izwi URL: {settings.izwi_url}")
+  speech_settings: dict[str, object] = {
+    "backend": settings.tts_backend,
+    "voice": settings.tts_voice,
+  }
 
-  logger.info(f"Configuration Secure Connection: {'Enabled' if settings.cert_file else 'Disabled'}")
+  if settings.tts_backend == "edge-tts":
+    speech_settings.update(
+      {
+        "url": settings.edge_tts_url,
+        "locale": settings.edge_tts_locale,
+        "model": settings.edge_tts_model,
+        "format": settings.edge_tts_response_format,
+        "speed": settings.edge_tts_speed,
+      }
+    )
+  else:
+    speech_settings["url"] = settings.izwi_url
+
+  logger.info(f"Starting {APP_NAME}/{APP_VERSION}")
+  logger.info(
+    "Settings runtime: "
+    + format_settings_group(
+      {
+        "log_level": logging.getLevelName(logger.getEffectiveLevel()),
+        "node_id": settings.node_id,
+        "data": settings.data,
+      }
+    )
+  )
+
+  logger.info(f"Settings context: {format_settings_group(context)}")
+  logger.info(
+    "Settings audio: "
+    + format_settings_group(
+      {
+        "microphone": settings.microphone_enabled,
+        "microphone_device": settings.microphone_device,
+        "microphone_device_index": settings.microphone_device_index,
+        "microphone_muted": settings.microphone_muted,
+        "speaker": settings.speaker_enabled,
+        "speaker_device": settings.speaker_device,
+        "speaker_muted": settings.speaker_muted,
+        "speaker_volume": settings.speaker_volume,
+      }
+    )
+  )
+
+  logger.info(
+    "Settings services: "
+    + format_settings_group(
+      {
+        "ohunerin": f"{settings.ohunerin_host}:{settings.ohunerin_port}",
+        "ohunerin_threshold": settings.ohunerin_threshold,
+        "delay": settings.delay,
+        "conversation_timeout": settings.conversation_timeout,
+      }
+    )
+  )
+
+  logger.info(f"Settings transcription: {format_settings_group(transcription_settings)}")
+  logger.info(f"Settings speech: {format_settings_group(speech_settings)}")
+  logger.info(
+    "Settings mqtt: "
+    + format_settings_group(
+      {
+        "broker": settings.mqtt_broker,
+        "port": settings.mqtt_port,
+        "topic": settings.mqtt_topic,
+        "username": settings.mqtt_username,
+        "discovery": settings.mqtt_discovery,
+        "discovery_prefix": settings.mqtt_discovery_prefix,
+      }
+    )
+  )
+
+  logger.info(
+    "Settings security: "
+    + format_settings_group(
+      {
+        "tls": bool(settings.cert_file),
+        "cert_file": settings.cert_file,
+      }
+    )
+  )
+
+
+async def start() -> None:
+  settings = load_settings()
+  loop = asyncio.get_running_loop()
+
+  log_startup_settings(settings)
   microphone_enabled = settings.microphone_enabled
   speaker_enabled = settings.speaker_enabled
-  logger.info(f"Configuration Microphone: {'Enabled' if microphone_enabled else 'Disabled'}")
-  logger.info(f"Configuration Speaker: {'Enabled' if speaker_enabled else 'Disabled'}")
-
-  if settings.cert_file:
-    logger.info(f"Configuration Certificate File: {settings.cert_file}")
-
-  logger.info(f"Configuration Language: {settings.language}")
 
   # ── Resolve active components ────────────────────────────────────────────────
   active_components: list[tuple[Component, BaseModel]] = []
@@ -232,6 +351,7 @@ async def start() -> None:
   player_play_queue: asyncio.Queue = asyncio.Queue()
   player_stop_queue: asyncio.Queue = asyncio.Queue()
   language_change_queue: asyncio.Queue = asyncio.Queue()
+  device_context_change_queue: asyncio.Queue[tuple[str, str]] = asyncio.Queue()
   processing_queue: asyncio.Queue[ProcessingResponse] = asyncio.Queue()
   voice_change_queue: asyncio.Queue[str] = asyncio.Queue()
   wakeword_event = asyncio.Event()
@@ -244,6 +364,7 @@ async def start() -> None:
   }
 
   language_state: dict = {"language": settings.language}
+  device_context = build_device_context(settings)
   initial_voices = voices_for_language(tts_voices, settings.language)
   initial_voice_names = [voice.name for voice in initial_voices]
 
@@ -407,6 +528,11 @@ async def start() -> None:
     # Subscribe to the language-select command topic.
     client.subscribe(mqtt_client.get_language_command_topic())
 
+    for field in (*DEVICE_CONTEXT_TEXT_FIELDS, *DEVICE_CONTEXT_OPTIONS):
+      client.subscribe(mqtt_client.get_device_context_command_topic(field))
+
+    mqtt_client.publish_device_context(device_context)
+
     if mqtt_client.discovery_prefix:
       try:
         curr_stream = active_stream_container["stream"]
@@ -435,6 +561,7 @@ async def start() -> None:
           speaker_muted=speaker_state["muted"],
           speaker_volume=speaker_state["volume"],
           current_language=language_state["language"],
+          device_context=device_context,
           microphone_enabled=microphone_enabled,
           speaker_enabled=speaker_enabled,
           voices=active_voice_names() if tts_client else None,
@@ -531,6 +658,21 @@ async def start() -> None:
           logger.warning(f"Ignoring unsupported language command: {new_language}")
       except Exception as error:
         logger.error(f"Error decoding or handling MQTT language command: {error}")
+
+    elif topic.startswith(mqtt_client.parse_node_topic("context/")) and topic.endswith("/set"):
+      try:
+        field = topic.removeprefix(mqtt_client.parse_node_topic("context/")).removesuffix("/set")
+        value = validate_device_context_value(field, message.payload.decode("utf-8"))
+
+        if value is not None:
+          logger.info(f"Received device context command: {field}={value}")
+
+          if field == "language":
+            loop.call_soon_threadsafe(language_change_queue.put_nowait, value)
+          else:
+            loop.call_soon_threadsafe(device_context_change_queue.put_nowait, (field, value))
+      except UnicodeDecodeError as error:
+        logger.warning(f"Ignoring invalid device context command: {error}")
 
     elif speaker_enabled and topic == mqtt_client.get_processing_result_topic():
       try:
@@ -851,9 +993,11 @@ async def start() -> None:
         tasks.extend((speaker_change_task, speaker_mute_task, speaker_volume_task, player_play_task, player_stop_task))
 
       language_change_task = loop.create_task(language_change_queue.get())
+      device_context_change_task = loop.create_task(device_context_change_queue.get())
       processing_task = loop.create_task(processing_queue.get()) if speaker_enabled else None
       voice_change_task = loop.create_task(voice_change_queue.get()) if tts_voices else None
       tasks.append(language_change_task)
+      tasks.append(device_context_change_task)
 
       if processing_task is not None:
         tasks.append(processing_task)
@@ -875,6 +1019,7 @@ async def start() -> None:
         player_play_task,
         player_stop_task,
         language_change_task,
+        device_context_change_task,
         processing_task,
         voice_change_task,
       ]
@@ -1113,14 +1258,25 @@ async def start() -> None:
         await asyncio.to_thread(update_runtime_settings_cache, settings, tts_voice=voice_state["voice"])
         mqtt_client.publish_voice_state(voice_state["voice"])
         logger.info(f"Speech synthesis voice switched to: {voice_state['voice']}")
+      elif device_context_change_task in done:
+        field, value = device_context_change_task.result()
+        setattr(settings, field, value)
+        device_context = build_device_context(settings)
+        await asyncio.to_thread(update_runtime_settings_cache, settings, **{field: value})
+        mqtt_client.publish_device_context_value(field, value)
+        mqtt_client.publish_device_context(device_context)
+        logger.info(f"Device context updated: {field}={value}")
       elif language_change_task is not None and language_change_task in done:
         new_language = language_change_task.result()
         language_state["language"] = new_language
         settings.language = new_language
+        device_context["language"] = new_language
         logger.info(f"Language switched to: {new_language}")
 
         # Publish the new language state for HA
         mqtt_client.publish_language_state(new_language)
+        mqtt_client.publish_device_context_value("language", new_language)
+        mqtt_client.publish_device_context(device_context)
         available_voices = active_voice_names()
 
         if voice_state["voice"] not in available_voices:
@@ -1164,6 +1320,7 @@ async def start() -> None:
               speaker_muted=speaker_state["muted"],
               speaker_volume=speaker_state["volume"],
               current_language=new_language,
+              device_context=device_context,
               microphone_enabled=microphone_enabled,
               speaker_enabled=speaker_enabled,
               voices=available_voices if tts_client else None,
