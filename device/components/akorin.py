@@ -77,6 +77,14 @@ class AkorinClient:
     tags: list[str],
     timeout: float,
   ) -> ProcessingResponse:
+    logger.debug(
+      f"Sending processing request to {self.endpoint} "
+      f"(message={message!r}, "
+      f"language={language or 'auto'}, "
+      f"context={context}, "
+      f"tags={tags})"
+    )
+
     async with httpx.AsyncClient(verify=self.verify, timeout=timeout) as client:
       response = await client.post(
         url=self.endpoint,
@@ -90,7 +98,14 @@ class AkorinClient:
 
       response.raise_for_status()
 
-      return ProcessingResponse.model_validate(response.json())
+      data = response.json()
+      result = ProcessingResponse.model_validate(data)
+
+      logger.debug(
+        f"Processing completed (service={result.service}, confidence={result.confidence:.2f}, message={result.message!r})"
+      )
+
+      return result
 
 
 class AkorinComponent(HttpComponent[AkorinConfig]):

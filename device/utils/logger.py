@@ -46,3 +46,5 @@ def configure_logging(level: str, log_file: str | None) -> None:
 
   for noisy_logger in ("watchfiles", "watchfiles.main"):
     logging.getLogger(noisy_logger).setLevel(logging.WARNING)
+
+  logging.getLogger("websockets.client").setLevel(logging.INFO)

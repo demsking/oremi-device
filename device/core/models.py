@@ -186,7 +186,9 @@ ProcessingCommand = Annotated[
 class ProcessingResponse(BaseModel):
   """Validated command envelope published by an Oremi NLP service."""
 
+  service: str
   message: str | None = None
+  confidence: float
   commands: list[ProcessingCommand] = Field(default_factory=list)
 
   def resolved_commands(self) -> list[ProcessingCommand]:

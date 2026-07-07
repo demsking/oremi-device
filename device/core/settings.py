@@ -38,7 +38,7 @@ from .package import APP_NAME
 from .timezone import infer_timezone_from_coordinates
 
 
-DEFAULT_TIMEZONE = "Africa/Douala"
+DEFAULT_TIMEZONE = "UTC"
 logger = logging.getLogger(__name__)
 
 

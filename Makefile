@@ -102,7 +102,6 @@ image: build/context
 	  --label "org.opencontainers.image.vendor=Sébastien Demanou" \
 	  --label "org.opencontainers.image.licenses=$(shell python scripts/metadata.py license)"
 
-
 image-test:
 	uv lock
 	docker build . \
@@ -110,7 +109,7 @@ image-test:
 	  --tag $(IMAGE_NAME):test
 
 live: image-test
-	docker run -it --rm --env-file .env.example -v ./data:/oremi/data --network host -e OREMI_DEVICE_MQTT_BROKER=192.168.1.79 --device /dev/snd:/dev/snd --group-add audio $(IMAGE_NAME):test
+	docker run -it --rm --env-file .env.example -v ./data:/oremi/data --network host --device /dev/snd:/dev/snd --group-add audio $(IMAGE_NAME):test
 
 publish: image-test
 	git tag v$(APP_VERSION)
