@@ -42,8 +42,7 @@ COPY --from=builder /app/.venv /oremi/.venv
 COPY --from=builder /usr/local/lib/python3.12/site-packages /usr/local/lib/python3.12/site-packages
 
 COPY scripts/pulse-client.conf /etc/pulse/client.conf
-COPY --chown=oremi:oremi DOCUMENTATION.md pyproject.toml LICENSE ./
-COPY --chown=oremi:oremi htdocs/ ./htdocs/
+COPY --chown=oremi:oremi pyproject.toml LICENSE ./
 COPY --chown=oremi:oremi device/ ./device/
 
 ENV PATH="/oremi/.venv/bin:$PATH"
