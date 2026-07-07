@@ -36,7 +36,7 @@ pages:
     - uv sync
   script:
     # page
-    - cp pages/* public/
+    - mv pages public
 
     # home assistant component
     - mkdir -p /tmp/oremi_device
