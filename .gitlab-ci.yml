@@ -33,6 +33,7 @@ pages:
   stage: deploy
   image: ghcr.io/astral-sh/uv:$UV_VERSION-python$PYTHON_VERSION-$BASE_LAYER
   before_script:
+    - apk add --no-cache zip
     - uv sync
   script:
     # page
