@@ -10,6 +10,9 @@ SHELL ["/bin/ash", "-eo", "pipefail", "-c"]
 # Install uv
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
+# Install build tools for dependencies without Alpine wheels on all target architectures.
+RUN apk add --no-cache build-base
+
 # Change the working directory
 WORKDIR /app
 
