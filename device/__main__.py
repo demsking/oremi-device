@@ -17,11 +17,11 @@ import asyncio
 import sys
 from collections.abc import Sequence
 
-from .core.app import start
-from .core.package import APP_DESCRIPTION
-from .core.package import APP_NAME
-from .core.package import APP_VERSION
-from .core.settings import SettingsError
+from device.core.app import start
+from device.core.package import APP_DESCRIPTION
+from device.core.package import APP_NAME
+from device.core.package import APP_VERSION
+from device.core.settings import SettingsError
 
 
 parser = argparse.ArgumentParser(prog=APP_NAME, description=APP_DESCRIPTION)

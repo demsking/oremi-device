@@ -17,12 +17,12 @@ from unittest.mock import patch
 
 import pytest
 
-from oremi_device.__main__ import main
-from oremi_device.core.app import classify_supervisor_done
-from oremi_device.core.app import listening_task_failed
-from oremi_device.core.app import parse_device_context_command_field
-from oremi_device.core.app import validate_device_context_value
-from oremi_device.core.settings import SettingsError
+from device.__main__ import main
+from device.core.app import classify_supervisor_done
+from device.core.app import listening_task_failed
+from device.core.app import parse_device_context_command_field
+from device.core.app import validate_device_context_value
+from device.core.settings import SettingsError
 
 
 def test_main_prints_clean_configuration_errors(capsys) -> None:
@@ -33,7 +33,7 @@ def test_main_prints_clean_configuration_errors(capsys) -> None:
     ]
   )
 
-  with patch("oremi_device.__main__.start", side_effect=error):
+  with patch("device.__main__.start", side_effect=error):
     result = main([])
 
   captured = capsys.readouterr()

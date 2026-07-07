@@ -1,61 +1,63 @@
 #
-## Stage 1: Build environment
-FROM python:3.12-slim AS install-dependencies-stage
+## Stage 1: Builder
+FROM python:3.12-alpine3.21 AS builder
 
-# Copy the uv binary
+ENV UV_LINK_MODE=copy
+
+# Set the shell to /bin/ash and enable pipefail
+SHELL ["/bin/ash", "-eo", "pipefail", "-c"]
+
+# Install uv
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
-# Set the shell to /bin/bash and enable pipefail
-SHELL ["/bin/bash", "-eo", "pipefail", "-c"]
-
-# Copy and install Python dependencies
-WORKDIR /src
-COPY uv.lock pyproject.toml ./
-RUN uv pip install --system --no-cache -r pyproject.toml
-
-
-#
-## Stage 2: Runtime environment
-FROM python:3.12-slim
-
-# Set the shell to /bin/bash and enable pipefail
-SHELL ["/bin/bash", "-eo", "pipefail", "-c"]
+# Change the working directory
+WORKDIR /app
 
 # Install dependencies
-RUN apt-get update \
-  && apt-get install -y --no-install-recommends \
-    libportaudio2 \
-    ffmpeg \
-    pulseaudio-utils \
-  && rm -rf /var/lib/apt/lists/*
+RUN --mount=type=cache,target=/root/.cache/uv \
+    --mount=type=bind,source=uv.lock,target=uv.lock \
+    --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
+    uv sync --no-dev --locked --no-install-project --compile-bytecode
 
-# Copy built Python dependencies from the install-dependencies-stage stage
-COPY --from=install-dependencies-stage /usr/local/lib/python3.12/site-packages/ /usr/local/lib/python3.12/site-packages/
-COPY --from=install-dependencies-stage /usr/local/bin/ /usr/local/bin/
+#
+## Stage 2: Final
+FROM python:3.12-alpine3.21
 
-# Binaries
-COPY bin/* /opt/oremi/bin/
-RUN chmod +x /opt/oremi/bin/*
+# Set the shell to /bin/ash and enable pipefail
+SHELL ["/bin/ash", "-eo", "pipefail", "-c"]
 
-# Copy application files
+RUN apk add --no-cache \
+  build-base \
+  ffmpeg \
+  portaudio \
+  portaudio-dev \
+  pulseaudio-utils \
+  tzdata
+
+RUN adduser -D -h /oremi oremi && mkdir -p /oremi/data
+
+WORKDIR /oremi
+
+COPY --from=builder /app/.venv /oremi/.venv
+COPY --from=builder /usr/local/lib/python3.12/site-packages /usr/local/lib/python3.12/site-packages
+
 COPY scripts/pulse-client.conf /etc/pulse/client.conf
-COPY pyproject.toml LICENSE /opt/oremi/
-COPY oremi_device/ /opt/oremi/oremi_device
+COPY --chown=oremi:oremi DOCUMENTATION.md pyproject.toml LICENSE ./
+COPY --chown=oremi:oremi htdocs/ ./htdocs/
+COPY --chown=oremi:oremi device/ ./device/
 
-# Set environment variables
-ENV PATH="/opt/oremi/bin:$PATH"
-ENV PYTHONPATH="/opt/oremi"
+ENV PATH="/oremi/.venv/bin:$PATH"
+ENV PYTHONPATH="/oremi:/oremi/.venv/lib/python3.12/site-packages"
 ENV PYTHONUNBUFFERED="1"
 
-ENV TZ="Africa/Douala"
+ENV TZ="UTC"
 
-ENV LOG_LEVEL="info"
-ENV LOG_FILE=
+ENV OREMI_DEVICE_LOG_LEVEL="INFO"
+ENV OREMI_DEVICE_LOG_FILE=
 
 ENV OREMI_DEVICE_LANGUAGE="fr"
-ENV OREMI_DEVICE_DATA="/var/lib/oremi-device"
+ENV OREMI_DEVICE_DATA="/oremi/data"
 
-VOLUME /var/lib/oremi-device
+VOLUME /oremi/data
 
-WORKDIR /opt/oremi
-ENTRYPOINT ["/opt/oremi/bin/entrypoint.sh"]
+CMD ["python", "/oremi/device"]

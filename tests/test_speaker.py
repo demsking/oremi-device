@@ -17,10 +17,10 @@ from unittest.mock import patch
 
 import pytest
 
-from oremi_device.core.cues import get_sound_cue_path
-from oremi_device.core.speaker import Speaker
-from oremi_device.core.speaker import SpeakerDeviceError
-from oremi_device.core.speaker import SpeakerPlaybackError
+from device.core.cues import get_sound_cue_path
+from device.core.speaker import Speaker
+from device.core.speaker import SpeakerDeviceError
+from device.core.speaker import SpeakerPlaybackError
 
 
 @pytest.mark.parametrize(
@@ -120,7 +120,7 @@ def test_play_url_decodes_audio_to_selected_device(mock_output_stream, mock_quer
   process.poll.return_value = 0
   stream = mock_output_stream.return_value.__enter__.return_value
 
-  with patch("oremi_device.core.speaker.subprocess.Popen", return_value=process) as popen:
+  with patch("device.core.speaker.subprocess.Popen", return_value=process) as popen:
     speaker.play_url("https://home-assistant.local/api/tts.wav")
 
   assert popen.call_args.args[0][0] == "ffmpeg"
@@ -142,7 +142,7 @@ def test_play_url_uses_mono_stream_when_output_device_is_mono(mock_output_stream
   process.wait.return_value = 0
   process.poll.return_value = 0
 
-  with patch("oremi_device.core.speaker.subprocess.Popen", return_value=process) as popen:
+  with patch("device.core.speaker.subprocess.Popen", return_value=process) as popen:
     speaker.play_url("https://home-assistant.local/api/tts.wav")
 
   command = popen.call_args.args[0]
@@ -174,7 +174,7 @@ def test_play_file_accepts_packaged_audio(mock_output_stream, mock_query_devices
   process.wait.return_value = 0
   process.poll.return_value = 0
 
-  with patch("oremi_device.core.speaker.subprocess.Popen", return_value=process) as popen:
+  with patch("device.core.speaker.subprocess.Popen", return_value=process) as popen:
     speaker.play_file(cue)
 
   command = popen.call_args.args[0]
@@ -190,7 +190,7 @@ def test_play_url_supports_post_stream(mock_output_stream, mock_query_devices) -
   process.wait.return_value = 0
   process.poll.return_value = 0
 
-  with patch("oremi_device.core.speaker.subprocess.Popen", return_value=process) as popen:
+  with patch("device.core.speaker.subprocess.Popen", return_value=process) as popen:
     speaker.play_url(
       "https://izwi.local/api/synthesize/stream",
       method="POST",
@@ -213,7 +213,7 @@ def test_play_url_forwards_http_headers(mock_output_stream, mock_query_devices) 
   process.wait.return_value = 0
   process.poll.return_value = 0
 
-  with patch("oremi_device.core.speaker.subprocess.Popen", return_value=process) as popen:
+  with patch("device.core.speaker.subprocess.Popen", return_value=process) as popen:
     speaker.play_url(
       "https://edge-tts.local/v1/audio/speech",
       method="POST",
@@ -236,7 +236,7 @@ def test_non_interrupting_speech_does_not_stop_media(mock_output_stream, mock_qu
 
   with (
     patch.object(speaker, "stop") as stop,
-    patch("oremi_device.core.speaker.subprocess.Popen", return_value=process),
+    patch("device.core.speaker.subprocess.Popen", return_value=process),
   ):
     speaker.play_url(
       "https://izwi.local/api/synthesize/stream?input=hello",

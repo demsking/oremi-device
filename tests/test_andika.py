@@ -25,12 +25,12 @@ from unittest.mock import patch
 import httpx
 import pytest
 
-from oremi_device.components import COMPONENTS
-from oremi_device.components.andika import AndikaComponent
-from oremi_device.components.andika import AndikaTranscriber
-from oremi_device.components.andika import WhisperCppListener
-from oremi_device.core.models import AndikaConfig
-from oremi_device.core.settings import DeviceSettings
+from device.components import COMPONENTS
+from device.components.andika import AndikaComponent
+from device.components.andika import AndikaTranscriber
+from device.components.andika import WhisperCppListener
+from device.core.models import AndikaConfig
+from device.core.settings import Settings
 
 
 class AsyncMessages:
@@ -52,7 +52,7 @@ class DelayedAsyncMessages:
       yield message
 
 
-def _make_settings(**kwargs) -> DeviceSettings:
+def _make_settings(**kwargs) -> Settings:
   defaults = {
     "node_id": "test-node",
     "language": "fr",
@@ -66,7 +66,7 @@ def _make_settings(**kwargs) -> DeviceSettings:
     "mqtt_broker": "mqtt",
   }
   defaults.update(kwargs)
-  return DeviceSettings(_env_file=None, **defaults)
+  return Settings(_env_file=None, **defaults)
 
 
 def test_andika_component_registered() -> None:
@@ -405,7 +405,7 @@ def test_andika_get_supported_models() -> None:
     {"id": "vosk-model-small-en-us-0.15", "name": "English US (Small)", "language": "en"},
   ]
 
-  with patch("oremi_device.components.andika.httpx.get", return_value=response) as mock_get:
+  with patch("device.components.andika.httpx.get", return_value=response) as mock_get:
     models = component._get_supported_models()  # noqa: SLF001
 
   mock_get.assert_called_once_with("http://andika:5315/api/models")
@@ -419,7 +419,7 @@ def test_andika_get_supported_models_secure_endpoint() -> None:
   response = MagicMock()
   response.json.return_value = []
 
-  with patch("oremi_device.components.andika.httpx.get", return_value=response) as mock_get:
+  with patch("device.components.andika.httpx.get", return_value=response) as mock_get:
     assert component._get_supported_models() == []  # noqa: SLF001
 
   mock_get.assert_called_once_with("https://127.0.0.1:9443/api/models")
@@ -428,7 +428,7 @@ def test_andika_get_supported_models_secure_endpoint() -> None:
 def test_andika_get_supported_models_returns_empty_on_error() -> None:
   component = AndikaComponent(_make_settings())
 
-  with patch("oremi_device.components.andika.httpx.get", side_effect=RuntimeError("offline")):
+  with patch("device.components.andika.httpx.get", side_effect=RuntimeError("offline")):
     assert component._get_supported_models() == []  # noqa: SLF001
 
 
@@ -510,7 +510,7 @@ async def test_whisper_listener_posts_wav_and_publishes_result() -> None:
   )
   listener._capture = AsyncMock(return_value=array("h", [1000] * 160).tobytes())  # type: ignore[method-assign]
 
-  with patch("oremi_device.components.andika.httpx.AsyncClient", return_value=client_context):
+  with patch("device.components.andika.httpx.AsyncClient", return_value=client_context):
     await listener.listening()
 
   response.raise_for_status.assert_called_once()
@@ -557,7 +557,7 @@ async def test_whisper_listener_cancels_conversation_on_request_error() -> None:
   )
   listener._capture = AsyncMock(return_value=array("h", [1000] * 160).tobytes())  # type: ignore[method-assign]
 
-  with patch("oremi_device.components.andika.httpx.AsyncClient", return_value=client_context):
+  with patch("device.components.andika.httpx.AsyncClient", return_value=client_context):
     await listener.listening()
 
   assert events == ["processing", "cancelled"]

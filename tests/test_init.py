@@ -19,13 +19,13 @@ from unittest.mock import patch
 
 import pytest
 
-from oremi_device.components.andika import AndikaComponent
-from oremi_device.components.ohunerin import OhunerinComponent
-from oremi_device.core.models import AndikaConfig, OhunerinConfig
-from oremi_device.core.settings import DeviceSettings
+from device.components.andika import AndikaComponent
+from device.components.ohunerin import OhunerinComponent
+from device.core.models import AndikaConfig, OhunerinConfig
+from device.core.settings import Settings
 
 
-def _make_settings(**kwargs) -> DeviceSettings:
+def _make_settings(**kwargs) -> Settings:
   """Create device settings with sensible test defaults."""
   defaults = {
     "node_id": "test-node",
@@ -40,7 +40,7 @@ def _make_settings(**kwargs) -> DeviceSettings:
     "mqtt_broker": "mqtt",
   }
   defaults.update(kwargs)
-  return DeviceSettings(_env_file=None, **defaults)
+  return Settings(_env_file=None, **defaults)
 
 
 def test_build_connection_uri_default() -> None:
@@ -123,9 +123,7 @@ def test_ohunerin_ha_entities_use_event_topics_and_node_availability() -> None:
   assert payloads["sound"]["json_attributes_topic"] == "oremi/device/nodes/test-node/event"
   assert "value_json.type == 'wakeword'" in payloads["wakeword"]["value_template"]
   assert "value_json.type == 'sound'" in payloads["sound"]["value_template"]
-  assert all(
-    payload["availability_topic"] == "oremi/device/nodes/test-node/available" for payload in payloads.values()
-  )
+  assert all(payload["availability_topic"] == "oremi/device/nodes/test-node/available" for payload in payloads.values())
 
 
 def test_build_andika_connection_uri_default() -> None:
@@ -230,7 +228,7 @@ async def test_ohunerin_stop_does_not_reconnect_after_detection_cancellation() -
     "device_state": {"microphone_muted": True},
   }
 
-  with patch("oremi_device.components.ohunerin.connect", return_value=connection):
+  with patch("device.components.ohunerin.connect", return_value=connection):
     await component.start(OhunerinConfig(), MagicMock(), shared_resources)
     await asyncio.wait_for(entered.wait(), timeout=1)
     await asyncio.wait_for(component.stop(), timeout=1)

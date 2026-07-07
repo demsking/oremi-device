@@ -20,17 +20,17 @@ from unittest.mock import patch
 import httpx
 import pytest
 
-from oremi_device.components import COMPONENTS
-from oremi_device.components.akorin import AkorinClient
-from oremi_device.components.akorin import AkorinComponent
-from oremi_device.components.akorin import is_cancellation_request
-from oremi_device.core.models import AkorinConfig
-from oremi_device.core.models import ProcessingResponse
-from oremi_device.core.models import SpeakCommand
-from oremi_device.core.settings import DeviceSettings
+from device.components import COMPONENTS
+from device.components.akorin import AkorinClient
+from device.components.akorin import AkorinComponent
+from device.components.akorin import is_cancellation_request
+from device.core.models import AkorinConfig
+from device.core.models import ProcessingResponse
+from device.core.models import SpeakCommand
+from device.core.settings import Settings
 
 
-def _make_settings(**kwargs) -> DeviceSettings:
+def _make_settings(**kwargs) -> Settings:
   defaults = {
     "node_id": "test-node",
     "language": "fr",
@@ -40,7 +40,7 @@ def _make_settings(**kwargs) -> DeviceSettings:
     "akorin_url": "http://akorin:5020",
   }
   defaults.update(kwargs)
-  return DeviceSettings(_env_file=None, **defaults)
+  return Settings(_env_file=None, **defaults)
 
 
 def test_akorin_component_registered() -> None:
@@ -63,7 +63,7 @@ async def test_akorin_client_posts_agent_request() -> None:
   http_client = context.__aenter__.return_value
   http_client.post.return_value = response
 
-  with patch("oremi_device.components.akorin.httpx.AsyncClient", return_value=context) as client_class:
+  with patch("device.components.akorin.httpx.AsyncClient", return_value=context) as client_class:
     result = await AkorinClient("http://akorin:5020/").process(
       "bonjour",
       language="fr",
@@ -103,7 +103,7 @@ async def test_akorin_processes_transcription_into_processing_queue() -> None:
 
   response = ProcessingResponse(message="Salut")
 
-  with patch("oremi_device.components.akorin.AkorinClient.process", AsyncMock(return_value=response)) as process:
+  with patch("device.components.akorin.AkorinClient.process", AsyncMock(return_value=response)) as process:
     await component.start(AkorinConfig(wait_cue_delay=10), MagicMock(), shared_resources)
     await transcription_queue.put("bonjour")
     result = await asyncio.wait_for(processing_queue.get(), timeout=1)
@@ -141,7 +141,7 @@ async def test_akorin_cancels_previous_request_for_new_transcription() -> None:
 
     return ProcessingResponse(message="seconde")
 
-  with patch("oremi_device.components.akorin.AkorinClient.process", AsyncMock(side_effect=process)):
+  with patch("device.components.akorin.AkorinClient.process", AsyncMock(side_effect=process)):
     await component.start(AkorinConfig(wait_cue_delay=10), MagicMock(), shared_resources)
     await transcription_queue.put("premiere")
     await asyncio.wait_for(first_started.wait(), timeout=1)
@@ -166,7 +166,7 @@ async def test_akorin_timeout_returns_discreet_error_message() -> None:
   component._play_sound_cue = play_sound_cue
 
   with patch(
-    "oremi_device.components.akorin.AkorinClient.process",
+    "device.components.akorin.AkorinClient.process",
     AsyncMock(side_effect=httpx.ReadTimeout("slow")),
   ):
     result = await component._process_message(

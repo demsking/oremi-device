@@ -12,13 +12,17 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
+import logging
+
 import sounddevice as sd
 import websockets.exceptions
 from websockets.asyncio.client import ClientConnection as WebSocket
 
-from ..utils.logger import logger
 from .audio import Audio
 from .mqtt import MQTTClient
+
+
+logger = logging.getLogger(__name__)
 
 
 class AudioListener:
@@ -39,7 +43,7 @@ class AudioListener:
             data = await self.audio_stream.data(audio_queue)
             await self.websocket.send(data)
           except websockets.exceptions.ConnectionClosedOK:
-            logger.info('Connection closed')
+            logger.info("Connection closed")
             break
           except websockets.exceptions.ConnectionClosedError as error:
             logger.error(error)
@@ -50,4 +54,4 @@ class AudioListener:
     finally:
       self.audio_stream.unsubscribe(audio_queue)
 
-    logger.info('Audio stream closed')
+    logger.info("Audio stream closed")

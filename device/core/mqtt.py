@@ -14,17 +14,20 @@
 # ==============================================================================
 # pylint: disable=invalid-name
 import json
+import logging
 from typing import Literal
 
 import paho.mqtt.client as mqtt
 import paho.mqtt.properties as mqtt_properties
 from paho.mqtt.enums import CallbackAPIVersion
 
-from ..utils.logger import logger
 from ..utils.string import sluggify
 from .cues import ConversationState
 from .models import DetectedSoundType
 from .package import APP_VERSION
+
+
+logger = logging.getLogger(__name__)
 
 # Type alias re-exported for callers that build entity lists.
 # Each element: (ha_domain, entity_slug, payload_dict)

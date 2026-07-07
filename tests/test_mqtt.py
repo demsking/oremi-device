@@ -16,8 +16,8 @@ import json
 from unittest.mock import MagicMock
 from unittest.mock import patch
 
-from oremi_device.core.mqtt import MQTTClient
-from oremi_device.core.package import APP_VERSION
+from device.core.mqtt import MQTTClient
+from device.core.package import APP_VERSION
 
 
 def test_mqtt_client_initialization() -> None:

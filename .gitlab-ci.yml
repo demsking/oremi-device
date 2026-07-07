@@ -36,10 +36,7 @@ pages:
     - uv sync
   script:
     # page
-    - mkdir -p public/static/
-    - mv htdocs/* public/static/
-    - python scripts/generate-docs-files.py
-    - cp htdocs/* public/
+    - cp pages/* public/
 
     # home assistant component
     - mkdir -p /tmp/oremi_device

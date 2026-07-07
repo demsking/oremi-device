@@ -1,13 +1,9 @@
-[build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
-
 [project]
 name = "oremi-device"
 version = "1.0.0b8"
 description = "Audio capture device for Oremi smart home ecosystem with wake word detection, speech transcription, and MQTT integration."
 readme = "README.md"
-requires-python = ">=3.12,<3.13"
+requires-python = ">=3.12"
 license = { text = "Apache-2.0" }
 authors = [
   { name = "Sébastien Demanou", email = "demsking@gmail.com" }
@@ -41,7 +37,7 @@ dependencies = [
 "Documentation" = "https://gitlab.com/demsking/oremi-device/-/blob/main/README.md"
 
 [project.scripts]
-oremi-device = "oremi_device.__main__:main"
+oremi-device = "device.__main__:main"
 
 [dependency-groups]
 dev = [
@@ -62,12 +58,25 @@ dev = [
   "twine>=6.2.0",
 ]
 
-[tool.hatch.build.targets.wheel]
-packages = ["oremi_device"]
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
 
-[tool.hatch.build]
-ignore-vcs = true
+[tool.hatch.build.targets.wheel]
+packages = ["device"]
 
 [tool.pytest.ini_options]
-# Function starting with the following pattern are considered for test cases.
-python_functions = "test_"
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+indent-width = 2
+
+[tool.ruff.format]
+indent-style = "space"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+ignore = ["B008", "I001"]

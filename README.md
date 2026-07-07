@@ -14,6 +14,8 @@ The application monitors audio hardware while it runs. It can switch to another
 compatible microphone when the active device disappears and switch back when a
 preferred device becomes available again.
 
+![Oremi Device Logo](pages/logo.jpg)
+
 ## Documentation
 
 All project documentation—including architecture details, configuration
@@ -42,7 +44,6 @@ Oremi Device project adheres to [Semantic Versioning](https://semver.org/)
 The current version can be found by running:
 
 ```bash
-docker run --rm demsking/oremi-device --version
 oremi-device --version
 ```
 

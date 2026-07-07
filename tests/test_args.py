@@ -19,15 +19,15 @@ from types import SimpleNamespace
 import pytest
 from pydantic import ValidationError
 
-from oremi_device.core.geocode import get_location_geocode
-from oremi_device.core.settings import apply_runtime_settings_cache
-from oremi_device.core.settings import DeviceSettings
-from oremi_device.core.settings import format_settings_errors
-from oremi_device.core.settings import load_settings
-from oremi_device.core.settings import read_runtime_settings_cache
-from oremi_device.core.settings import RuntimeSettingsCache
-from oremi_device.core.settings import update_runtime_settings_cache
-from oremi_device.core.timezone import infer_timezone_from_coordinates
+from device.core.geocode import get_location_geocode
+from device.core.settings import apply_runtime_settings_cache
+from device.core.settings import Settings
+from device.core.settings import format_settings_errors
+from device.core.settings import get_settings
+from device.core.settings import read_runtime_settings_cache
+from device.core.settings import RuntimeSettingsCache
+from device.core.settings import update_runtime_settings_cache
+from device.core.timezone import infer_timezone_from_coordinates
 
 
 REQUIRED_SETTINGS = {
@@ -46,7 +46,7 @@ def clean_oremi_environment(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_settings_defaults() -> None:
-  settings = DeviceSettings(_env_file=None, **REQUIRED_SETTINGS)
+  settings = Settings(_env_file=None, **REQUIRED_SETTINGS)
 
   assert settings.microphone_enabled is True
   assert settings.location == ""
@@ -78,11 +78,11 @@ def test_settings_defaults() -> None:
 
 def test_settings_are_loaded_from_environment(monkeypatch: pytest.MonkeyPatch) -> None:
   monkeypatch.setattr(
-    "oremi_device.core.settings.get_location_geocode",
+    "device.core.settings.get_location_geocode",
     lambda location: SimpleNamespace(latitude=48.8566, longitude=2.3522, address=location),
   )
   monkeypatch.setattr(
-    "oremi_device.core.settings.infer_timezone_from_coordinates",
+    "device.core.settings.infer_timezone_from_coordinates",
     lambda *, latitude, longitude: "Europe/Paris",
   )
   monkeypatch.setenv("OREMI_DEVICE_NODE_ID", "kitchen")
@@ -106,7 +106,7 @@ def test_settings_are_loaded_from_environment(monkeypatch: pytest.MonkeyPatch) -
   monkeypatch.setenv("OREMI_DEVICE_EDGE_TTS_API_KEY", "test-key")
   monkeypatch.setenv("OREMI_DEVICE_EDGE_TTS_LOCALE", "fr-FR")
 
-  settings = DeviceSettings(_env_file=None)
+  settings = Settings(_env_file=None)
 
   assert settings.node_id == "kitchen"
   assert settings.microphone_enabled is False
@@ -169,11 +169,11 @@ def test_settings_are_loaded_from_environment(monkeypatch: pytest.MonkeyPatch) -
 )
 def test_invalid_settings_are_rejected(field: str, value: object) -> None:
   with pytest.raises(ValidationError):
-    DeviceSettings(_env_file=None, **REQUIRED_SETTINGS, **{field: value})
+    Settings(_env_file=None, **REQUIRED_SETTINGS, **{field: value})
 
 
 def test_whisper_backend_does_not_require_andika_host() -> None:
-  settings = DeviceSettings(
+  settings = Settings(
     _env_file=None,
     node_id="test-node",
     ohunerin_host="localhost",
@@ -194,7 +194,7 @@ def test_get_location_geocode_normalizes_location(monkeypatch: pytest.MonkeyPatc
     calls.append(location)
     return result
 
-  monkeypatch.setattr("oremi_device.core.geocode._geocoder", SimpleNamespace(geocode=geocode))
+  monkeypatch.setattr("device.core.geocode._geocoder", SimpleNamespace(geocode=geocode))
 
   assert get_location_geocode("  12 Rue de Rivoli, Paris  ") is result
   assert calls == ["12 Rue de Rivoli, Paris"]
@@ -207,7 +207,7 @@ def test_timezone_is_inferred_from_coordinates(monkeypatch: pytest.MonkeyPatch) 
     calls.append({"lat": lat, "lng": lng})
     return "Europe/Paris"
 
-  monkeypatch.setattr("oremi_device.core.timezone._timezone_finder", SimpleNamespace(timezone_at=timezone_at))
+  monkeypatch.setattr("device.core.timezone._timezone_finder", SimpleNamespace(timezone_at=timezone_at))
 
   assert infer_timezone_from_coordinates(latitude=48.8566, longitude=2.3522) == "Europe/Paris"
   assert calls == [{"lat": 48.8566, "lng": 2.3522}]
@@ -216,7 +216,7 @@ def test_timezone_is_inferred_from_coordinates(monkeypatch: pytest.MonkeyPatch) 
 @pytest.mark.parametrize("timezone", [None, "Invalid/Timezone"])
 def test_invalid_timezone_coordinates_return_none(monkeypatch: pytest.MonkeyPatch, timezone: str | None) -> None:
   monkeypatch.setattr(
-    "oremi_device.core.timezone._timezone_finder",
+    "device.core.timezone._timezone_finder",
     SimpleNamespace(timezone_at=lambda *, lat, lng: timezone),
   )
 
@@ -225,7 +225,7 @@ def test_invalid_timezone_coordinates_return_none(monkeypatch: pytest.MonkeyPatc
 
 def test_whisper_backend_requires_url() -> None:
   with pytest.raises(ValidationError, match="OREMI_DEVICE_WHISPER_URL is required"):
-    DeviceSettings(
+    Settings(
       _env_file=None,
       node_id="test-node",
       ohunerin_host="localhost",
@@ -236,12 +236,12 @@ def test_whisper_backend_requires_url() -> None:
 
 def test_edge_tts_backend_requires_url() -> None:
   with pytest.raises(ValidationError, match="OREMI_DEVICE_EDGE_TTS_URL is required"):
-    DeviceSettings(_env_file=None, **REQUIRED_SETTINGS, tts_backend="edge-tts")
+    Settings(_env_file=None, **REQUIRED_SETTINGS, tts_backend="edge-tts")
 
 
 def test_settings_errors_are_formatted_without_technical_details(monkeypatch: pytest.MonkeyPatch) -> None:
   with pytest.raises(ValidationError) as exc_info:
-    DeviceSettings(_env_file=None, language="de", izwi_url="secret-invalid-url")
+    Settings(_env_file=None, language="de", izwi_url="secret-invalid-url")
 
   issues = format_settings_errors(exc_info.value)
 
@@ -294,7 +294,7 @@ def test_runtime_settings_cache_overrides_mutable_settings(tmp_path, monkeypatch
   monkeypatch.setenv("OREMI_DEVICE_MICROPHONE_DEVICE_INDEX", "2")
   monkeypatch.setenv("OREMI_DEVICE_DATA", str(data_dir))
 
-  settings = load_settings()
+  settings = get_settings()
 
   assert settings.language == "en"
   assert settings.location == "12 Rue de Rivoli, Paris"
@@ -317,7 +317,7 @@ def test_runtime_settings_cache_overrides_mutable_settings(tmp_path, monkeypatch
 
 
 def test_runtime_settings_cache_update_preserves_existing_values(tmp_path) -> None:
-  settings = DeviceSettings(_env_file=None, **REQUIRED_SETTINGS, data=tmp_path)
+  settings = Settings(_env_file=None, **REQUIRED_SETTINGS, data=tmp_path)
   cache_file = tmp_path / "test-node.json"
 
   update_runtime_settings_cache(
@@ -337,7 +337,7 @@ def test_runtime_settings_cache_update_preserves_existing_values(tmp_path) -> No
 
 
 def test_invalid_runtime_settings_cache_is_ignored(tmp_path) -> None:
-  settings = DeviceSettings(_env_file=None, **REQUIRED_SETTINGS, data=tmp_path)
+  settings = Settings(_env_file=None, **REQUIRED_SETTINGS, data=tmp_path)
   cache_file = tmp_path / "test-node.json"
   cache_file.write_text('{"language":"de","speaker_volume":2}', encoding="utf-8")
 

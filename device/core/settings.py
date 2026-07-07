@@ -13,7 +13,10 @@
 # limitations under the License.
 # ==============================================================================
 import json
+import logging
 import os
+from functools import cached_property
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
 from typing import Literal
@@ -29,13 +32,14 @@ from pydantic import ValidationError
 from pydantic_settings import BaseSettings
 from pydantic_settings import SettingsConfigDict
 
-from ..utils.logger import logger
 from .geocode import get_location_geocode
 from .models import AndikaModel
+from .package import APP_NAME
 from .timezone import infer_timezone_from_coordinates
 
 
 DEFAULT_TIMEZONE = "Africa/Douala"
+logger = logging.getLogger(__name__)
 
 
 class SettingsError(Exception):
@@ -96,7 +100,7 @@ def format_settings_errors(error: ValidationError) -> list[str]:
   return issues
 
 
-class DeviceSettings(BaseSettings):
+class Settings(BaseSettings):
   model_config = SettingsConfigDict(env_prefix="OREMI_DEVICE_", env_file=".env", extra="ignore")
 
   language: Literal["fr", "en"] = "fr"
@@ -157,6 +161,9 @@ class DeviceSettings(BaseSettings):
   mqtt_discovery: bool = True
   mqtt_discovery_prefix: str = "homeassistant"
 
+  log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = Field(default="INFO")
+  log_file: str | None = Field(default=None)
+
   @property
   def context(self) -> dict[str, Any]:
     context = {
@@ -185,6 +192,15 @@ class DeviceSettings(BaseSettings):
 
     return context
 
+  @cached_property
+  def path(self) -> Path:
+    if self.data is not None:
+      return self.data / f"{self.node_id}.json"
+
+    data_home = Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local" / "share"))
+
+    return data_home / APP_NAME / f"{self.node_id}.json"
+
   @field_validator("preferred_currency", mode="before")
   @classmethod
   def normalize_preferred_currency(cls, value: str) -> str:
@@ -201,7 +217,7 @@ class DeviceSettings(BaseSettings):
     return value
 
   @model_validator(mode="after")
-  def validate_backends(self) -> "DeviceSettings":
+  def validate_backends(self) -> "Settings":
     if self.transcription_backend == "andika" and not self.andika_host:
       raise ValueError("OREMI_DEVICE_ANDIKA_HOST is required when using the Andika transcription backend")
 
@@ -253,35 +269,24 @@ class RuntimeSettingsCache(BaseModel):
     return value
 
 
-def get_settings_cache_file(settings: DeviceSettings) -> Path:
-  if settings.data is not None:
-    return settings.data / f"{settings.node_id}.json"
-
-  data_home = Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local" / "share"))
-
-  return data_home / "oremi-device" / f"{settings.node_id}.json"
-
-
-def read_runtime_settings_cache(settings: DeviceSettings) -> RuntimeSettingsCache:
-  cache_file = get_settings_cache_file(settings)
-
-  if not cache_file.exists():
+def read_runtime_settings_cache(settings: Settings) -> RuntimeSettingsCache:
+  if not settings.path.exists():
     return RuntimeSettingsCache()
 
   try:
-    content = json.loads(cache_file.read_text(encoding="utf-8"))
+    content = json.loads(settings.path.read_text(encoding="utf-8"))
   except (OSError, json.JSONDecodeError) as error:
-    logger.warning(f"Ignoring unreadable runtime settings cache {cache_file}: {error}")
+    logger.warning(f"Ignoring unreadable runtime settings cache {settings.path}: {error}")
     return RuntimeSettingsCache()
 
   try:
     return RuntimeSettingsCache.model_validate(content)
   except ValidationError as error:
-    logger.warning(f"Ignoring invalid runtime settings cache {cache_file}: {error}")
+    logger.warning(f"Ignoring invalid runtime settings cache {settings.path}: {error}")
     return RuntimeSettingsCache()
 
 
-def apply_runtime_settings_cache(settings: DeviceSettings, cache: RuntimeSettingsCache) -> DeviceSettings:
+def apply_runtime_settings_cache(settings: Settings, cache: RuntimeSettingsCache) -> Settings:
   for field, value in cache.model_dump(exclude_none=True).items():
     setattr(settings, field, value)
 
@@ -291,7 +296,7 @@ def apply_runtime_settings_cache(settings: DeviceSettings, cache: RuntimeSetting
   return settings
 
 
-def update_runtime_settings_cache(settings: DeviceSettings, **updates: Any) -> None:
+def update_runtime_settings_cache(settings: Settings, **updates: Any) -> None:
   cache = read_runtime_settings_cache(settings)
   values = cache.model_dump()
   values.update(updates)
@@ -302,22 +307,18 @@ def update_runtime_settings_cache(settings: DeviceSettings, **updates: Any) -> N
     logger.warning(f"Not caching invalid runtime settings update: {error}")
     return
 
-  cache_file = get_settings_cache_file(settings)
-
   try:
-    cache_file.parent.mkdir(parents=True, exist_ok=True)
-    cache_file.write_text(
+    settings.path.parent.mkdir(parents=True, exist_ok=True)
+    settings.path.write_text(
       json.dumps(updated_cache.model_dump(exclude_none=True), sort_keys=True, indent=2) + "\n",
       encoding="utf-8",
     )
   except OSError as error:
-    logger.warning(f"Failed to write runtime settings cache {cache_file}: {error}")
+    logger.warning(f"Failed to write runtime settings cache {settings.path}: {error}")
 
 
-def load_settings() -> DeviceSettings:  # type: ignore
-  try:
-    settings = DeviceSettings()  # type: ignore
-  except ValidationError as error:
-    raise SettingsError(format_settings_errors(error)) from None
+@lru_cache
+def get_settings() -> Settings:
+  settings = Settings()  # type: ignore
 
   return apply_runtime_settings_cache(settings, read_runtime_settings_cache(settings))

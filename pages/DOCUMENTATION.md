@@ -10,83 +10,86 @@ The application monitors audio hardware while it runs. It can switch to another
 compatible microphone when the active device disappears and switch back when a
 preferred device becomes available again.
 
-## Requirements
+Project repository: https://gitlab.com/demsking/oremi-device
 
-- Python 3.12, or Docker
-- An MQTT broker
-- Running Ohunerin, Akorin, and either Andika or whisper.cpp
-- A microphone unless `OREMI_DEVICE_MICROPHONE_ENABLED=false` is set
-- Optional speaker hardware for the MQTT speaker controls
+![Oremi Device Logo](./logo.jpg)
 
-## Installation
+## Deployment
 
-### From PyPI with pip
+Oremi Device is distributed as a multi-platform Docker image for `linux/amd64` and `linux/arm64`. It can be deployed as a standalone agent or integrated into the Oremi ecosystem alongside services such as Ohunerin, Akọrin, Andika, and whisper.cpp.
 
-```bash
-pip install oremi-device
-```
+The following sections describe the available installation methods, persistent storage requirements, and example deployments using both Docker and Docker Compose.
 
-### From PyPI with uv
+### Command Line
 
-```bash
+Before installing Oremi Device from PyPI, ensure the following requirements are met:
+
+- Python 3.12 or later.
+- An MQTT broker.
+- Running background instances of Ohunerin, Akọrin, and your preferred speech/transcription backends.
+- Functional microphone and speaker hardware (unless explicitly disabled via settings).
+
+Oremi Device can be installed either as a standalone command-line application or as a Python package.
+
+#### Install with uv
+
+```sh
 uv tool install oremi-device
 ```
 
-## Quick Start
+#### Install with pip
 
-### Using pip-installed package
+```sh
+python -m pip install oremi-device
+```
 
-After installation, you can run the device directly:
+#### Usage
 
-```bash
-$ export OREMI_DEVICE_NODE_ID=living-room
-$ export OREMI_DEVICE_LANGUAGE=fr
-$ export OREMI_DEVICE_LOCATION="Douala, Cameroon"
-$ export OREMI_DEVICE_PREFERRED_CURRENCY=XAF
-$ export OREMI_DEVICE_OHUNERIN_HOST=localhost
-$ export OREMI_DEVICE_ANDIKA_HOST=localhost
-$ export OREMI_DEVICE_AKORIN_URL=http://localhost:5020
-$ export OREMI_DEVICE_MQTT_BROKER=localhost
+```sh
+$export OREMI_DEVICE_NODE_ID=living-room$ export OREMI_DEVICE_LANGUAGE=fr
+$export OREMI_DEVICE_LOCATION="Douala, Cameroon"$ export OREMI_DEVICE_PREFERRED_CURRENCY=XAF
+$export OREMI_DEVICE_OHUNERIN_HOST=localhost$ export OREMI_DEVICE_ANDIKA_HOST=localhost
+$export OREMI_DEVICE_AKORIN_URL=http://localhost:5020$ export OREMI_DEVICE_MQTT_BROKER=localhost
 
 $ oremi-device
 ```
 
-### Using Docker
+All device configuration, including server addresses, audio parameters, and UI localization context, is provided through environment variables or a `.env` file rather than command-line options.
 
-The application requires a node ID and the addresses of the Ohunerin,
-Akorin, Andika, and MQTT services:
+### Docker Image
 
-```bash
+The [`demsking/oremi-device`](https://www.google.com/search?q=https://hub.docker.com/r/demsking/oremi-device) Docker image is officially available on Docker Hub, supporting both `linux/amd64` and `linux/arm64` platforms.
+
+Because it interacts directly with host audio devices for capture and output, containerized deployments typically require binding local sound architectures (`/dev/snd`) and utilizing host-networking setups where local low-latency routing is preferred.
+
+### Volumes
+
+Oremi Device uses persistent storage to track runtime modifications changed dynamically through MQTT or Home Assistant dashboard selectors.
+
+- **`/oremi/data`**: This container directory should be bound to a persistent volume. Runtime configuration updates are tracked here under an explicit `<node-id>.json` file structure.
+
+If this volume isn't declared, your configuration resets to environment defaults whenever the container is dropped or updated.
+
+### Deploy with Docker
+
+Use the official Docker image [`demsking/oremi-device`](https://hub.docker.com/r/demsking/oremi-device) to run Oremi Device on a host sharing an existing service stack:
+
+```sh
 docker run --rm -it \
   --network host \
   --device /dev/snd:/dev/snd \
-  -v oremi-device-data:/var/lib/oremi-device \
-  -e OREMI_DEVICE_NODE_ID=living-room \
-  -e OREMI_DEVICE_LANGUAGE=fr \
-  -e "OREMI_DEVICE_LOCATION=Douala, Cameroon" \
-  -e OREMI_DEVICE_PREFERRED_CURRENCY=XAF \
-  -e OREMI_DEVICE_OHUNERIN_HOST=127.0.0.1 \
-  -e OREMI_DEVICE_ANDIKA_HOST=127.0.0.1 \
-  -e OREMI_DEVICE_AKORIN_URL=http://127.0.0.1:5020 \
-  -e OREMI_DEVICE_MQTT_BROKER=127.0.0.1 \
+  -v oremi-device-data:/oremi/data \
+  --env-file <path_to_env_file> \
   demsking/oremi-device
 ```
 
-`--network host` is used here so the container can reach services bound to the
-host. Use Docker service names instead when all services share a Docker
-network. PulseAudio installations may also need the PulseAudio socket and
-cookie mounted into the container.
+Replace `<path_to_env_file>` with the path to your configuration file containing your target environment definitions.
 
-### Using Docker Compose
+### Deploy with Docker Compose
 
-The examples below run Oremi Device with its required services on one Docker
-network. They mount `/dev/snd` into the device container so ALSA microphones are
-available inside the container and keep Oremi Device runtime settings in the
-`oremi-device-data` volume.
+To quickly spin up Oremi Device alongside its core dependencies, choose one of the tailored environment compositions below. First, prepare a basic Mosquitto broker setup on your target machine:
 
-Create a minimal Mosquitto configuration first:
-
-```bash
+```sh
 mkdir -p compose/mosquitto
 cat > compose/mosquitto/mosquitto.conf <<'EOF'
 listener 1883 0.0.0.0
@@ -94,10 +97,9 @@ allow_anonymous true
 EOF
 ```
 
-#### Compose With Andika
+#### Option A: Compose With Andika
 
-Use this stack when transcription is handled by the Oremi Andika WebSocket
-service:
+Use this stack configuration when streaming transcription workloads are assigned over websockets to the native Oremi Andika server instance.
 
 ```yaml
 services:
@@ -107,12 +109,13 @@ services:
     devices:
       - /dev/snd:/dev/snd
     volumes:
-      - oremi-device-data:/var/lib/oremi-device
+      - oremi-device-data:/oremi/data
     environment:
       LOG_LEVEL: info
       OREMI_DEVICE_NODE_ID: living-room
       OREMI_DEVICE_LANGUAGE: fr
       OREMI_DEVICE_LOCATION: Douala, Cameroon
+      OREMI_DEVICE_TIMEZONE: Africa/Douala
       OREMI_DEVICE_TEMPERATURE_UNIT: celsius
       OREMI_DEVICE_PREFERRED_CURRENCY: XAF
       OREMI_DEVICE_MEASUREMENT_SYSTEM: metric
@@ -164,38 +167,22 @@ services:
     ports:
       - '1883:1883'
     volumes:
-      - ./compose/mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - ./config/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
 
 volumes:
   oremi-device-data:
   vosk-models:
 ```
 
-Save it as `docker-compose.andika.yaml`, then start it:
+Save as `docker-compose.andika.yaml`, then run:
 
-```bash
+```sh
 docker compose -f docker-compose.andika.yaml up -d
-docker compose -f docker-compose.andika.yaml logs -f oremi-device
 ```
 
-For English, set `OREMI_DEVICE_LANGUAGE=en` and use an English Andika model,
-for example `vosk-model-small-en-us-0.15`.
+#### Option B: Compose With whisper.cpp
 
-#### Compose With whisper.cpp
-
-Use this stack when transcription is handled by the official whisper.cpp HTTP
-server. The `whisper-model` service downloads the French multilingual `base`
-model once into the `whisper-models` volume; the `whisper` service then serves
-it on `http://whisper:8080`.
-
-Model selection happens in two places:
-
-- `whisper-model` runs `./models/download-ggml-model.sh <model> /models`.
-- `whisper` points `-m` at the downloaded `/models/ggml-<model>.bin` file.
-
-Use the multilingual `base` model for French. Use `base.en` only for English;
-models ending in `.en` are English-only and should not be used with
-`OREMI_DEVICE_LANGUAGE=fr`.
+Use this stack configuration to parse post-wake phrase captures against an optimized native `whisper.cpp` HTTP server installation.
 
 ```yaml
 services:
@@ -205,7 +192,7 @@ services:
     devices:
       - /dev/snd:/dev/snd
     volumes:
-      - oremi-device-data:/var/lib/oremi-device
+      - oremi-device-data:/oremi/data
     environment:
       LOG_LEVEL: info
       OREMI_DEVICE_NODE_ID: living-room
@@ -280,52 +267,15 @@ volumes:
   whisper-models:
 ```
 
-Save it as `docker-compose.whisper.yaml`, then start it:
+Save as `docker-compose.whisper.yaml`, then run:
 
-```bash
-docker compose -f docker-compose.whisper.yaml up -d
-docker compose -f docker-compose.whisper.yaml logs -f whisper oremi-device
-```
-
-The first start downloads the model. Later starts reuse the `whisper-models`
-volume. To force a different model after changing the Compose file, remove the
-volume first:
-
-```bash
-docker compose -f docker-compose.whisper.yaml down
-docker volume rm "$(basename "$PWD")_whisper-models"
+```sh
 docker compose -f docker-compose.whisper.yaml up -d
 ```
 
-The server must bind to `0.0.0.0` inside its container. Binding it to
-`127.0.0.1` makes it unreachable through Docker's published port. Do not expose
-the unauthenticated whisper.cpp HTTP endpoint to an untrusted network.
+#### Option C: Compose With Edge-TTS and Andika
 
-Oremi Device uses the stock whisper.cpp `/inference` endpoint. After a wake
-word, it records until silence or `OREMI_DEVICE_CONVERSATION_TIMEOUT`, sends an
-in-memory WAV to `http://whisper:8080/inference`, and publishes the final text
-to `transcription/result`. whisper.cpp does not produce Andika-style partial
-messages, so no `transcription/partial` messages are published with this
-backend.
-
-For English, download and serve `base.en` instead:
-
-```yaml
-services:
-  whisper-model:
-    command: './models/download-ggml-model.sh base.en /models'
-
-  whisper:
-    command: 'whisper-server --host 0.0.0.0 --port 8080 -m /models/ggml-base.en.bin -l en'
-```
-
-Then set `OREMI_DEVICE_LANGUAGE=en`. Keep using the multilingual `base` model
-for French and other non-English languages.
-
-#### Compose With Edge-TTS
-
-Use this stack when spoken responses should be synthesized by the
-OpenAI-compatible Edge-TTS container:
+Use this stack configuration when utilizing an OpenAI-compatible cloud/edge speech synthesis system instance for voice responses.
 
 ```yaml
 services:
@@ -335,7 +285,7 @@ services:
     devices:
       - /dev/snd:/dev/snd
     volumes:
-      - oremi-device-data:/var/lib/oremi-device
+      - oremi-device-data:/oremi/data
     environment:
       LOG_LEVEL: info
       OREMI_DEVICE_NODE_ID: living-room
@@ -413,22 +363,15 @@ volumes:
   vosk-models:
 ```
 
-Save it as `docker-compose.edge-tts.yaml`, then start it:
+Save as `docker-compose.edge-tts.yaml`, then run:
 
-```bash
+```sh
 docker compose -f docker-compose.edge-tts.yaml up -d
-docker compose -f docker-compose.edge-tts.yaml logs -f edge-tts oremi-device
 ```
-
-Use a locale matching `OREMI_DEVICE_LANGUAGE`, for example `fr-FR` for French
-or `en-US` for English. The Edge-TTS API key only needs to match the `API_KEY`
-configured on the Edge-TTS service.
 
 ## Configuration
 
-Configuration is loaded from environment variables with the `OREMI_DEVICE_` prefix.
-Values may be placed in a `.env` file in the working directory. Environment variables
-take precedence over `.env` values.
+Configuration parameters are loaded exclusively out of active environment values matching the structural block patterns declared with the designated `OREMI_DEVICE_` prefixes. Variables can alternatively reside in a local path `.env` module directory.
 
 ### Required Settings
 
@@ -436,130 +379,98 @@ take precedence over `.env` values.
 - **`OREMI_DEVICE_OHUNERIN_HOST`** – Ohunerin server host or IP address.
 - **`OREMI_DEVICE_MQTT_BROKER`** – MQTT broker host or IP address.
 
-The transcription backend has one additional required setting:
+Depending on your configured `OREMI_DEVICE_TRANSCRIPTION_BACKEND`, one additional setting is strictly enforced:
 
-- **`andika` backend**: `OREMI_DEVICE_ANDIKA_HOST` – Andika server host or IP address.
-- **`whisper.cpp` backend**: `OREMI_DEVICE_WHISPER_URL` – whisper.cpp HTTP server base URL.
+- **`andika` engine backend**: `OREMI_DEVICE_ANDIKA_HOST` must point to an active Andika engine instance.
+- **`whisper.cpp` engine backend**: `OREMI_DEVICE_WHISPER_URL` must point to a target HTTP endpoint.
 
-### Optional Settings
+### Audio Hardware
 
-#### Audio Hardware
+- **`OREMI_DEVICE_MICROPHONE_DEVICE_INDEX`** – Explicit host system hardware device identifier index for audio recording capture mapping. Default: `None` (System Auto).
+- **`OREMI_DEVICE_MICROPHONE_DEVICE`** – Specific named identifier string overlaying microphone targeting configurations. Default: `None`.
+- **`OREMI_DEVICE_MICROPHONE_ENABLED`** – Controls initial loading execution structures targeting physical capturing components. Default: `true`.
+- **`OREMI_DEVICE_MICROPHONE_MUTED`** – Initializes the recording input hardware engine stream in a quiet state. Default: `false`.
+- **`OREMI_DEVICE_SPEAKER_ENABLED`** – Activates peripheral audio reproduction routines and sound validation configurations. Default: `true`.
+- **`OREMI_DEVICE_SPEAKER_DEVICE`** – Explicit device identifier assignment mapping the designated sound driver. Default: `None`.
+- **`OREMI_DEVICE_SPEAKER_MUTED`** – Initializes sound rendering outputs to silent runtime configurations. Default: `false`.
+- **`OREMI_DEVICE_SPEAKER_VOLUME`** – Floating level index mapping target playback audio scales between `0.0` and `1.0`. Default: `1.0`.
+- **`OREMI_DEVICE_DATA`** – Explicit folder destination path strings capturing state file targets. Defaults dynamically to user runtime structures path `~/.local/share/oremi-device`.
 
-- **`OREMI_DEVICE_MICROPHONE_DEVICE_INDEX`** – Preferred microphone index. Default: Auto.
-- **`OREMI_DEVICE_MICROPHONE_DEVICE`** – Preferred microphone name; takes precedence over the index. Default: Auto.
-- **`OREMI_DEVICE_MICROPHONE_ENABLED`** – Enable microphone initialization and audio capture. Default: `true`.
-- **`OREMI_DEVICE_SPEAKER_ENABLED`** – Enable speaker initialization and MQTT speaker controls. Default: `true`.
-- **`OREMI_DEVICE_DATA`** – Directory used to persist runtime settings changed through
-  MQTT/Home Assistant controls. Oremi Device stores them in `<node-id>.json` inside this directory.
-  Default: `$XDG_DATA_HOME/oremi-device`, or `~/.local/share/oremi-device` when `XDG_DATA_HOME` is unset.
-  The Docker image sets this to `/var/lib/oremi-device`.
+### Transcription Controls
 
-#### Transcription
+- **`OREMI_DEVICE_TRANSCRIPTION_BACKEND`** – Speech analysis target platform processor type options (`andika` | `whisper.cpp`). Default: `andika`.
+- **`OREMI_DEVICE_DELAY`** – Processing interval delay threshold measuring session boundaries. Default: `3`.
+- **`OREMI_DEVICE_CONVERSATION_TIMEOUT`** – Limit boundary window monitoring speech capturing before cutoff. Default: `15.0`.
 
-- **`OREMI_DEVICE_TRANSCRIPTION_BACKEND`** – Transcriber: `andika` or `whisper.cpp`. Default: `andika`.
-- **`OREMI_DEVICE_DELAY`** – Sound-event cooldown in seconds and transcription message expiry interval. Default: `3`.
-- **`OREMI_DEVICE_CONVERSATION_TIMEOUT`** – Maximum seconds to wait for a final transcription after a wake word. Default: `15`.
+### Akọrin Orchestration
 
-#### Akorin Orchestration
+- **`OREMI_DEVICE_AKORIN_URL`** – Core platform destination URL hosting downstream processing microservices (`/api/agent/`). Default: `None`.
 
-- **`OREMI_DEVICE_AKORIN_URL`** – Akorin HTTP base URL. Final transcriptions are sent to
-  `POST /api/agent/` at this base URL. Default: Unset. Akorin's default service port is `5020`.
+### Device Context
 
-#### Device Context
+- **`OREMI_DEVICE_LANGUAGE`** – String literal targeting operational language profiles (`fr` | `en`). Default: `fr`.
+- **`OREMI_DEVICE_LOCATION`** – Geolocation name descriptor text processed internally to extrapolate runtime coordinates. Default: `""`.
+- **`OREMI_DEVICE_TIMEZONE`** – Standard valid IANA continent-region timezone text assignments. Default: `Africa/Douala`.
+- **`OREMI_DEVICE_TEMPERATURE_UNIT`** – String profile selecting local display metric indicators (`celsius` | `fahrenheit`). Default: `celsius`.
+- **`OREMI_DEVICE_PREFERRED_CURRENCY`** – Validated 3-letter capital currency format validation string. Default: `XAF`.
+- **`OREMI_DEVICE_MEASUREMENT_SYSTEM`** – Structural layout selecting formatting standards (`metric` | `imperial`). Default: `metric`.
+- **`OREMI_DEVICE_DISTANCE_UNIT`** – Targeted scaling profile definitions (`kilometer` | `mile`). Default: `kilometer`.
+- **`OREMI_DEVICE_TIME_FORMAT`** – Selects hour segmentation profile presentation maps (`12h` | `24h`). Default: `24h`.
+- **`OREMI_DEVICE_DATE_FORMAT`** – String mask mapping calendar logs (`DD/MM/YYYY` | `MM/DD/YYYY` | `YYYY-MM-DD`). Default: `DD/MM/YYYY`.
+- **`OREMI_DEVICE_FIRST_DAY_OF_WEEK`** – Selects custom chronological weekday tracking baselines (`monday` | `sunday` | `saturday`). Default: `monday`.
 
-These preferences are published as a retained MQTT device-context document and
-are exposed through Home Assistant controls when MQTT discovery is enabled.
-Services that need user preferences can subscribe to the context topic and
-react when it changes.
+### Ohunerin Wake Word
 
-- **`OREMI_DEVICE_LANGUAGE`** – Processing language; supported values are `fr` and `en`. Default: `fr`.
-- **`OREMI_DEVICE_LOCATION`** – Free-form address or place description for the device. Default: empty.
-  The retained device-context timezone is inferred from this value and falls back to `Africa/Douala`.
-- **`OREMI_DEVICE_TIMEZONE`** – IANA timezone retained in device context. Default: `Africa/Douala`.
-- **`OREMI_DEVICE_TEMPERATURE_UNIT`** – Preferred temperature unit: `celsius` or `fahrenheit`. Default: `celsius`.
-- **`OREMI_DEVICE_PREFERRED_CURRENCY`** – Preferred ISO 4217 currency code. Default: `XAF`.
-- **`OREMI_DEVICE_MEASUREMENT_SYSTEM`** – Preferred measurement system: `metric` or `imperial`. Default: `metric`.
-- **`OREMI_DEVICE_DISTANCE_UNIT`** – Preferred distance unit: `kilometer` or `mile`. Default: `kilometer`.
-- **`OREMI_DEVICE_TIME_FORMAT`** – Preferred time format: `12h` or `24h`. Default: `24h`.
-- **`OREMI_DEVICE_DATE_FORMAT`** – Preferred date format: `DD/MM/YYYY`, `MM/DD/YYYY`, or `YYYY-MM-DD`. Default: `DD/MM/YYYY`.
-- **`OREMI_DEVICE_FIRST_DAY_OF_WEEK`** – Preferred first day of week: `monday`, `sunday`, or `saturday`. Default: `monday`.
+- **`OREMI_DEVICE_OHUNERIN_PORT`** – Connectivity port routing Ohunerin service sockets. Default: `5023`.
+- **`OREMI_DEVICE_OHUNERIN_THRESHOLD`** – Minimum operational score matching confidence boundaries. Default: `0.25`.
 
-#### Ohunerin Wake Word
+### Andika Engine
 
-- **`OREMI_DEVICE_OHUNERIN_PORT`** – Ohunerin server port. Default: `5023`.
-- **`OREMI_DEVICE_OHUNERIN_THRESHOLD`** – Minimum accepted Ohunerin confidence score. Default: `0.65`.
+- **`OREMI_DEVICE_ANDIKA_PORT`** – Dedicated connection port routing Andika streams. Default: `5315`.
+- **`OREMI_DEVICE_ANDIKA_MODEL`** – Core system tracking string designating targeted local Vosk profiles. Default: `vosk-model-small-fr-0.22`.
+- **`OREMI_DEVICE_ANDIKA_SAMPLERATE`** – Audio capture configuration sampling frequency. Default: `16000`.
 
-#### Andika Transcription
+### Whisper Engine
 
-- **`OREMI_DEVICE_ANDIKA_PORT`** – Andika server port. Default: `5315`.
-- **`OREMI_DEVICE_ANDIKA_MODEL`** – Vosk model identifier sent to Andika. Default: `vosk-model-small-fr-0.22`.
-- **`OREMI_DEVICE_ANDIKA_SAMPLERATE`** – Audio sample rate sent to Andika. Default: `16000`.
+- **`OREMI_DEVICE_WHISPER_SILENCE_THRESHOLD`** – Level limits assigning signal bounds to background audio filters. Default: `500`.
+- **`OREMI_DEVICE_WHISPER_SILENCE_DURATION`** – Duration checks verifying silent capture buffers. Default: `1.0`.
 
-#### whisper.cpp Transcription
+### Speech Synthesis (TTS)
 
-- **`OREMI_DEVICE_WHISPER_URL`** – whisper.cpp server URL; required for the `whisper.cpp` backend. Default: Unset.
-- **`OREMI_DEVICE_WHISPER_SILENCE_THRESHOLD`** – PCM RMS level above which whisper.cpp capture counts as speech. Default: `500`.
-- **`OREMI_DEVICE_WHISPER_SILENCE_DURATION`** – Seconds of silence that finish a whisper.cpp utterance. Default: `1.0`.
+- **`OREMI_DEVICE_TTS_BACKEND`** – Synthetic engine rendering standard profile choices (`izwi` | `edge-tts`). Default: `izwi`.
+- **`OREMI_DEVICE_IZWI_URL`** – System destination target routing base native synthetic voices. Default: `None`.
+- **`OREMI_DEVICE_EDGE_TTS_URL`** – Server instance configuration hosting proxy synthetic providers. Default: `None`.
+- **`OREMI_DEVICE_EDGE_TTS_API_KEY`** – System credentials protecting access routing validation channels. Default: `your_api_key_here`.
+- **`OREMI_DEVICE_EDGE_TTS_LOCALE`** – Locale code request flag matching targets. Default: `None` (Autoresolves to local engine default match profiles).
+- **`OREMI_DEVICE_EDGE_TTS_MODEL`** – Target framework label identifying backend generation layouts. Default: `tts-1`.
+- **`OREMI_DEVICE_EDGE_TTS_RESPONSE_FORMAT`** – Codec selection array parameters (`mp3` | `opus` | `aac` | `flac` | `wav` | `pcm`). Default: `mp3`.
+- **`OREMI_DEVICE_EDGE_TTS_SPEED`** – Dynamic rate pacing scaling index options ranging from `0.25` up through `4.0`. Default: `1.0`.
+- **`OREMI_DEVICE_TTS_VOICE`** – Direct voice identity tag strings tracking active target character synthesis styles. Default: `None`.
 
-#### Speech Synthesis
+### MQTT Broker
 
-- **`OREMI_DEVICE_TTS_BACKEND`** – Speech synthesis backend: `izwi` or `edge-tts`. Default: `izwi`.
+- **`OREMI_DEVICE_MQTT_PORT`** – Connectivity port interfacing with active system message brokers. Default: `1883`.
+- **`OREMI_DEVICE_MQTT_USERNAME`** – Verification credentials accessing private server installations. Default: `None`.
+- **`OREMI_DEVICE_MQTT_PASSWORD`** – System passwords validating target MQTT routing targets. Default: `None`.
+- **`OREMI_DEVICE_MQTT_TOPIC`** – Root namespace path capturing runtime device activity reports. Default: `oremi/device`.
+- **`OREMI_DEVICE_MQTT_DISCOVERY`** – Activates autodiscovery configurations exposing targets inside Home Assistant systems. Default: `true`.
+- **`OREMI_DEVICE_MQTT_DISCOVERY_PREFIX`** – Primary discovery path root prefix targeting components. Default: `homeassistant`.
 
-##### Oremi Izwi
+### Security
 
-- **`OREMI_DEVICE_IZWI_URL`** – Oremi Izwi base URL. When unset, speech synthesis and voice discovery are disabled. Default: Unset.
+- **`OREMI_DEVICE_CERT_FILE`** – Local system path pointing toward explicit TLS certificate authorizer configurations. Default: `None`.
 
-##### Edge-TTS
+### Logging Settings
 
-- **`OREMI_DEVICE_EDGE_TTS_URL`** – OpenAI-compatible Edge-TTS base URL; required when `OREMI_DEVICE_TTS_BACKEND=edge-tts`. Default: Unset.
-- **`OREMI_DEVICE_EDGE_TTS_API_KEY`** – Bearer token sent to Edge-TTS. Default: `your_api_key_here`.
-- **`OREMI_DEVICE_EDGE_TTS_LOCALE`** – Edge voice locale requested from `/v1/voices`. Default: `fr-FR` for French and `en-US` for English.
-- **`OREMI_DEVICE_EDGE_TTS_MODEL`** – Model value sent to `/v1/audio/speech`. Default: `tts-1`.
-- **`OREMI_DEVICE_EDGE_TTS_RESPONSE_FORMAT`** – Audio format requested from Edge-TTS: `mp3`, `opus`, `aac`, `flac`, `wav`, or `pcm`. Default: `mp3`.
-- **`OREMI_DEVICE_EDGE_TTS_SPEED`** – Speech speed sent to Edge-TTS. Default: `1.0`.
+- `OREMI_DEVICE_LOG_LEVEL`: Optional. Defaults to `INFO`. Logging level:
+  `DEBUG`, `INFO`, `WARNING`, `ERROR`, or `CRITICAL`.
+- `OREMI_DEVICE_LOG_FILE`: Optional. Path to the rotating application log file.
 
-#### MQTT
+### Verification and Error Diagnostics
 
-- **`OREMI_DEVICE_MQTT_PORT`** – MQTT broker port. Default: `1883`.
-- **`OREMI_DEVICE_MQTT_USERNAME`** – MQTT username. Default: Unset.
-- **`OREMI_DEVICE_MQTT_PASSWORD`** – MQTT password. Default: Unset.
-- **`OREMI_DEVICE_MQTT_TOPIC`** – Base topic for events, availability, and controls. Default: `oremi/device`.
-- **`OREMI_DEVICE_MQTT_DISCOVERY`** – Enable Home Assistant MQTT discovery. Default: `true`.
-- **`OREMI_DEVICE_MQTT_DISCOVERY_PREFIX`** – Home Assistant discovery topic prefix. Default: `homeassistant`.
+In validation scenarios where missing elements or incorrect values conflict with expected bounds, startup procedures break cleanly with an exit code of `2`.
 
-#### Security
-
-- **`OREMI_DEVICE_CERT_FILE`** – CA certificate for TLS connections to Oremi services. Default: Unset.
-
-Positive numeric values and valid port ranges are checked at startup. Boolean
-values accept standard forms such as `true` and `false`. For example, a `.env`
-file for a device without local audio hardware can contain:
-
-```dotenv
-OREMI_DEVICE_NODE_ID=living-room
-OREMI_DEVICE_LANGUAGE=fr
-OREMI_DEVICE_LOCATION=Douala, Cameroon
-OREMI_DEVICE_TEMPERATURE_UNIT=celsius
-OREMI_DEVICE_PREFERRED_CURRENCY=XAF
-OREMI_DEVICE_MEASUREMENT_SYSTEM=metric
-OREMI_DEVICE_DISTANCE_UNIT=kilometer
-OREMI_DEVICE_TIME_FORMAT=24h
-OREMI_DEVICE_DATE_FORMAT=DD/MM/YYYY
-OREMI_DEVICE_FIRST_DAY_OF_WEEK=monday
-OREMI_DEVICE_OHUNERIN_HOST=ohunerin
-OREMI_DEVICE_ANDIKA_HOST=andika
-OREMI_DEVICE_AKORIN_URL=http://akorin:5020
-OREMI_DEVICE_TTS_BACKEND=edge-tts
-OREMI_DEVICE_EDGE_TTS_URL=http://edge-tts:5050
-OREMI_DEVICE_EDGE_TTS_API_KEY=your_api_key_here
-OREMI_DEVICE_MQTT_BROKER=mqtt
-OREMI_DEVICE_MICROPHONE_ENABLED=false
-OREMI_DEVICE_SPEAKER_ENABLED=false
-```
-
-Missing or invalid settings stop startup with exit code `2`. The application
-prints only actionable environment-variable errors; it does not expose raw
-setting values, Pydantic diagnostics, or a Python traceback:
+To safeguard system architecture integrity, diagnostics output only explicit parameter requirements, avoiding raw stack trace paths or inner system environment variable memory values:
 
 ```text
 oremi-device: configuration error
@@ -718,8 +629,6 @@ interface FinalTranscription {
 
 See the [Andika models documentation](https://demsking.gitlab.io/oremi-andika/#models/) for details about the [PartialResult](https://demsking.gitlab.io/oremi-andika/#models/PartialResult) and [FinalResult](https://demsking.gitlab.io/oremi-andika/#models/FinalResult) models.
 
----
-
 #### Conversation State
 
 The current lifecycle state of the device's conversation handling.
@@ -764,7 +673,7 @@ listening -> idle
 - `set_volume` commands play a short feedback tick after applying the new volume.
 - The device plays a ready cue after MQTT and all configured components have started and availability is published as `online`.
 - During graceful shutdown it stops capture and active playback, publishes availability as `offline`, plays a shutdown cue, and then disconnects from MQTT.
-- The bundled cues come from Kenney's [Interface Sounds](https://kenney.nl/assets/interface-sounds) pack, released under [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/). The exact source-file mapping and license are included in `oremi_device/sounds/LICENSE.txt`.
+- The bundled cues come from Kenney's [Interface Sounds](https://kenney.nl/assets/interface-sounds) pack, released under [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/). The exact source-file mapping and license are included in `device/sounds/LICENSE.txt`.
 
 ### NLP Integration
 
@@ -1094,51 +1003,6 @@ mosquitto_pub \
   -m ON
 ```
 
-## Logging
-
-Logging is configured only through environment variables:
-
-**Environment Variables:**
-
-- `LOG_LEVEL` – Logging severity level. One of `DEBUG`, `INFO`, `WARNING`, `ERROR`, or `CRITICAL`. Invalid values fall back to `INFO`. Default: `INFO`
-- `LOG_FILE` – File path for log output. Must be writable by the process. Default: Standard error (stderr)
-
-**Example:**
-
-```bash
-$ export LOG_LEVEL=DEBUG
-$ export LOG_FILE=/var/log/oremi-device.log
-$ export OREMI_DEVICE_NODE_ID=living-room
-$ export OREMI_DEVICE_OHUNERIN_HOST=localhost
-$ export OREMI_DEVICE_ANDIKA_HOST=localhost
-$ export OREMI_DEVICE_MQTT_BROKER=localhost
-
-$ oremi-device
-```
-
-**Docker example:**
-
-```bash
-docker run --rm -it \
-  --network host \
-  --device /dev/snd:/dev/snd \
-  -v oremi-device-data:/var/lib/oremi-device \
-  -e LOG_LEVEL=DEBUG \
-  -e LOG_FILE=/var/log/oremi-device.log \
-  -e OREMI_DEVICE_NODE_ID=living-room \
-  -e OREMI_DEVICE_OHUNERIN_HOST=127.0.0.1 \
-  -e OREMI_DEVICE_ANDIKA_HOST=127.0.0.1 \
-  -e OREMI_DEVICE_MQTT_BROKER=127.0.0.1 \
-  -v /var/log:/var/log \
-  demsking/oremi-device
-```
-
-**Notes:**
-
-- Setting `LOG_LEVEL=DEBUG` provides verbose output useful for troubleshooting
-- When using Docker, ensure the log directory is mounted with `-v` to persist logs outside the container
-- If `LOG_FILE` points to a directory that doesn't exist, the process will fail to start
-
 ## Home Assistant
 
 MQTT discovery is enabled by default. On MQTT connection, Oremi Device publishes
@@ -1229,6 +1093,7 @@ oremi-device --version
 
 Copyright 2026 Sébastien Demanou. All Rights Reserved.
 
+```
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
@@ -1240,3 +1105,4 @@ distributed under the License is distributed on an "AS IS" BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
+```

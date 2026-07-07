@@ -20,8 +20,8 @@ from unittest.mock import MagicMock
 import pytest
 from websockets.exceptions import ConnectionClosedError
 
-from oremi_device.core.detector import SoundDetector
-from oremi_device.core.models import DetectedSound
+from device.core.detector import SoundDetector
+from device.core.models import DetectedSound
 
 
 class MockWebSocket:

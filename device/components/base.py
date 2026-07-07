@@ -35,7 +35,7 @@ to inherit from the one that matches its transport model:
 
 Example - adding a new HTTP component:
 
-    # oremi_device/components/injini.py
+    # device/components/injini.py
     from .base import HttpComponent
 
     class InjiniComponent(HttpComponent):
@@ -59,7 +59,7 @@ from pydantic import BaseModel
 
 from ..core.audio import Audio
 from ..core.mqtt import MQTTClient
-from ..core.settings import DeviceSettings
+from ..core.settings import Settings
 
 # Type alias: (ha_domain, entity_slug, payload_dict)
 # e.g. ("sensor", "wakeword", {"name": "Wakeword", ...})
@@ -77,7 +77,7 @@ class Component(Generic[ComponentConfigModel], abc.ABC):
   # Subclasses override this to declare whether they need a microphone stream.
   needs_audio: bool = False
 
-  def __init__(self, settings: DeviceSettings) -> None:
+  def __init__(self, settings: Settings) -> None:
     self.settings = settings
 
   @property

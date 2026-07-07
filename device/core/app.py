@@ -30,7 +30,7 @@ from ..components.base import AudioStreamComponent
 from ..components.base import Component
 from ..components.edge_tts import OpenAIEdgeTTSClient
 from ..components.izwi import IzwiClient
-from ..utils.logger import logger
+from ..utils.logger import configure_logging
 from .audio import Audio
 from .audio import AudioDeviceError
 from .cues import ConversationEvent
@@ -54,15 +54,17 @@ from .mqtt import DEVICE_CONTEXT_TEXT_FIELDS
 from .mqtt import MQTTClient
 from .package import APP_NAME
 from .package import APP_VERSION
-from .settings import DeviceSettings
-from .settings import load_settings
+from .settings import get_settings
 from .settings import RuntimeSettingsCache
+from .settings import Settings
 from .settings import update_runtime_settings_cache
 from .speaker import Speaker
 from .speaker import SpeakerDeviceError
 from .speaker import SpeakerPlaybackError
 from .tts import TTSVoice
 from .tts import voices_for_language
+
+logger = logging.getLogger(__name__)
 
 
 def listening_task_failed(task: asyncio.Task) -> bool:
@@ -92,7 +94,7 @@ def classify_supervisor_done(
   return "continue"
 
 
-def build_device_context(settings: DeviceSettings) -> dict[str, str]:
+def build_device_context(settings: Settings) -> dict[str, str]:
   return settings.context.copy()
 
 
@@ -139,7 +141,7 @@ def format_settings_group(values: dict[str, Any]) -> str:
   return ", ".join(f"{key}={format_setting_value(value)}" for key, value in values.items())
 
 
-def log_startup_settings(settings: DeviceSettings) -> None:
+def log_startup_settings(settings: Settings) -> None:
   context = build_device_context(settings)
   transcription_settings: dict[str, object] = {
     "backend": settings.transcription_backend,
@@ -175,22 +177,28 @@ def log_startup_settings(settings: DeviceSettings) -> None:
   else:
     speech_settings["url"] = settings.izwi_url
 
-  logger.info(f"Starting {APP_NAME}/{APP_VERSION}")
+  logger.info(f"{APP_NAME} v{APP_VERSION}")
+  logger.info(f"Application setting path: {settings.path}")
+
   logger.info(
-    "Settings runtime: "
-    + format_settings_group(
+    "Settings runtime: %s",
+    format_settings_group(
       {
         "log_level": logging.getLevelName(logger.getEffectiveLevel()),
         "node_id": settings.node_id,
         "data": settings.data,
       }
-    )
+    ),
   )
 
-  logger.info(f"Settings context: {format_settings_group(context)}")
   logger.info(
-    "Settings audio: "
-    + format_settings_group(
+    "Settings context: %s",
+    format_settings_group(context),
+  )
+
+  logger.info(
+    "Settings audio: %s",
+    format_settings_group(
       {
         "microphone": settings.microphone_enabled,
         "microphone_device": settings.microphone_device,
@@ -201,12 +209,12 @@ def log_startup_settings(settings: DeviceSettings) -> None:
         "speaker_muted": settings.speaker_muted,
         "speaker_volume": settings.speaker_volume,
       }
-    )
+    ),
   )
 
   logger.info(
-    "Settings services: "
-    + format_settings_group(
+    "Settings services: %s",
+    format_settings_group(
       {
         "ohunerin": f"{settings.ohunerin_host}:{settings.ohunerin_port}",
         "ohunerin_threshold": settings.ohunerin_threshold,
@@ -214,14 +222,22 @@ def log_startup_settings(settings: DeviceSettings) -> None:
         "conversation_timeout": settings.conversation_timeout,
         "akorin": settings.akorin_url,
       }
-    )
+    ),
   )
 
-  logger.info(f"Settings transcription: {format_settings_group(transcription_settings)}")
-  logger.info(f"Settings speech: {format_settings_group(speech_settings)}")
   logger.info(
-    "Settings mqtt: "
-    + format_settings_group(
+    "Settings transcription: %s",
+    format_settings_group(transcription_settings),
+  )
+
+  logger.info(
+    "Settings speech: %s",
+    format_settings_group(speech_settings),
+  )
+
+  logger.info(
+    "Settings mqtt: %s",
+    format_settings_group(
       {
         "broker": settings.mqtt_broker,
         "port": settings.mqtt_port,
@@ -230,22 +246,23 @@ def log_startup_settings(settings: DeviceSettings) -> None:
         "discovery": settings.mqtt_discovery,
         "discovery_prefix": settings.mqtt_discovery_prefix,
       }
-    )
+    ),
   )
 
   logger.info(
-    "Settings security: "
-    + format_settings_group(
+    "Settings security: %s",
+    format_settings_group(
       {
         "tls": bool(settings.cert_file),
         "cert_file": settings.cert_file,
       }
-    )
+    ),
   )
 
 
 async def start() -> None:
-  settings = load_settings()
+  settings = get_settings()
+  configure_logging(settings.log_level, settings.log_file)
   loop = asyncio.get_running_loop()
 
   log_startup_settings(settings)

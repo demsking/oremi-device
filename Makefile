@@ -63,7 +63,10 @@ clean:
 	find . -type d -name "__pycache__" -exec rm -rf {} +
 	find . -type f -name "*.pyc" -delete
 	rm -rf .pytest_cache .coverage htmlcov
-	rm -rf dist/ build/
+	rm -rf dist/
+
+docs:
+	serve -l 9652 pages/
 
 #
 ## Packaging
@@ -107,7 +110,7 @@ image-test:
 	  --tag $(IMAGE_NAME):test
 
 live: image-test
-	docker run -it --rm --env-file .env.example -v ./data:/oremi/data $(IMAGE_NAME):test
+	docker run -it --rm --env-file .env.example -v ./data:/oremi/data --network host -e OREMI_DEVICE_MQTT_BROKER=192.168.1.79 --device /dev/snd:/dev/snd --group-add audio $(IMAGE_NAME):test
 
 publish: image-test
 	git tag v$(APP_VERSION)

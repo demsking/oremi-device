@@ -15,17 +15,15 @@
 from unittest.mock import patch, MagicMock
 import pytest
 import sounddevice as sd
-from oremi_device.core.audio import Audio, AudioDeviceError
-from oremi_device import start
-from oremi_device.core.detector import SoundDetector
+from device.core.audio import Audio, AudioDeviceError
+from device import start
+from device.core.detector import SoundDetector
 
 
 def test_audio_no_compatible_device() -> None:
   # Mock sd.query_devices to return some devices but none with max_input_channels > 0
-  with patch('sounddevice.query_devices') as mock_query:
-    mock_query.return_value = [
-      {'name': 'Output Device', 'max_input_channels': 0, 'default_samplerate': 44100}
-    ]
+  with patch("sounddevice.query_devices") as mock_query:
+    mock_query.return_value = [{"name": "Output Device", "max_input_channels": 0, "default_samplerate": 44100}]
     with pytest.raises(AudioDeviceError) as exc_info:
       Audio()
     assert "No compatible audio input device found" in str(exc_info.value)
@@ -33,7 +31,7 @@ def test_audio_no_compatible_device() -> None:
 
 def test_audio_query_devices_fails() -> None:
   # Mock sd.query_devices to raise an exception
-  with patch('sounddevice.query_devices', side_effect=Exception("PortAudio error")):
+  with patch("sounddevice.query_devices", side_effect=Exception("PortAudio error")):
     with pytest.raises(AudioDeviceError) as exc_info:
       Audio()
     assert "No compatible audio input device found" in str(exc_info.value)
@@ -42,23 +40,25 @@ def test_audio_query_devices_fails() -> None:
 def test_audio_initialize_fails() -> None:
   # Mock sd.query_devices to return a compatible device
   # but mock RawInputStream to raise PortAudioError
-  with patch('sounddevice.query_devices') as mock_query, \
-       patch('sounddevice.check_input_settings'), \
-       patch('sounddevice.RawInputStream', side_effect=sd.PortAudioError("Init failed")):
-    mock_query.return_value = [
-      {'name': 'Mic', 'max_input_channels': 1, 'default_samplerate': 16000, 'index': 0}
-    ]
+  with (
+    patch("sounddevice.query_devices") as mock_query,
+    patch("sounddevice.check_input_settings"),
+    patch("sounddevice.RawInputStream", side_effect=sd.PortAudioError("Init failed")),
+  ):
+    mock_query.return_value = [{"name": "Mic", "max_input_channels": 1, "default_samplerate": 16000, "index": 0}]
     with pytest.raises(AudioDeviceError) as exc_info:
       Audio()
     assert "Failed to initialize audio device" in str(exc_info.value)
 
 
 def test_audio_validates_named_input_device_before_opening_stream() -> None:
-  with patch('sounddevice.query_devices') as mock_query, \
-       patch('sounddevice.check_input_settings') as mock_check, \
-       patch('sounddevice.RawInputStream') as mock_stream:
+  with (
+    patch("sounddevice.query_devices") as mock_query,
+    patch("sounddevice.check_input_settings") as mock_check,
+    patch("sounddevice.RawInputStream") as mock_stream,
+  ):
     mock_query.return_value = [
-      {'name': 'eMeet Luna: USB Audio', 'max_input_channels': 1, 'default_samplerate': 48000, 'index': 2}
+      {"name": "eMeet Luna: USB Audio", "max_input_channels": 1, "default_samplerate": 48000, "index": 2}
     ]
 
     Audio(device_name="eMeet Luna")
@@ -71,9 +71,9 @@ def test_audio_validates_named_input_device_before_opening_stream() -> None:
 async def test_main_audio_device_error() -> None:
   # Mock settings loading to return a fully-populated model so that
   # start() can configure MQTT before reaching Audio().
-  from oremi_device.core.settings import DeviceSettings
+  from device.core.settings import Settings
 
-  fake_settings = DeviceSettings(
+  fake_settings = Settings(
     _env_file=None,
     node_id="test-node",
     language="fr",
@@ -100,10 +100,12 @@ async def test_main_audio_device_error() -> None:
     speaker_enabled=True,
   )
 
-  with patch('oremi_device.core.app.load_settings', return_value=fake_settings), \
-       patch('oremi_device.core.app.Audio', side_effect=AudioDeviceError("No device")), \
-       patch('sys.exit', side_effect=SystemExit(1)) as mock_exit, \
-       patch('oremi_device.core.app.MQTTClient') as mock_mqtt_cls:
+  with (
+    patch("device.core.app.load_settings", return_value=fake_settings),
+    patch("device.core.app.Audio", side_effect=AudioDeviceError("No device")),
+    patch("sys.exit", side_effect=SystemExit(1)) as mock_exit,
+    patch("device.core.app.MQTTClient") as mock_mqtt_cls,
+  ):
     mock_mqtt_cls.return_value.connect = MagicMock()
     mock_mqtt_cls.return_value.set_availability = MagicMock()
     mock_mqtt_cls.return_value.client.connect_callback = MagicMock(return_value=lambda f: f)
@@ -118,26 +120,25 @@ async def test_main_audio_device_error() -> None:
 
 
 def test_get_compatible_input_devices() -> None:
-  with patch('sounddevice.query_devices') as mock_query, \
-       patch('sounddevice.check_input_settings') as mock_check:
+  with patch("sounddevice.query_devices") as mock_query, patch("sounddevice.check_input_settings") as mock_check:
     mock_query.return_value = [
-      {'name': 'Mic 1', 'max_input_channels': 1, 'default_samplerate': 16000},
-      {'name': 'Output Only', 'max_input_channels': 0, 'default_samplerate': 44100},
-      {'name': 'Mic 2', 'max_input_channels': 2, 'default_samplerate': 16000},
-      {'name': 'sysdefault', 'max_input_channels': 1, 'default_samplerate': 16000},
+      {"name": "Mic 1", "max_input_channels": 1, "default_samplerate": 16000},
+      {"name": "Output Only", "max_input_channels": 0, "default_samplerate": 44100},
+      {"name": "Mic 2", "max_input_channels": 2, "default_samplerate": 16000},
+      {"name": "sysdefault", "max_input_channels": 1, "default_samplerate": 16000},
     ]
     # Simulate checks succeeding
     mock_check.side_effect = [None, None, None]
 
     # sysdefault is a virtual device, so it should not be returned when physical ones exist
     devs = Audio.get_compatible_input_devices()
-    assert devs == ['Mic 1', 'Mic 2']
+    assert devs == ["Mic 1", "Mic 2"]
 
     # Test with current_device parameter
     mock_check.side_effect = [None, None, None, None]
-    devs_with_current = Audio.get_compatible_input_devices(current_device='Mic 2')
-    assert 'Mic 1' in devs_with_current
-    assert 'Mic 2' in devs_with_current
+    devs_with_current = Audio.get_compatible_input_devices(current_device="Mic 2")
+    assert "Mic 1" in devs_with_current
+    assert "Mic 2" in devs_with_current
 
 
 def test_is_physical_microphone() -> None:

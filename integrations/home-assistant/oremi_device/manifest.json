@@ -1,5 +1,5 @@
 {
-  "domain": "oremi_device",
+  "domain": "device",
   "name": "Oremi Player",
   "codeowners": [
     "@demsking"

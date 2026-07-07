@@ -14,18 +14,20 @@
 # ==============================================================================
 import asyncio
 import json
+import logging
 from datetime import datetime
 
 from websockets.asyncio.client import ClientConnection as WebSocket
 from websockets.exceptions import ConnectionClosedError
 
-from ..utils.logger import logger
 from ..utils.string import sluggify
 from .audio import Audio
 from .models import DetectedSound
 from .models import DetectedSoundType
 from .mqtt import MQTTClient
 
+
+logger = logging.getLogger(__name__)
 
 DETECTION_EVENT_TOPIC = "event"
 

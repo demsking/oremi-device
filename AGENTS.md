@@ -11,10 +11,10 @@ events, controls, and Home Assistant discovery data over MQTT.
 
 The main areas of the repository are:
 
-- `oremi_device/core/`: CLI parsing and the audio, MQTT, detection, listener,
+- `device/core/`: CLI parsing and the audio, MQTT, detection, listener,
   speaker, model, and package infrastructure.
-- `oremi_device/components/`: integrations with Ohunerin and Andika.
-- `oremi_device/utils/`: small shared utilities.
+- `device/components/`: integrations with Ohunerin and Andika.
+- `device/utils/`: small shared utilities.
 - `tests/`: pytest tests corresponding to the application modules.
 - `config/`: example runtime configuration.
 - `bin/`, `Dockerfile`, and `mosquitto/`: container and runtime support.
@@ -25,7 +25,7 @@ The main areas of the repository are:
 - Use `uv` for dependency management. Do not introduce `pip`-managed files or
   manually edit `uv.lock`.
 - Install the environment with `make install` or `uv sync`.
-- Run the application from source with `uv run python -m oremi_device`.
+- Run the application from source with `uv run python -m device`.
 - Treat credentials, certificate files, MQTT payloads, and recorded audio as
   sensitive. Never commit secrets or real user data.
 

@@ -17,6 +17,7 @@
 import asyncio
 import io
 import json
+import logging
 import math
 import ssl
 import urllib.parse
@@ -40,11 +41,12 @@ from ..core.models import AndikaConfig
 from ..core.mqtt import MQTTClient
 from ..core.package import APP_NAME
 from ..core.package import APP_VERSION
-from ..core.settings import DeviceSettings
-from ..utils.logger import logger
+from ..core.settings import Settings
 from .base import AudioStreamComponent
 from .base import HAEntity
 
+
+logger = logging.getLogger(__name__)
 
 PARTIAL_TRANSCRIPTION_TOPIC = "transcription/partial"
 FINAL_TRANSCRIPTION_TOPIC = "transcription/result"
@@ -59,7 +61,7 @@ class AndikaSupportedModel(BaseModel):
 class AndikaTranscriber:
   def __init__(
     self,
-    settings: DeviceSettings,
+    settings: Settings,
     mqtt_client: MQTTClient,
     websocket,
     transcription_complete_event: asyncio.Event | None = None,
@@ -121,7 +123,7 @@ class WhisperCppListener:
 
   def __init__(
     self,
-    settings: DeviceSettings,
+    settings: Settings,
     mqtt_client: MQTTClient,
     audio_stream: Audio,
     transcription_complete_event: asyncio.Event,
@@ -247,7 +249,7 @@ class WhisperCppListener:
 class AndikaComponent(AudioStreamComponent[AndikaConfig]):
   """Andika speech-recognition component (WebSocket + audio stream)."""
 
-  def __init__(self, settings: DeviceSettings) -> None:
+  def __init__(self, settings: Settings) -> None:
     super().__init__(settings)
 
     self._task: asyncio.Task | None = None

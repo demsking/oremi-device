@@ -13,6 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 import asyncio
+import logging
 import ssl
 import urllib.parse
 from typing import Any
@@ -29,11 +30,13 @@ from ..core.models import OhunerinConfig
 from ..core.mqtt import MQTTClient
 from ..core.package import APP_NAME
 from ..core.package import APP_VERSION
-from ..core.settings import DeviceSettings
-from ..utils.logger import logger
+from ..core.settings import Settings
 from ..utils.string import sluggify
 from .base import AudioStreamComponent
 from .base import HAEntity
+
+
+logger = logging.getLogger(__name__)
 
 
 class OhunerinServerInfo(BaseModel):
@@ -47,7 +50,7 @@ class OhunerinServerInfo(BaseModel):
 class OhunerinComponent(AudioStreamComponent[OhunerinConfig]):
   """Ohunerin speech-event detection component (WebSocket + audio stream)."""
 
-  def __init__(self, settings: DeviceSettings) -> None:
+  def __init__(self, settings: Settings) -> None:
     super().__init__(settings)
 
     self._task: asyncio.Task | None = None

@@ -13,6 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 import asyncio
+import logging
 import unicodedata
 from collections.abc import Awaitable
 from collections.abc import Callable
@@ -26,10 +27,10 @@ from ..core.models import AkorinConfig
 from ..core.models import AnnounceCommand
 from ..core.models import ProcessingResponse
 from ..core.mqtt import MQTTClient
-from ..core.settings import DeviceSettings
-from ..utils.logger import logger
+from ..core.settings import Settings
 from .base import HttpComponent
 
+logger = logging.getLogger(__name__)
 
 ERROR_MESSAGE = {
   "fr": "Je n'arrive pas a obtenir une reponse pour le moment.",
@@ -95,7 +96,7 @@ class AkorinClient:
 class AkorinComponent(HttpComponent[AkorinConfig]):
   """Akorin orchestration component (HTTP request/response)."""
 
-  def __init__(self, settings: DeviceSettings) -> None:
+  def __init__(self, settings: Settings) -> None:
     super().__init__(settings)
 
     self._task: asyncio.Task | None = None

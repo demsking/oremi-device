@@ -13,6 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 import array
+import logging
 import signal
 import subprocess  # nosec B404
 import threading
@@ -20,7 +21,8 @@ from pathlib import Path
 
 import sounddevice as sd
 
-from ..utils.logger import logger
+
+logger = logging.getLogger(__name__)
 
 
 class SpeakerDeviceError(Exception):

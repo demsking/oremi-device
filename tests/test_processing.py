@@ -17,12 +17,12 @@ import urllib.parse
 import pytest
 from pydantic import ValidationError
 
-from oremi_device.components.edge_tts import OpenAIEdgeTTSClient
-from oremi_device.components.izwi import IzwiClient
-from oremi_device.core.models import ProcessingResponse
-from oremi_device.core.models import SpeakCommand
-from oremi_device.core.tts import TTSVoice
-from oremi_device.core.tts import voices_for_language
+from device.components.edge_tts import OpenAIEdgeTTSClient
+from device.components.izwi import IzwiClient
+from device.core.models import ProcessingResponse
+from device.core.models import SpeakCommand
+from device.core.tts import TTSVoice
+from device.core.tts import voices_for_language
 
 
 def test_processing_message_defaults_to_speech() -> None:
