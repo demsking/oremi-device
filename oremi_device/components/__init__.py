@@ -14,8 +14,10 @@
 # ==============================================================================
 from pydantic import BaseModel
 
+from ..core.models import AkorinConfig
 from ..core.models import AndikaConfig
 from ..core.models import OhunerinConfig
+from .akorin import AkorinComponent
 from .andika import AndikaComponent
 from .base import AudioStreamComponent
 from .base import Component
@@ -25,6 +27,7 @@ from .ohunerin import OhunerinComponent
 COMPONENTS: dict[str, tuple[type[BaseModel], type[Component]]] = {
   "ohunerin": (OhunerinConfig, OhunerinComponent),
   "andika": (AndikaConfig, AndikaComponent),
+  "akorin": (AkorinConfig, AkorinComponent),
 }
 
 __all__ = [

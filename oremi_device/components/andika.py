@@ -64,12 +64,14 @@ class AndikaTranscriber:
     websocket,
     transcription_complete_event: asyncio.Event | None = None,
     conversation_event_handler: Callable[[ConversationEvent], Awaitable[None]] | None = None,
+    final_transcription_handler: Callable[[str], Awaitable[None]] | None = None,
   ) -> None:
     self.settings = settings
     self.mqtt_client = mqtt_client
     self.websocket = websocket
     self.transcription_complete_event = transcription_complete_event
     self.conversation_event_handler = conversation_event_handler
+    self.final_transcription_handler = final_transcription_handler
 
   def parse_transcription(self, payload: dict) -> tuple[Literal["partial", "text"] | None, str]:
     if "partial" in payload:
@@ -102,6 +104,9 @@ class AndikaTranscriber:
           if transcription:
             self.mqtt_client.publish_event(FINAL_TRANSCRIPTION_TOPIC, mqtt_message, qos=1, retain=False, props=props)
 
+            if self.final_transcription_handler:
+              await self.final_transcription_handler(transcription)
+
           if self.conversation_event_handler:
             await self.conversation_event_handler("processing" if transcription else "cancelled")
 
@@ -121,12 +126,14 @@ class WhisperCppListener:
     audio_stream: Audio,
     transcription_complete_event: asyncio.Event,
     conversation_event_handler: Callable[[ConversationEvent], Awaitable[None]] | None = None,
+    final_transcription_handler: Callable[[str], Awaitable[None]] | None = None,
   ) -> None:
     self.settings = settings
     self.mqtt_client = mqtt_client
     self.audio_stream = audio_stream
     self.transcription_complete_event = transcription_complete_event
     self.conversation_event_handler = conversation_event_handler
+    self.final_transcription_handler = final_transcription_handler
 
   @staticmethod
   def _rms(data: bytes) -> float:
@@ -223,6 +230,9 @@ class WhisperCppListener:
 
         logger.debug(payload)
         self.mqtt_client.publish_event(FINAL_TRANSCRIPTION_TOPIC, json.dumps(payload), qos=1, retain=False, props=props)
+
+        if self.final_transcription_handler:
+          await self.final_transcription_handler(transcription)
       elif self.conversation_event_handler:
         await self.conversation_event_handler("cancelled")
     except Exception as error:
@@ -234,7 +244,7 @@ class WhisperCppListener:
       self.transcription_complete_event.set()
 
 
-class AndikaComponent(AudioStreamComponent):
+class AndikaComponent(AudioStreamComponent[AndikaConfig]):
   """Andika speech-recognition component (WebSocket + audio stream)."""
 
   def __init__(self, settings: DeviceSettings) -> None:
@@ -249,6 +259,7 @@ class AndikaComponent(AudioStreamComponent):
     self._transcription_complete_event = asyncio.Event()
     self._transcription_active = False
     self._conversation_event_handler: Callable[[ConversationEvent], Awaitable[None]] | None = None
+    self._final_transcription_handler: Callable[[str], Awaitable[None]] | None = None
 
   @property
   def name(self) -> str:
@@ -464,6 +475,7 @@ class AndikaComponent(AudioStreamComponent):
     active_stream_container = shared_resources["active_stream_container"]
     self._wakeword_event = shared_resources["wakeword_event"]
     self._conversation_event_handler = shared_resources.get("conversation_event_handler")
+    self._final_transcription_handler = shared_resources.get("final_transcription_handler")
     andika_uri = self.build_connection_uri(config)
 
     logger.info(f"Andika Connection URI: {andika_uri}")
@@ -493,6 +505,7 @@ class AndikaComponent(AudioStreamComponent):
             websocket,
             self._transcription_complete_event,
             self._handle_transcription_event,
+            self._final_transcription_handler,
           )
           self.audio_listener = AudioListener(active_stream_container["stream"], websocket, mqtt_client)
           device_state = shared_resources["device_state"]
@@ -538,6 +551,7 @@ class AndikaComponent(AudioStreamComponent):
     active_stream_container = shared_resources["active_stream_container"]
     self._wakeword_event = shared_resources["wakeword_event"]
     self._conversation_event_handler = shared_resources.get("conversation_event_handler")
+    self._final_transcription_handler = shared_resources.get("final_transcription_handler")
     self._handle_task_done = shared_resources["handle_task_done"]
     audio_stream = active_stream_container["stream"]
 
@@ -550,6 +564,7 @@ class AndikaComponent(AudioStreamComponent):
         audio_stream,
         self._transcription_complete_event,
         self._conversation_event_handler,
+        self._final_transcription_handler,
       )
 
     await self._activate_on_wakeword(active_stream_container, shared_resources["device_state"])

@@ -115,6 +115,16 @@ def validate_device_context_value(field: str, value: str) -> str | None:
   return normalized
 
 
+def parse_device_context_command_field(topic: str, context_prefix: str) -> str | None:
+  prefix = f"{context_prefix.rstrip('/')}/"
+
+  if not topic.startswith(prefix) or not topic.endswith("/set"):
+    return None
+
+  field = topic.removeprefix(prefix).removesuffix("/set")
+  return field.strip("/") or None
+
+
 def format_setting_value(value: object) -> str:
   if value is None or value == "":
     return "unset"
@@ -202,6 +212,7 @@ def log_startup_settings(settings: DeviceSettings) -> None:
         "ohunerin_threshold": settings.ohunerin_threshold,
         "delay": settings.delay,
         "conversation_timeout": settings.conversation_timeout,
+        "akorin": settings.akorin_url,
       }
     )
   )
@@ -352,6 +363,7 @@ async def start() -> None:
   player_stop_queue: asyncio.Queue = asyncio.Queue()
   language_change_queue: asyncio.Queue = asyncio.Queue()
   device_context_change_queue: asyncio.Queue[tuple[str, str]] = asyncio.Queue()
+  transcription_queue: asyncio.Queue[str] = asyncio.Queue()
   processing_queue: asyncio.Queue[ProcessingResponse] = asyncio.Queue()
   voice_change_queue: asyncio.Queue[str] = asyncio.Queue()
   wakeword_event = asyncio.Event()
@@ -377,6 +389,7 @@ async def start() -> None:
   conversation_state: dict[str, ConversationState] = {"state": "idle"}
   playback_task: asyncio.Task | None = None
   speech_task: asyncio.Task | None = None
+  command_execution_task: asyncio.Task | None = None
   scheduled_tasks: dict[str, asyncio.Task] = {}
 
   def active_voice_names() -> list[str]:
@@ -500,6 +513,121 @@ async def start() -> None:
     task.add_done_callback(handle_task_done)
     scheduled_tasks[command.id] = task
     logger.info(f"Scheduled {command.type} '{command.id}' for {command.at.isoformat()}")
+
+  async def handle_final_transcription(transcription: str) -> None:
+    await transcription_queue.put(transcription)
+
+  def current_device_context() -> dict[str, Any]:
+    return device_context.copy()
+
+  async def execute_processing_response(response: ProcessingResponse) -> None:
+    nonlocal playback_task
+    nonlocal speech_task
+
+    response_started_playback = False
+
+    for command in response.resolved_commands():
+      if speech_task is not None:
+        await speech_task
+        speech_task = None
+
+      if isinstance(command, (SpeakCommand, AnnounceCommand)):
+        if tts_client is None or not voice_state["voice"]:
+          logger.error("Cannot synthesize speech because no speech synthesis voice is available")
+          continue
+
+        voice = command.voice or voice_state["voice"]
+
+        if voice not in {item.name for item in tts_voices}:
+          logger.warning(f"Ignoring unavailable speech synthesis voice: {voice}")
+          continue
+
+        if isinstance(command, AnnounceCommand):
+          await play_sound_cue("announcement")
+
+        synthesis = tts_client.synthesize_request(command.text, voice)
+        speech_task = loop.create_task(
+          play_speech(synthesis.url, method=synthesis.method, body=synthesis.body, headers=synthesis.headers),
+          name="Speech Announcement Task" if isinstance(command, AnnounceCommand) else "Speech Synthesis Task",
+        )
+      elif isinstance(command, PlayCommand):
+        if not response_started_playback and speaker is not None:
+          speaker.stop()
+
+        if playback_task is not None:
+          await playback_task
+
+        playback_task = loop.create_task(play_media(command.url), name="Speaker Playback Task")
+        response_started_playback = True
+      elif isinstance(command, PlayerCommand):
+        if command.type == "stop" and speaker is not None:
+          speaker.stop()
+        elif command.type == "pause" and speaker is not None:
+          speaker.pause()
+          mqtt_client.set_player_state("paused")
+        elif command.type == "resume" and speaker is not None:
+          speaker.resume()
+          mqtt_client.set_player_state("playing")
+      elif isinstance(command, (AlarmCommand, ReminderCommand)):
+        schedule(command)
+      elif isinstance(command, CancelScheduledCommand):
+        scheduled = scheduled_tasks.pop(command.id, None)
+
+        if scheduled is not None:
+          scheduled.cancel()
+          logger.info(f"Cancelled scheduled command: {command.id}")
+      elif isinstance(command, SetVolumeCommand):
+        volume = command.volume / 100
+        speaker_state["volume"] = volume
+
+        if speaker is not None:
+          speaker.set_volume(volume)
+
+        mqtt_client.set_speaker_volume_state(volume)
+        await play_sound_cue("volume")
+      elif isinstance(command, MuteCommand):
+        speaker_state["muted"] = command.muted
+
+        if speaker is not None:
+          speaker.set_muted(command.muted)
+
+        mqtt_client.set_speaker_mute_state(command.muted)
+      elif isinstance(command, SetVoiceCommand):
+        if command.voice in active_voice_names():
+          voice_state["voice"] = command.voice
+          mqtt_client.publish_voice_state(command.voice)
+        else:
+          logger.warning(f"Ignoring unavailable speech synthesis voice: {command.voice}")
+
+    if speech_task is None and conversation_state["state"] == "processing":
+      conversation_state["state"] = "idle"
+      mqtt_client.set_conversation_state("idle")
+
+  async def cancel_active_processing() -> None:
+    nonlocal command_execution_task
+    nonlocal playback_task
+    nonlocal speech_task
+
+    if speaker is not None:
+      speaker.stop()
+
+    if command_execution_task is not None and not command_execution_task.done():
+      command_execution_task.cancel()
+      await asyncio.gather(command_execution_task, return_exceptions=True)
+
+    command_execution_task = None
+
+    if playback_task is not None:
+      await playback_task
+      playback_task = None
+
+    if speech_task is not None:
+      await asyncio.gather(speech_task, return_exceptions=True)
+      speech_task = None
+
+    if conversation_state["state"] in ("processing", "speaking"):
+      conversation_state["state"] = "idle"
+      mqtt_client.set_conversation_state("idle")
 
   @mqtt_client.client.connect_callback()
   def mqtt_on_connect(client, userdata, flags, reason_code, properties) -> None:
@@ -659,9 +787,8 @@ async def start() -> None:
       except Exception as error:
         logger.error(f"Error decoding or handling MQTT language command: {error}")
 
-    elif topic.startswith(mqtt_client.parse_node_topic("context/")) and topic.endswith("/set"):
+    elif (field := parse_device_context_command_field(topic, mqtt_client.parse_node_topic("context"))) is not None:
       try:
-        field = topic.removeprefix(mqtt_client.parse_node_topic("context/")).removesuffix("/set")
         value = validate_device_context_value(field, message.payload.decode("utf-8"))
 
         if value is not None:
@@ -816,7 +943,13 @@ async def start() -> None:
     "wakeword_event": wakeword_event,
     "device_state": device_state,
     "language_state": language_state,
+    "transcription_queue": transcription_queue,
+    "processing_queue": processing_queue,
+    "device_context": current_device_context,
     "conversation_event_handler": handle_conversation_event,
+    "final_transcription_handler": handle_final_transcription,
+    "sound_cue_handler": play_sound_cue,
+    "cancel_active_processing": cancel_active_processing,
     "change_audio_device": change_audio_device,
     "handle_task_done": handle_task_done,
   }
@@ -1004,6 +1137,10 @@ async def start() -> None:
 
       if voice_change_task is not None:
         tasks.append(voice_change_task)
+
+      if command_execution_task is not None and not command_execution_task.done():
+        tasks.append(command_execution_task)
+
       tasks.append(shutdown_task)
 
       done, _ = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
@@ -1149,6 +1286,7 @@ async def start() -> None:
         await play_sound_cue("volume")
       elif player_play_task is not None and player_play_task in done:
         media_url = player_play_task.result()
+        await cancel_active_processing()
 
         if speaker is not None:
           speaker.stop()
@@ -1162,96 +1300,15 @@ async def start() -> None:
 
         playback_task = loop.create_task(play_media(media_url), name="Speaker Playback Task")
       elif player_stop_task is not None and player_stop_task in done:
-        if speaker is not None:
-          speaker.stop()
-
-        if playback_task is not None:
-          await playback_task
-          playback_task = None
-
-        if speech_task is not None:
-          await speech_task
-          speech_task = None
+        await cancel_active_processing()
       elif processing_task is not None and processing_task in done:
         response = processing_task.result()
-        response_started_playback = False
-
-        for command in response.resolved_commands():
-          if speech_task is not None:
-            await speech_task
-            speech_task = None
-
-          if isinstance(command, (SpeakCommand, AnnounceCommand)):
-            if tts_client is None or not voice_state["voice"]:
-              logger.error("Cannot synthesize speech because no speech synthesis voice is available")
-              continue
-
-            voice = command.voice or voice_state["voice"]
-
-            if voice not in {item.name for item in tts_voices}:
-              logger.warning(f"Ignoring unavailable speech synthesis voice: {voice}")
-              continue
-
-            if isinstance(command, AnnounceCommand):
-              await play_sound_cue("announcement")
-
-            synthesis = tts_client.synthesize_request(command.text, voice)
-            speech_task = loop.create_task(
-              play_speech(synthesis.url, method=synthesis.method, body=synthesis.body, headers=synthesis.headers),
-              name="Speech Announcement Task" if isinstance(command, AnnounceCommand) else "Speech Synthesis Task",
-            )
-          elif isinstance(command, PlayCommand):
-            if not response_started_playback and speaker is not None:
-              speaker.stop()
-
-            if playback_task is not None:
-              await playback_task
-
-            playback_task = loop.create_task(play_media(command.url), name="Speaker Playback Task")
-            response_started_playback = True
-          elif isinstance(command, PlayerCommand):
-            if command.type == "stop" and speaker is not None:
-              speaker.stop()
-            elif command.type == "pause" and speaker is not None:
-              speaker.pause()
-              mqtt_client.set_player_state("paused")
-            elif command.type == "resume" and speaker is not None:
-              speaker.resume()
-              mqtt_client.set_player_state("playing")
-          elif isinstance(command, (AlarmCommand, ReminderCommand)):
-            schedule(command)
-          elif isinstance(command, CancelScheduledCommand):
-            scheduled = scheduled_tasks.pop(command.id, None)
-
-            if scheduled is not None:
-              scheduled.cancel()
-              logger.info(f"Cancelled scheduled command: {command.id}")
-          elif isinstance(command, SetVolumeCommand):
-            volume = command.volume / 100
-            speaker_state["volume"] = volume
-
-            if speaker is not None:
-              speaker.set_volume(volume)
-
-            mqtt_client.set_speaker_volume_state(volume)
-            await play_sound_cue("volume")
-          elif isinstance(command, MuteCommand):
-            speaker_state["muted"] = command.muted
-
-            if speaker is not None:
-              speaker.set_muted(command.muted)
-
-            mqtt_client.set_speaker_mute_state(command.muted)
-          elif isinstance(command, SetVoiceCommand):
-            if command.voice in active_voice_names():
-              voice_state["voice"] = command.voice
-              mqtt_client.publish_voice_state(command.voice)
-            else:
-              logger.warning(f"Ignoring unavailable speech synthesis voice: {command.voice}")
-
-        if speech_task is None and conversation_state["state"] == "processing":
-          conversation_state["state"] = "idle"
-          mqtt_client.set_conversation_state("idle")
+        await cancel_active_processing()
+        command_execution_task = loop.create_task(execute_processing_response(response), name="Processing Command Task")
+        command_execution_task.add_done_callback(handle_task_done)
+      elif command_execution_task is not None and command_execution_task in done:
+        await command_execution_task
+        command_execution_task = None
       elif voice_change_task is not None and voice_change_task in done:
         voice_state["voice"] = voice_change_task.result()
         settings.tts_voice = voice_state["voice"]
@@ -1359,6 +1416,8 @@ async def start() -> None:
 
     if scheduled_tasks:
       await asyncio.gather(*scheduled_tasks.values(), return_exceptions=True)
+
+    await cancel_active_processing()
 
     # Ensure all components are stopped
     for component, _ in started_components:

@@ -20,6 +20,8 @@ import pytest
 from oremi_device.__main__ import main
 from oremi_device.core.app import classify_supervisor_done
 from oremi_device.core.app import listening_task_failed
+from oremi_device.core.app import parse_device_context_command_field
+from oremi_device.core.app import validate_device_context_value
 from oremi_device.core.settings import SettingsError
 
 
@@ -43,6 +45,38 @@ def test_main_prints_clean_configuration_errors(capsys) -> None:
     "  - OREMI_DEVICE_MQTT_PORT must be at most 65535\n"
   )
   assert "Traceback" not in captured.err
+
+
+def test_parse_device_context_command_field_without_leading_slash() -> None:
+  assert (
+    parse_device_context_command_field(
+      "oremi/device/nodes/kitchen/context/location/set",
+      "oremi/device/nodes/kitchen/context",
+    )
+    == "location"
+  )
+
+
+def test_parse_device_context_command_field_ignores_other_topics() -> None:
+  assert (
+    parse_device_context_command_field(
+      "oremi/device/nodes/kitchen/context/location/state",
+      "oremi/device/nodes/kitchen/context",
+    )
+    is None
+  )
+
+
+def test_validate_device_context_value_accepts_location() -> None:
+  assert validate_device_context_value("location", "  Douala, Cameroon  ") == "Douala, Cameroon"
+
+
+def test_validate_device_context_value_accepts_timezone() -> None:
+  assert validate_device_context_value("timezone", "Europe/Paris") == "Europe/Paris"
+
+
+def test_validate_device_context_value_rejects_invalid_timezone() -> None:
+  assert validate_device_context_value("timezone", "Invalid/Timezone") is None
 
 
 @pytest.mark.asyncio

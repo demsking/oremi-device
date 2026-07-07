@@ -53,6 +53,20 @@ def test_audio_initialize_fails() -> None:
     assert "Failed to initialize audio device" in str(exc_info.value)
 
 
+def test_audio_validates_named_input_device_before_opening_stream() -> None:
+  with patch('sounddevice.query_devices') as mock_query, \
+       patch('sounddevice.check_input_settings') as mock_check, \
+       patch('sounddevice.RawInputStream') as mock_stream:
+    mock_query.return_value = [
+      {'name': 'eMeet Luna: USB Audio', 'max_input_channels': 1, 'default_samplerate': 48000, 'index': 2}
+    ]
+
+    Audio(device_name="eMeet Luna")
+
+    mock_check.assert_called_once_with(device=2, samplerate=16000, channels=1, dtype="int16")
+    mock_stream.assert_called_once()
+
+
 @pytest.mark.asyncio
 async def test_main_audio_device_error() -> None:
   # Mock settings loading to return a fully-populated model so that

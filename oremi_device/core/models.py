@@ -96,6 +96,16 @@ class AndikaConfig(BaseModel):
   samplerate: int = Field(default=16000, description="The audio sample rate in Hz.")
 
 
+class AkorinConfig(BaseModel):
+  """
+  The configuration schema for the Akorin orchestration component.
+  """
+
+  wait_cue_delay: float = Field(default=2.0, ge=0)
+  wait_cue_interval: float = Field(default=4.0, gt=0)
+  timeout: float = Field(default=30.0, gt=0)
+
+
 class Command(BaseModel):
   model_config = ConfigDict(extra="forbid")
 

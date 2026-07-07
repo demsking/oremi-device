@@ -44,7 +44,7 @@ class OhunerinServerInfo(BaseModel):
   sounds: list[str]
 
 
-class OhunerinComponent(AudioStreamComponent):
+class OhunerinComponent(AudioStreamComponent[OhunerinConfig]):
   """Ohunerin speech-event detection component (WebSocket + audio stream)."""
 
   def __init__(self, settings: DeviceSettings) -> None:
@@ -88,9 +88,7 @@ class OhunerinComponent(AudioStreamComponent):
       "name": "Wakeword",
       "unique_id": f"{node_id}_wakeword",
       "state_topic": event_topic,
-      "value_template": (
-        "{% if value_json.type == 'wakeword' and value_json.sound != '...' %}detected{% else %}💤{% endif %}"
-      ),
+      "value_template": ("{% if value_json.type == 'wakeword' and value_json.sound != '...' %}detected{% else %}💤{% endif %}"),
       "availability_topic": availability_topic,
       "payload_available": "online",
       "payload_not_available": "offline",
@@ -98,8 +96,7 @@ class OhunerinComponent(AudioStreamComponent):
       "options": ["detected", "💤"],
       "json_attributes_topic": event_topic,
       "json_attributes_template": (
-        "{% if value_json.type == 'wakeword' and value_json.sound != '...' %}"
-        "{{ value_json | tojson }}{% else %}{}{% endif %}"
+        "{% if value_json.type == 'wakeword' and value_json.sound != '...' %}{{ value_json | tojson }}{% else %}{}{% endif %}"
       ),
       "icon": "mdi:waveform",
       "device": device,
@@ -110,16 +107,14 @@ class OhunerinComponent(AudioStreamComponent):
       "unique_id": f"{node_id}_sound",
       "state_topic": event_topic,
       "value_template": (
-        "{% if value_json.type == 'sound' and value_json.sound != '...' %}"
-        "{{ value_json.sound }}{% else %}💤{% endif %}"
+        "{% if value_json.type == 'sound' and value_json.sound != '...' %}{{ value_json.sound }}{% else %}💤{% endif %}"
       ),
       "availability_topic": availability_topic,
       "payload_available": "online",
       "payload_not_available": "offline",
       "json_attributes_topic": event_topic,
       "json_attributes_template": (
-        "{% if value_json.type == 'sound' and value_json.sound != '...' %}"
-        "{{ value_json | tojson }}{% else %}{}{% endif %}"
+        "{% if value_json.type == 'sound' and value_json.sound != '...' %}{{ value_json | tojson }}{% else %}{}{% endif %}"
       ),
       "icon": "mdi:waveform",
       "device": device,
@@ -255,9 +250,7 @@ class OhunerinComponent(AudioStreamComponent):
         ) as websocket:
           self._websocket = websocket
           retry_delay = 2.0  # reset backoff on successful connection
-          logger.info(
-            f"Connected to Oremi Ohunerin server at {self.settings.ohunerin_host}:{self.settings.ohunerin_port}"
-          )
+          logger.info(f"Connected to Oremi Ohunerin server at {self.settings.ohunerin_host}:{self.settings.ohunerin_port}")
 
           self.sound_detector = SoundDetector(
             mqtt_client,
@@ -281,10 +274,7 @@ class OhunerinComponent(AudioStreamComponent):
 
           device_state = shared_resources["device_state"]
 
-          if (
-            active_stream_container["stream"] is not None
-            and not device_state["microphone_muted"]
-          ):
+          if active_stream_container["stream"] is not None and not device_state["microphone_muted"]:
             self._listening_task = loop.create_task(self.audio_listener.listening(), name="Listening Task")
 
             if self._handle_task_done:

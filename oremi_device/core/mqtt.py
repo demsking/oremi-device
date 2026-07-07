@@ -18,6 +18,7 @@ from typing import Literal
 
 import paho.mqtt.client as mqtt
 import paho.mqtt.properties as mqtt_properties
+from paho.mqtt.enums import CallbackAPIVersion
 
 from ..utils.logger import logger
 from ..utils.string import sluggify
@@ -40,11 +41,12 @@ DEVICE_CONTEXT_OPTIONS: dict[str, list[str]] = {
   "first_day_of_week": ["monday", "sunday", "saturday"],
 }
 
-DEVICE_CONTEXT_TEXT_FIELDS = ("location", "preferred_currency")
+DEVICE_CONTEXT_TEXT_FIELDS = ("location", "timezone", "preferred_currency")
 
 DEVICE_CONTEXT_LABELS = {
   "language": "Language",
   "location": "Location",
+  "timezone": "Timezone",
   "temperature_unit": "Temperature unit",
   "preferred_currency": "Preferred currency",
   "measurement_system": "Measurement system",
@@ -57,6 +59,7 @@ DEVICE_CONTEXT_LABELS = {
 DEVICE_CONTEXT_ICONS = {
   "language": "mdi:translate",
   "location": "mdi:map-marker",
+  "timezone": "mdi:map-clock",
   "temperature_unit": "mdi:thermometer",
   "preferred_currency": "mdi:cash",
   "measurement_system": "mdi:ruler-square",
@@ -80,7 +83,7 @@ class MQTTClient:  # pylint: disable=too-many-public-methods
     password: str | None = None,
     discovery_prefix: str | None = None,
   ) -> None:
-    self.client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id=f"oremi-device-{node_id}")
+    self.client = mqtt.Client(CallbackAPIVersion.VERSION2, client_id=f"oremi-device-{node_id}")
     self.broker = broker
     self.port = port
     self.topic = topic.rstrip("/")

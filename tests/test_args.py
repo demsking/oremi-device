@@ -65,6 +65,7 @@ def test_settings_defaults() -> None:
   assert settings.speaker_device is None
   assert settings.speaker_muted is False
   assert settings.speaker_volume == 1.0
+  assert settings.akorin_url is None
   assert settings.ohunerin_threshold == 0.25
   assert settings.andika_model == "vosk-model-small-fr-0.22"
   assert settings.andika_samplerate == 16000
@@ -76,6 +77,14 @@ def test_settings_defaults() -> None:
 
 
 def test_settings_are_loaded_from_environment(monkeypatch: pytest.MonkeyPatch) -> None:
+  monkeypatch.setattr(
+    "oremi_device.core.settings.get_location_geocode",
+    lambda location: SimpleNamespace(latitude=48.8566, longitude=2.3522, address=location),
+  )
+  monkeypatch.setattr(
+    "oremi_device.core.settings.infer_timezone_from_coordinates",
+    lambda *, latitude, longitude: "Europe/Paris",
+  )
   monkeypatch.setenv("OREMI_DEVICE_NODE_ID", "kitchen")
   monkeypatch.setenv("OREMI_DEVICE_OHUNERIN_HOST", "ohunerin")
   monkeypatch.setenv("OREMI_DEVICE_ANDIKA_HOST", "andika")
@@ -121,6 +130,9 @@ def test_settings_are_loaded_from_environment(monkeypatch: pytest.MonkeyPatch) -
     "time_format": "12h",
     "date_format": "MM/DD/YYYY",
     "first_day_of_week": "sunday",
+    "latitude": 48.8566,
+    "longitude": 2.3522,
+    "address": "12 Rue de Rivoli, Paris",
   }
   assert settings.microphone_device == "USB Microphone"
   assert settings.microphone_device_index == 2
@@ -136,6 +148,7 @@ def test_settings_are_loaded_from_environment(monkeypatch: pytest.MonkeyPatch) -
   [
     ("conversation_timeout", 0),
     ("language", "de"),
+    ("timezone", "Invalid/Timezone"),
     ("temperature_unit", "kelvin"),
     ("preferred_currency", "EURO"),
     ("measurement_system", "customary"),
@@ -143,6 +156,7 @@ def test_settings_are_loaded_from_environment(monkeypatch: pytest.MonkeyPatch) -
     ("time_format", "24-hour"),
     ("date_format", "YYYY/MM/DD"),
     ("first_day_of_week", "friday"),
+    ("akorin_url", "not-a-url"),
     ("ohunerin_threshold", 0),
     ("andika_model", "unsupported"),
     ("andika_samplerate", 0),
@@ -253,6 +267,7 @@ def test_runtime_settings_cache_overrides_mutable_settings(tmp_path, monkeypatch
       {
         "language": "en",
         "location": "12 Rue de Rivoli, Paris",
+        "timezone": "Europe/Paris",
         "temperature_unit": "fahrenheit",
         "preferred_currency": "usd",
         "measurement_system": "imperial",
@@ -284,6 +299,7 @@ def test_runtime_settings_cache_overrides_mutable_settings(tmp_path, monkeypatch
   assert settings.language == "en"
   assert settings.location == "12 Rue de Rivoli, Paris"
   assert settings.context["timezone"] == "Europe/Paris"
+  assert settings.timezone == "Europe/Paris"
   assert settings.temperature_unit == "fahrenheit"
   assert settings.preferred_currency == "USD"
   assert settings.measurement_system == "imperial"

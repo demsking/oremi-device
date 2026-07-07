@@ -87,7 +87,7 @@ class Audio:
               break
 
         if matched_index is not None:
-          device = matched_index
+          device = devices[matched_index].get("index", matched_index)
         else:
           device = device_name
     else:
@@ -99,6 +99,8 @@ class Audio:
         raise AudioDeviceError("No compatible audio input device found")
 
     try:
+      sd.check_input_settings(device=device, samplerate=samplerate, channels=1, dtype=dtype)
+
       self.stream = sd.RawInputStream(
         dtype=dtype,
         samplerate=samplerate,

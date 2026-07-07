@@ -17,6 +17,8 @@ import os
 from pathlib import Path
 from typing import Any
 from typing import Literal
+from zoneinfo import ZoneInfo
+from zoneinfo import ZoneInfoNotFoundError
 
 from pydantic import AnyHttpUrl
 from pydantic import BaseModel
@@ -99,6 +101,7 @@ class DeviceSettings(BaseSettings):
 
   language: Literal["fr", "en"] = "fr"
   location: str = ""
+  timezone: str = DEFAULT_TIMEZONE
   temperature_unit: Literal["celsius", "fahrenheit"] = "celsius"
   preferred_currency: str = Field(default="XAF", pattern=r"^[A-Z]{3}$")
   measurement_system: Literal["metric", "imperial"] = "metric"
@@ -116,6 +119,8 @@ class DeviceSettings(BaseSettings):
   speaker_volume: float = Field(default=1.0, ge=0, le=1)
   delay: int = Field(default=3, gt=0)
   conversation_timeout: float = Field(default=15.0, gt=0)
+
+  akorin_url: AnyHttpUrl | None = None
 
   ohunerin_host: str
   ohunerin_port: int = Field(default=5023, gt=0, le=65535)
@@ -157,7 +162,7 @@ class DeviceSettings(BaseSettings):
     context = {
       "language": self.language,
       "location": self.location,
-      "timezone": DEFAULT_TIMEZONE,
+      "timezone": self.timezone,
       "temperature_unit": self.temperature_unit,
       "preferred_currency": self.preferred_currency,
       "measurement_system": self.measurement_system,
@@ -173,9 +178,10 @@ class DeviceSettings(BaseSettings):
       context["latitude"] = location.latitude
       context["longitude"] = location.longitude
       context["address"] = location.address
-      context["timezone"] = (
-        infer_timezone_from_coordinates(latitude=location.latitude, longitude=location.longitude) or DEFAULT_TIMEZONE
-      )
+      inferred_timezone = infer_timezone_from_coordinates(latitude=location.latitude, longitude=location.longitude)
+
+      if self.timezone == DEFAULT_TIMEZONE and inferred_timezone:
+        context["timezone"] = inferred_timezone
 
     return context
 
@@ -183,6 +189,16 @@ class DeviceSettings(BaseSettings):
   @classmethod
   def normalize_preferred_currency(cls, value: str) -> str:
     return value.upper() if isinstance(value, str) else value
+
+  @field_validator("timezone")
+  @classmethod
+  def validate_timezone(cls, value: str) -> str:
+    try:
+      ZoneInfo(value)
+    except ZoneInfoNotFoundError as error:
+      raise ValueError("must be a valid IANA timezone") from error
+
+    return value
 
   @model_validator(mode="after")
   def validate_backends(self) -> "DeviceSettings":
@@ -203,6 +219,7 @@ class RuntimeSettingsCache(BaseModel):
 
   language: Literal["fr", "en"] | None = None
   location: str | None = None
+  timezone: str | None = None
   temperature_unit: Literal["celsius", "fahrenheit"] | None = None
   preferred_currency: str | None = Field(default=None, pattern=r"^[A-Z]{3}$")
   measurement_system: Literal["metric", "imperial"] | None = None
@@ -221,6 +238,19 @@ class RuntimeSettingsCache(BaseModel):
   @classmethod
   def normalize_preferred_currency(cls, value: str | None) -> str | None:
     return value.upper() if isinstance(value, str) else value
+
+  @field_validator("timezone")
+  @classmethod
+  def validate_timezone(cls, value: str | None) -> str | None:
+    if value is None:
+      return None
+
+    try:
+      ZoneInfo(value)
+    except ZoneInfoNotFoundError as error:
+      raise ValueError("must be a valid IANA timezone") from error
+
+    return value
 
 
 def get_settings_cache_file(settings: DeviceSettings) -> Path:

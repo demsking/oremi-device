@@ -52,6 +52,8 @@ Example - adding a new HTTP component:
 import abc
 import asyncio
 from typing import Any
+from typing import Generic
+from typing import TypeVar
 
 from pydantic import BaseModel
 
@@ -62,9 +64,10 @@ from ..core.settings import DeviceSettings
 # Type alias: (ha_domain, entity_slug, payload_dict)
 # e.g. ("sensor", "wakeword", {"name": "Wakeword", ...})
 HAEntity = tuple[str, str, dict]
+ComponentConfigModel = TypeVar("ComponentConfigModel", bound=BaseModel)
 
 
-class Component(abc.ABC):
+class Component(Generic[ComponentConfigModel], abc.ABC):
   """Abstract base class for all Oremi Device components.
 
   Concrete components should not inherit from this class directly; use
@@ -117,7 +120,7 @@ class Component(abc.ABC):
   @abc.abstractmethod
   async def start(
     self,
-    config: BaseModel | None,
+    config: ComponentConfigModel | None,
     mqtt_client: MQTTClient,
     shared_resources: dict[str, Any],
   ) -> None:
@@ -135,7 +138,7 @@ class Component(abc.ABC):
     """Gracefully cancel and await all running tasks."""
 
 
-class AudioStreamComponent(Component):
+class AudioStreamComponent(Generic[ComponentConfigModel], Component[ComponentConfigModel]):
   """Base class for components that process a continuous microphone audio stream.
 
   Inheriting classes receive access to the shared audio stream and will be
@@ -166,7 +169,7 @@ class AudioStreamComponent(Component):
     """
 
 
-class HttpComponent(Component):
+class HttpComponent(Generic[ComponentConfigModel], Component[ComponentConfigModel]):
   """Base class for components that communicate over HTTP only.
 
   These components do not receive any audio stream and are unaffected by

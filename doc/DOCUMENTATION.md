@@ -2,6 +2,7 @@ Oremi Device captures microphone audio and connects it to Oremi services:
 
 - **Ohunerin** detects wake words and environmental sounds.
 - **Andika** transcribes speech after Ohunerin detects a wake word.
+- **Akorin** processes final transcriptions and returns device commands.
 - **MQTT** exposes events, device controls, availability, and Home Assistant
   discovery entities.
 
@@ -13,7 +14,7 @@ preferred device becomes available again.
 
 - Python 3.12, or Docker
 - An MQTT broker
-- Running Ohunerin and either Andika or whisper.cpp
+- Running Ohunerin, Akorin, and either Andika or whisper.cpp
 - A microphone unless `OREMI_DEVICE_MICROPHONE_ENABLED=false` is set
 - Optional speaker hardware for the MQTT speaker controls
 
@@ -44,6 +45,7 @@ $ export OREMI_DEVICE_LOCATION="Douala, Cameroon"
 $ export OREMI_DEVICE_PREFERRED_CURRENCY=XAF
 $ export OREMI_DEVICE_OHUNERIN_HOST=localhost
 $ export OREMI_DEVICE_ANDIKA_HOST=localhost
+$ export OREMI_DEVICE_AKORIN_URL=http://localhost:5020
 $ export OREMI_DEVICE_MQTT_BROKER=localhost
 
 $ oremi-device
@@ -52,7 +54,7 @@ $ oremi-device
 ### Using Docker
 
 The application requires a node ID and the addresses of the Ohunerin,
-Andika, and MQTT services:
+Akorin, Andika, and MQTT services:
 
 ```bash
 docker run --rm -it \
@@ -65,6 +67,7 @@ docker run --rm -it \
   -e OREMI_DEVICE_PREFERRED_CURRENCY=XAF \
   -e OREMI_DEVICE_OHUNERIN_HOST=127.0.0.1 \
   -e OREMI_DEVICE_ANDIKA_HOST=127.0.0.1 \
+  -e OREMI_DEVICE_AKORIN_URL=http://127.0.0.1:5020 \
   -e OREMI_DEVICE_MQTT_BROKER=127.0.0.1 \
   demsking/oremi-device
 ```
@@ -119,6 +122,7 @@ services:
       OREMI_DEVICE_FIRST_DAY_OF_WEEK: monday
       OREMI_DEVICE_OHUNERIN_HOST: ohunerin
       OREMI_DEVICE_OHUNERIN_PORT: 5023
+      OREMI_DEVICE_AKORIN_URL: http://akorin:5020
       OREMI_DEVICE_TRANSCRIPTION_BACKEND: andika
       OREMI_DEVICE_ANDIKA_HOST: andika
       OREMI_DEVICE_ANDIKA_PORT: 5315
@@ -131,7 +135,14 @@ services:
     depends_on:
       - ohunerin
       - andika
+      - akorin
       - mosquitto
+
+  akorin:
+    image: demsking/oremi-akorin
+    restart: unless-stopped
+    ports:
+      - '5020:5020'
 
   ohunerin:
     image: demsking/oremi-ohunerin:4.0.0b4
@@ -209,6 +220,7 @@ services:
       OREMI_DEVICE_FIRST_DAY_OF_WEEK: monday
       OREMI_DEVICE_OHUNERIN_HOST: ohunerin
       OREMI_DEVICE_OHUNERIN_PORT: 5023
+      OREMI_DEVICE_AKORIN_URL: http://akorin:5020
       OREMI_DEVICE_TRANSCRIPTION_BACKEND: whisper.cpp
       OREMI_DEVICE_WHISPER_URL: http://whisper:8080
       OREMI_DEVICE_WHISPER_SILENCE_THRESHOLD: 500
@@ -220,7 +232,14 @@ services:
     depends_on:
       - ohunerin
       - whisper
+      - akorin
       - mosquitto
+
+  akorin:
+    image: demsking/oremi-akorin
+    restart: unless-stopped
+    ports:
+      - '5020:5020'
 
   ohunerin:
     image: demsking/oremi-ohunerin:4.0.0b4
@@ -331,6 +350,7 @@ services:
       OREMI_DEVICE_FIRST_DAY_OF_WEEK: monday
       OREMI_DEVICE_OHUNERIN_HOST: ohunerin
       OREMI_DEVICE_OHUNERIN_PORT: 5023
+      OREMI_DEVICE_AKORIN_URL: http://akorin:5020
       OREMI_DEVICE_TRANSCRIPTION_BACKEND: andika
       OREMI_DEVICE_ANDIKA_HOST: andika
       OREMI_DEVICE_ANDIKA_PORT: 5315
@@ -347,8 +367,15 @@ services:
     depends_on:
       - ohunerin
       - andika
+      - akorin
       - edge-tts
       - mosquitto
+
+  akorin:
+    image: demsking/oremi-akorin
+    restart: unless-stopped
+    ports:
+      - '5020:5020'
 
   ohunerin:
     image: demsking/oremi-ohunerin:4.0.0b4
@@ -433,6 +460,11 @@ The transcription backend has one additional required setting:
 - **`OREMI_DEVICE_DELAY`** – Sound-event cooldown in seconds and transcription message expiry interval. Default: `3`.
 - **`OREMI_DEVICE_CONVERSATION_TIMEOUT`** – Maximum seconds to wait for a final transcription after a wake word. Default: `15`.
 
+#### Akorin Orchestration
+
+- **`OREMI_DEVICE_AKORIN_URL`** – Akorin HTTP base URL. Final transcriptions are sent to
+  `POST /api/agent/` at this base URL. Default: Unset. Akorin's default service port is `5020`.
+
 #### Device Context
 
 These preferences are published as a retained MQTT device-context document and
@@ -443,6 +475,7 @@ react when it changes.
 - **`OREMI_DEVICE_LANGUAGE`** – Processing language; supported values are `fr` and `en`. Default: `fr`.
 - **`OREMI_DEVICE_LOCATION`** – Free-form address or place description for the device. Default: empty.
   The retained device-context timezone is inferred from this value and falls back to `Africa/Douala`.
+- **`OREMI_DEVICE_TIMEZONE`** – IANA timezone retained in device context. Default: `Africa/Douala`.
 - **`OREMI_DEVICE_TEMPERATURE_UNIT`** – Preferred temperature unit: `celsius` or `fahrenheit`. Default: `celsius`.
 - **`OREMI_DEVICE_PREFERRED_CURRENCY`** – Preferred ISO 4217 currency code. Default: `XAF`.
 - **`OREMI_DEVICE_MEASUREMENT_SYSTEM`** – Preferred measurement system: `metric` or `imperial`. Default: `metric`.
@@ -515,6 +548,7 @@ OREMI_DEVICE_DATE_FORMAT=DD/MM/YYYY
 OREMI_DEVICE_FIRST_DAY_OF_WEEK=monday
 OREMI_DEVICE_OHUNERIN_HOST=ohunerin
 OREMI_DEVICE_ANDIKA_HOST=andika
+OREMI_DEVICE_AKORIN_URL=http://akorin:5020
 OREMI_DEVICE_TTS_BACKEND=edge-tts
 OREMI_DEVICE_EDGE_TTS_URL=http://edge-tts:5050
 OREMI_DEVICE_EDGE_TTS_API_KEY=your_api_key_here
@@ -542,13 +576,14 @@ At startup, Oremi Device:
 1. Loads and validates the environment settings.
 2. Initializes the preferred microphone and speaker when enabled.
 3. Connects to MQTT and subscribes to this node's control topics.
-4. Starts the Ohunerin and Andika components with their configured settings.
+4. Starts the Ohunerin, Andika, and Akorin components with their configured settings.
 5. Streams microphone audio continuously to Ohunerin.
 6. Starts streaming audio to Andika after a wake-word event and stops after
    Andika returns a final transcription or the conversation timeout expires.
+7. Sends each final transcription to Akorin and executes the returned commands sequentially.
 
 Ohunerin and Andika reconnect with exponential backoff when their WebSocket
-connections fail. The application also polls for audio-device changes and
+connections fail. Akorin requests are handled one at a time over HTTP. The application also polls for audio-device changes and
 updates Home Assistant discovery options when devices appear or disappear.
 
 The microphone mute control pauses audio streaming without stopping the service
@@ -677,6 +712,7 @@ interface FinalTranscription {
 **Notes:**
 
 - Published once when speech capture ends and transcription is finalized.
+- Sent to Akorin when `OREMI_DEVICE_AKORIN_URL` is configured.
 - This is also the Home Assistant transcription sensor state topic.
 - Subscribers can subscribe to `<OREMI_DEVICE_MQTT_TOPIC>/nodes/+/transcription/result` to receive final results from all nodes.
 
@@ -696,7 +732,7 @@ The current lifecycle state of the device's conversation handling.
 
 - **`idle`** – No conversation is active. Cancellation cue when listening times out or produces no usable speech.
 - **`listening`** – A wake word was detected and Andika is capturing the request. Listening confirmation cue.
-- **`processing`** – A final transcription was published and the device is waiting for NLP. Thinking cue.
+- **`processing`** – A final transcription was published and the device is waiting for Akorin or command execution. Thinking cue.
 - **`speaking`** – Izwi speech is playing for a response, announcement, alarm, or reminder. Announcements first play a notification cue.
 
 **Example:**
@@ -722,6 +758,9 @@ listening -> idle
 **Notes:**
 
 - Media is temporarily ducked while cues and speech play; the configured volume and its MQTT state do not change.
+- If Akorin has not answered after two seconds, the device repeats a discreet thinking cue while it continues waiting.
+- If Akorin times out or returns an invalid response, the device plays a discreet error cue and announces the problem with TTS.
+- A new wake-word request interrupts the current Akorin request or command execution. Stop requests such as `stop`, `annule`, or `annuler` cancel the active processing without calling Akorin.
 - `set_volume` commands play a short feedback tick after applying the new volume.
 - The device plays a ready cue after MQTT and all configured components have started and availability is published as `online`.
 - During graceful shutdown it stops capture and active playback, publishes availability as `offline`, plays a shutdown cue, and then disconnects from MQTT.
@@ -729,7 +768,50 @@ listening -> idle
 
 ### NLP Integration
 
-An external NLP service can publish a response to the same node's `processing/result` topic:
+When `OREMI_DEVICE_AKORIN_URL` is set, Oremi Device sends each non-empty final
+transcription to Akorin:
+
+- Method: `POST`
+- URL: `<OREMI_DEVICE_AKORIN_URL>/api/agent/`
+
+**Request model:**
+
+```typescript
+interface AkorinProcessRequest {
+  /** Final transcription text */
+  message: string;
+  /** Device language, such as 'fr' or 'en' */
+  language?: string;
+  /** Retained device context, including preferences such as timezone and units */
+  context: Record<string, unknown>;
+  /** Includes device_id:<node-id> */
+  tags: string[];
+}
+```
+
+**Example request:**
+
+```json
+{
+  "message": "mets la radio",
+  "language": "fr",
+  "context": {
+    "language": "fr",
+    "timezone": "Africa/Douala",
+    "temperature_unit": "celsius"
+  },
+  "tags": ["device_id:living-room"]
+}
+```
+
+The response is validated as the command model below and executed sequentially.
+Commands that start media playback, such as `play`, are asynchronous: once the
+player is running, the device returns to idle and can accept follow-up commands
+such as pause, resume, stop, volume, and mute. The player only has one active
+track at a time; starting another track stops the previous active playback.
+
+For compatibility with external integrations, an NLP service can also publish a
+response to the same node's `processing/result` topic:
 
 - Topic: `<OREMI_DEVICE_MQTT_TOPIC>/nodes/<OREMI_DEVICE_NODE_ID>/processing/result`
 

@@ -7,9 +7,10 @@
       "request": "launch",
       "module": "oremi_device",
       "cwd": "${workspaceFolder}",
-      "envFile": "${workspaceFolder}/.env",
+      "envFile": "${workspaceFolder}/.env.example",
       "justMyCode": true,
       "env": {
+        "OREMI_DEVICE_MQTT_BROKER": "ngaoundere",
         "OREMI_DEVICE_TRANSCRIPTION_BACKEND": "andika"
       }
     },
@@ -19,7 +20,7 @@
       "request": "launch",
       "module": "oremi_device",
       "cwd": "${workspaceFolder}",
-      "envFile": "${workspaceFolder}/.env",
+      "envFile": "${workspaceFolder}/.env.example",
       "justMyCode": true,
       "env": {
         "OREMI_DEVICE_TRANSCRIPTION_BACKEND": "whisper.cpp"
