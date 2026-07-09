@@ -183,7 +183,7 @@ class Point:
         ...
 
     @classmethod
-    def parse_altitude(cls, distance, unit): # -> None:
+    def parse_altitude(cls, distance, unit):
         """
         Parse altitude managing units conversion::
 

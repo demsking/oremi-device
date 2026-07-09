@@ -200,7 +200,7 @@ async def test_andika_empty_final_result_completes_conversation() -> None:
 @pytest.mark.asyncio
 async def test_andika_listens_only_between_wakeword_and_final_transcription() -> None:
   component = AndikaComponent(_make_settings())
-  component._wakeword_event = asyncio.Event()  # noqa: SLF001
+  component._wakeword_event = asyncio.Event()
   listening = asyncio.Event()
   cue_started = asyncio.Event()
   cue_finished = asyncio.Event()
@@ -210,7 +210,7 @@ async def test_andika_listens_only_between_wakeword_and_final_transcription() ->
       cue_started.set()
       await cue_finished.wait()
 
-  component._conversation_event_handler = handle_conversation_event  # noqa: SLF001
+  component._conversation_event_handler = handle_conversation_event
 
   class AudioListenerStub:
     def __init__(self) -> None:
@@ -223,29 +223,29 @@ async def test_andika_listens_only_between_wakeword_and_final_transcription() ->
 
   audio_listener = AudioListenerStub()
   component.audio_listener = audio_listener
-  activation_task = asyncio.create_task(component._activate_on_wakeword({"stream": MagicMock()}))  # noqa: SLF001
+  activation_task = asyncio.create_task(component._activate_on_wakeword({"stream": MagicMock()}))
 
   await asyncio.sleep(0)
   assert audio_listener.call_count == 0
 
-  component._wakeword_event.set()  # noqa: SLF001
+  component._wakeword_event.set()
   await asyncio.wait_for(cue_started.wait(), timeout=1)
   assert audio_listener.call_count == 0
 
   cue_finished.set()
   await asyncio.wait_for(listening.wait(), timeout=1)
   assert audio_listener.call_count == 1
-  assert component._listening_task is not None  # noqa: SLF001
-  assert not component._listening_task.done()  # noqa: SLF001
+  assert component._listening_task is not None
+  assert not component._listening_task.done()
 
-  component._transcription_complete_event.set()  # noqa: SLF001
+  component._transcription_complete_event.set()
 
   async def wait_until_stopped() -> None:
-    while component._transcription_active:  # noqa: SLF001
+    while component._transcription_active:
       await asyncio.sleep(0)
 
   await asyncio.wait_for(wait_until_stopped(), timeout=1)
-  assert component._listening_task.done()  # noqa: SLF001
+  assert component._listening_task.done()
 
   activation_task.cancel()
 
@@ -256,28 +256,28 @@ async def test_andika_listens_only_between_wakeword_and_final_transcription() ->
 @pytest.mark.asyncio
 async def test_andika_stops_listening_when_conversation_times_out() -> None:
   component = AndikaComponent(_make_settings(conversation_timeout=0.01))
-  component._wakeword_event = asyncio.Event()  # noqa: SLF001
+  component._wakeword_event = asyncio.Event()
   conversation_events = []
 
   async def handle_conversation_event(event: str) -> None:
     conversation_events.append(event)
 
-  component._conversation_event_handler = handle_conversation_event  # noqa: SLF001
+  component._conversation_event_handler = handle_conversation_event
 
   class AudioListenerStub:
     async def listening(self) -> None:
       await asyncio.Event().wait()
 
   component.audio_listener = AudioListenerStub()
-  activation_task = asyncio.create_task(component._activate_on_wakeword({"stream": MagicMock()}))  # noqa: SLF001
-  component._wakeword_event.set()  # noqa: SLF001
+  activation_task = asyncio.create_task(component._activate_on_wakeword({"stream": MagicMock()}))
+  component._wakeword_event.set()
 
   async def wait_until_stopped() -> None:
-    while component._transcription_active or component._listening_task is None:  # noqa: SLF001
+    while component._transcription_active or component._listening_task is None:
       await asyncio.sleep(0)
 
   await asyncio.wait_for(wait_until_stopped(), timeout=1)
-  assert component._listening_task.done()  # noqa: SLF001
+  assert component._listening_task.done()
   assert conversation_events == ["listening", "cancelled"]
 
   activation_task.cancel()
@@ -286,18 +286,90 @@ async def test_andika_stops_listening_when_conversation_times_out() -> None:
 
 
 @pytest.mark.asyncio
+async def test_andika_cancels_turn_when_listening_stops_before_transcription() -> None:
+  component = AndikaComponent(_make_settings(conversation_timeout=60))
+  component._wakeword_event = asyncio.Event()
+  conversation_events = []
+
+  async def handle_conversation_event(event: str) -> None:
+    conversation_events.append(event)
+
+  component._conversation_event_handler = handle_conversation_event
+
+  class AudioListenerStub:
+    async def listening(self) -> None:
+      return
+
+  component.audio_listener = AudioListenerStub()
+  activation_task = asyncio.create_task(component._activate_on_wakeword({"stream": MagicMock()}))
+  component._wakeword_event.set()
+
+  async def wait_until_cancelled() -> None:
+    while conversation_events != ["listening", "cancelled"]:
+      await asyncio.sleep(0)
+
+  await asyncio.wait_for(wait_until_cancelled(), timeout=1)
+  assert conversation_events == ["listening", "cancelled"]
+
+  activation_task.cancel()
+
+  with pytest.raises(asyncio.CancelledError):
+    await activation_task
+
+
+@pytest.mark.asyncio
+async def test_andika_preserves_continue_request_set_during_previous_turn_cleanup() -> None:
+  component = AndikaComponent(_make_settings(conversation_timeout=60))
+  component._wakeword_event = asyncio.Event()
+  component._continue_conversation_event = asyncio.Event()
+  listening_started = asyncio.Event()
+
+  class AudioListenerStub:
+    def __init__(self) -> None:
+      self.call_count = 0
+
+    async def listening(self) -> None:
+      self.call_count += 1
+      listening_started.set()
+      await asyncio.Event().wait()
+
+  audio_listener = AudioListenerStub()
+  component.audio_listener = audio_listener
+  activation_task = asyncio.create_task(component._activate_on_wakeword({"stream": MagicMock()}))
+  component._wakeword_event.set()
+
+  await asyncio.wait_for(listening_started.wait(), timeout=1)
+  assert audio_listener.call_count == 1
+
+  component._continue_conversation_event.set()
+  component._transcription_complete_event.set()
+
+  async def wait_for_second_turn() -> None:
+    while audio_listener.call_count < 2:
+      await asyncio.sleep(0)
+
+  await asyncio.wait_for(wait_for_second_turn(), timeout=1)
+  assert audio_listener.call_count == 2
+
+  activation_task.cancel()
+
+  with pytest.raises(asyncio.CancelledError):
+    await activation_task
+
+
+@pytest.mark.asyncio
 async def test_andika_stops_listening_before_processing_cue() -> None:
   component = AndikaComponent(_make_settings())
-  component._listening_task = asyncio.create_task(asyncio.Event().wait())  # noqa: SLF001
+  component._listening_task = asyncio.create_task(asyncio.Event().wait())
   listener_stopped_during_handler = False
 
   async def handle_conversation_event(event: str) -> None:
     nonlocal listener_stopped_during_handler
-    listener_stopped_during_handler = component._listening_task.done()  # noqa: SLF001
+    listener_stopped_during_handler = component._listening_task.done()
 
-  component._conversation_event_handler = handle_conversation_event  # noqa: SLF001
+  component._conversation_event_handler = handle_conversation_event
 
-  await component._handle_transcription_event("processing")  # noqa: SLF001
+  await component._handle_transcription_event("processing")
 
   assert listener_stopped_during_handler is True
 
@@ -305,13 +377,13 @@ async def test_andika_stops_listening_before_processing_cue() -> None:
 @pytest.mark.asyncio
 async def test_andika_stop_cancels_main_task_without_waiting_for_websocket_close() -> None:
   component = AndikaComponent(_make_settings())
-  component._websocket = MagicMock()  # noqa: SLF001
-  component._task = asyncio.create_task(asyncio.Event().wait())  # noqa: SLF001
+  component._websocket = MagicMock()
+  component._task = asyncio.create_task(asyncio.Event().wait())
 
   await component.stop()
 
-  assert component._task.cancelled()  # noqa: SLF001
-  component._websocket.close.assert_not_called()  # noqa: SLF001
+  assert component._task.cancelled()
+  component._websocket.close.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -406,7 +478,7 @@ def test_andika_get_supported_models() -> None:
   ]
 
   with patch("device.components.andika.httpx.get", return_value=response) as mock_get:
-    models = component._get_supported_models()  # noqa: SLF001
+    models = component._get_supported_models()
 
   mock_get.assert_called_once_with("http://andika:5315/api/models")
   response.raise_for_status.assert_called_once()
@@ -420,7 +492,7 @@ def test_andika_get_supported_models_secure_endpoint() -> None:
   response.json.return_value = []
 
   with patch("device.components.andika.httpx.get", return_value=response) as mock_get:
-    assert component._get_supported_models() == []  # noqa: SLF001
+    assert component._get_supported_models() == []
 
   mock_get.assert_called_once_with("https://127.0.0.1:9443/api/models")
 
@@ -429,7 +501,7 @@ def test_andika_get_supported_models_returns_empty_on_error() -> None:
   component = AndikaComponent(_make_settings())
 
   with patch("device.components.andika.httpx.get", side_effect=RuntimeError("offline")):
-    assert component._get_supported_models() == []  # noqa: SLF001
+    assert component._get_supported_models() == []
 
 
 class WhisperAudioStub:
@@ -477,7 +549,7 @@ async def test_whisper_listener_stops_after_post_speech_silence() -> None:
     asyncio.Event(),
   )
 
-  captured = await listener._capture()  # noqa: SLF001
+  captured = await listener._capture()
 
   assert captured == speech + silence + silence
 

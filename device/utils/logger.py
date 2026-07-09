@@ -26,7 +26,8 @@ LOGGER_DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
 def configure_logging(level: str, log_file: str | None) -> None:
   """Configure console and rotating file logging."""
 
-  formatter = logging.Formatter(fmt=LOGGER_FORMAT, datefmt=LOGGER_DATE_FORMAT)
+  fmt = "%(asctime)s - %(name)s - %(levelname)s - %(message)s" if level == "DEBUG" else LOGGER_FORMAT
+  formatter = logging.Formatter(fmt=fmt, datefmt=LOGGER_DATE_FORMAT)
 
   root = logging.getLogger()
   root.setLevel(level)
@@ -47,4 +48,6 @@ def configure_logging(level: str, log_file: str | None) -> None:
   for noisy_logger in ("watchfiles", "watchfiles.main"):
     logging.getLogger(noisy_logger).setLevel(logging.WARNING)
 
+  logging.getLogger("httpcore.http11").setLevel(logging.INFO)
+  logging.getLogger("httpcore.connection").setLevel(logging.INFO)
   logging.getLogger("websockets.client").setLevel(logging.INFO)

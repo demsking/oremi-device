@@ -65,6 +65,7 @@ def test_settings_defaults() -> None:
   assert settings.speaker_device is None
   assert settings.speaker_muted is False
   assert settings.speaker_volume == 1.0
+  assert settings.continue_conversation_enabled is True
   assert settings.akorin_url is None
   assert settings.ohunerin_threshold == 0.25
   assert settings.andika_model == "vosk-model-small-fr-0.22"
@@ -105,6 +106,7 @@ def test_settings_are_loaded_from_environment(monkeypatch: pytest.MonkeyPatch) -
   monkeypatch.setenv("OREMI_DEVICE_EDGE_TTS_URL", "http://edge-tts:5050")
   monkeypatch.setenv("OREMI_DEVICE_EDGE_TTS_API_KEY", "test-key")
   monkeypatch.setenv("OREMI_DEVICE_EDGE_TTS_LOCALE", "fr-FR")
+  monkeypatch.setenv("OREMI_DEVICE_CONTINUE_CONVERSATION_ENABLED", "false")
 
   settings = Settings(_env_file=None)
 
@@ -141,6 +143,7 @@ def test_settings_are_loaded_from_environment(monkeypatch: pytest.MonkeyPatch) -
   assert str(settings.edge_tts_url) == "http://edge-tts:5050/"
   assert settings.edge_tts_api_key == "test-key"
   assert settings.edge_tts_locale == "fr-FR"
+  assert settings.continue_conversation_enabled is False
 
 
 @pytest.mark.parametrize(
@@ -280,6 +283,7 @@ def test_runtime_settings_cache_overrides_mutable_settings(tmp_path, monkeypatch
         "speaker_device": "USB Speaker",
         "speaker_muted": True,
         "speaker_volume": 0.35,
+        "continue_conversation_enabled": False,
         "tts_voice": "en-US-JennyNeural",
       }
     ),
@@ -313,6 +317,7 @@ def test_runtime_settings_cache_overrides_mutable_settings(tmp_path, monkeypatch
   assert settings.speaker_device == "USB Speaker"
   assert settings.speaker_muted is True
   assert settings.speaker_volume == 0.35
+  assert settings.continue_conversation_enabled is False
   assert settings.tts_voice == "en-US-JennyNeural"
 
 
@@ -325,12 +330,14 @@ def test_runtime_settings_cache_update_preserves_existing_values(tmp_path) -> No
     language="en",
     location="12 Rue de Rivoli, Paris",
     speaker_volume=0.4,
+    continue_conversation_enabled=False,
   )
   update_runtime_settings_cache(settings, speaker_muted=True)
 
   assert json.loads(cache_file.read_text(encoding="utf-8")) == {
     "language": "en",
     "location": "12 Rue de Rivoli, Paris",
+    "continue_conversation_enabled": False,
     "speaker_muted": True,
     "speaker_volume": 0.4,
   }

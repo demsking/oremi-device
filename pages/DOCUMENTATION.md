@@ -401,6 +401,7 @@ Depending on your configured `OREMI_DEVICE_TRANSCRIPTION_BACKEND`, one additiona
 - **`OREMI_DEVICE_TRANSCRIPTION_BACKEND`** – Speech analysis target platform processor type options (`andika` | `whisper.cpp`). Default: `andika`.
 - **`OREMI_DEVICE_DELAY`** – Processing interval delay threshold measuring session boundaries. Default: `3`.
 - **`OREMI_DEVICE_CONVERSATION_TIMEOUT`** – Limit boundary window monitoring speech capturing before cutoff. Default: `15.0`.
+- **`OREMI_DEVICE_CONTINUE_CONVERSATION_ENABLED`** – Allows processing responses marked for follow-up to reopen listening automatically. Default: `true`.
 
 ### Akọrin Orchestration
 
@@ -410,7 +411,7 @@ Depending on your configured `OREMI_DEVICE_TRANSCRIPTION_BACKEND`, one additiona
 
 - **`OREMI_DEVICE_LANGUAGE`** – String literal targeting operational language profiles (`fr` | `en`). Default: `fr`.
 - **`OREMI_DEVICE_LOCATION`** – Geolocation name descriptor text processed internally to extrapolate runtime coordinates. Default: `""`.
-- **`OREMI_DEVICE_TIMEZONE`** – Standard valid IANA continent-region timezone text assignments. Default: `Africa/Douala`.
+- **`OREMI_DEVICE_TIMEZONE`** – Standard valid IANA continent-region timezone text assignments. Default: `UTC`.
 - **`OREMI_DEVICE_TEMPERATURE_UNIT`** – String profile selecting local display metric indicators (`celsius` | `fahrenheit`). Default: `celsius`.
 - **`OREMI_DEVICE_PREFERRED_CURRENCY`** – Validated 3-letter capital currency format validation string. Default: `XAF`.
 - **`OREMI_DEVICE_MEASUREMENT_SYSTEM`** – Structural layout selecting formatting standards (`metric` | `imperial`). Default: `metric`.
@@ -446,6 +447,31 @@ Depending on your configured `OREMI_DEVICE_TRANSCRIPTION_BACKEND`, one additiona
 - **`OREMI_DEVICE_EDGE_TTS_RESPONSE_FORMAT`** – Codec selection array parameters (`mp3` | `opus` | `aac` | `flac` | `wav` | `pcm`). Default: `mp3`.
 - **`OREMI_DEVICE_EDGE_TTS_SPEED`** – Dynamic rate pacing scaling index options ranging from `0.25` up through `4.0`. Default: `1.0`.
 - **`OREMI_DEVICE_TTS_VOICE`** – Direct voice identity tag strings tracking active target character synthesis styles. Default: `None`.
+
+### LLM Settings
+
+These settings configure the internal LLM agent used by Oremi Device to classify
+follow-up prompts and rewrite follow-up answers into standalone Akorin requests.
+
+- `OREMI_DEVICE_LLM_MODEL`: Optional. Defaults to `ollama:qwen3.5:2b`.
+  Fully qualified Pydantic-AI model identifier. Use provider-prefixed values
+  such as `ollama:qwen3.5:2b`, `openai:gpt-4.1-mini`, or
+  `anthropic:claude-sonnet-4-0`.
+- `OREMI_DEVICE_OLLAMA_BASE_URL`: Optional. Ollama API base URL used when
+  `OREMI_DEVICE_LLM_MODEL` starts with `ollama:`. The default is `None`, and
+  it must be explicitly provided for Ollama-backed runs.
+
+**Examples for `OREMI_DEVICE_LLM_MODEL`:**
+
+- Ollama:
+  - `ollama:qwen3.5:2b`
+  - Recommended for local or self-hosted deployments.
+- ChatGPT / OpenAI:
+  - `openai:gpt-4.1-mini`
+  - Requires an OpenAI API key.
+- Claude / Anthropic:
+  - `anthropic:claude-sonnet-4-0`
+  - Requires an Anthropic API key.
 
 ### MQTT Broker
 
@@ -691,10 +717,15 @@ interface AkorinProcessRequest {
   message: string;
   /** Device language, such as 'fr' or 'en' */
   language?: string;
-  /** Retained device context, including preferences such as timezone and units */
-  context: Record<string, unknown>;
+  /** Device preference settings */
+  context: AkorinContext;
   /** Includes device_id:<node-id> */
   tags: string[];
+}
+
+interface AkorinContext {
+  /** Retained device preferences such as timezone and units */
+  preferences: Record<string, unknown>;
 }
 ```
 
@@ -705,9 +736,11 @@ interface AkorinProcessRequest {
   "message": "mets la radio",
   "language": "fr",
   "context": {
-    "language": "fr",
-    "timezone": "Africa/Douala",
-    "temperature_unit": "celsius"
+    "preferences": {
+      "language": "fr",
+      "timezone": "Africa/Douala",
+      "temperature_unit": "celsius"
+    }
   },
   "tags": ["device_id:living-room"]
 }
@@ -732,12 +765,31 @@ A response containing only `message` is spoken with the active speech synthesis 
 }
 ```
 
+When Akorin returns a spoken `message`, the device asks Akorin to classify that
+message as either needing a user answer or not. If the message asks for more
+information, `OREMI_DEVICE_CONTINUE_CONVERSATION_ENABLED` is enabled, and the
+microphone is available, the device waits until the response speech finishes and
+then reopens listening without requiring another wake word. The next
+transcription is first rewritten into a standalone request using the previous
+user request and Akorin clarification, then sent to Akorin as a normal request.
+
+```json
+{
+  "ok": false,
+  "message": "Please share a location so I can check alerts for that area."
+}
+```
+
 #### NLP Response Model
 
 ```typescript
 interface NLPResponse {
+  /** Whether the processing succeeded */
+  ok?: boolean;
   /** Optional text for clients and logs */
   message?: string;
+  /** Additional structured result data */
+  data?: Record<string, unknown>;
   /** Optional commands array for explicit device behavior */
   commands?: Command[];
 }
@@ -966,6 +1018,13 @@ Example aggregate payload:
 - **State topic:** `<OREMI_DEVICE_MQTT_TOPIC>/nodes/<OREMI_DEVICE_NODE_ID>/voice/state`
 - **Payload:** A speech synthesis voice matching the active device language.
 
+#### Continue Conversation
+
+- **Command topic:** `<OREMI_DEVICE_MQTT_TOPIC>/nodes/<OREMI_DEVICE_NODE_ID>/conversation/continue/set`
+- **State topic:** `<OREMI_DEVICE_MQTT_TOPIC>/nodes/<OREMI_DEVICE_NODE_ID>/conversation/continue/state`
+- **Payload:** `ON` enables follow-up listening for Akorin messages classified
+  as needing a user answer; `OFF` disables it.
+
 #### Microphone
 
 - **Select command:** `<OREMI_DEVICE_MQTT_TOPIC>/nodes/<OREMI_DEVICE_NODE_ID>/microphone/set`
@@ -1012,6 +1071,7 @@ retained discovery configurations below `homeassistant` for:
   date/time preferences, and first day of week
 - speech synthesis voice selection, filtered by the active language when a TTS
   backend is configured
+- continue-conversation switch for follow-up prompts
 - microphone selection and mute state
 - speaker selection, mute state, and volume
 - Ohunerin wake-word and sound sensors
@@ -1085,13 +1145,16 @@ Oremi Device project adheres to [Semantic Versioning](https://semver.org/)
 The current version can be found by running:
 
 ```bash
-docker run --rm demsking/oremi-device --version
 oremi-device --version
 ```
 
 ## License
 
 Copyright 2026 Sébastien Demanou. All Rights Reserved.
+
+Oremi Device source code is licensed under the Apache License, Version 2.0.<br>
+See [`LICENSE`](https://gitlab.com/demsking/oremi-device/-/blob/main/LICENSE)
+for the full license text.
 
 ```
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -1106,3 +1169,9 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ```
+
+Bundled sound assets are licensed separately.<br>
+See [`device/sounds/LICENSE.txt`](https://gitlab.com/demsking/oremi-device/-/blob/main/device/sounds/LICENSE.txt)
+for the full sound asset license details, including the Kenney Interface
+Sounds files used by Oremi Device and original generated sounds dedicated to
+the public domain under Creative Commons Zero (CC0 1.0 Universal).

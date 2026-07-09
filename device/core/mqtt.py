@@ -228,6 +228,12 @@ class MQTTClient:  # pylint: disable=too-many-public-methods
   def get_conversation_state_topic(self) -> str:
     return self.parse_node_topic("conversation/state")
 
+  def get_continue_conversation_command_topic(self) -> str:
+    return self.parse_node_topic("conversation/continue/set")
+
+  def get_continue_conversation_state_topic(self) -> str:
+    return self.parse_node_topic("conversation/continue/state")
+
   def get_voice_command_topic(self) -> str:
     return self.parse_node_topic("voice/set")
 
@@ -256,6 +262,7 @@ class MQTTClient:  # pylint: disable=too-many-public-methods
     device_context: dict[str, str] | None = None,
     microphone_enabled: bool = True,
     speaker_enabled: bool = True,
+    continue_conversation_enabled: bool = True,
     voices: list[str] | None = None,
     current_voice: str = "",
   ) -> None:
@@ -282,6 +289,7 @@ class MQTTClient:  # pylint: disable=too-many-public-methods
         exposed as Home Assistant controls.
       microphone_enabled: Whether microphone controls should be advertised.
       speaker_enabled: Whether speaker controls should be advertised.
+      continue_conversation_enabled: Whether Akorin follow-up prompts can reopen listening.
       voices: Speech synthesis voices matching the active device language.
       current_voice: Currently selected speech synthesis voice.
     """
@@ -318,6 +326,25 @@ class MQTTClient:  # pylint: disable=too-many-public-methods
     # Keep the legacy language state topic updated while the app-level
     # discovery path uses the device-context language control.
     self.client.publish(self.get_language_state_topic(), current_language, retain=True)
+
+    continue_conversation_payload = {
+      "name": "Continue conversation",
+      "unique_id": f"{node_id}_continue_conversation",
+      "state_topic": self.get_continue_conversation_state_topic(),
+      "command_topic": self.get_continue_conversation_command_topic(),
+      "payload_on": "ON",
+      "payload_off": "OFF",
+      "state_on": "ON",
+      "state_off": "OFF",
+      "availability_topic": self.parse_node_topic("available"),
+      "payload_available": "online",
+      "payload_not_available": "offline",
+      "icon": "mdi:chat-processing-outline",
+      "device": device,
+    }
+    continue_conversation_topic = f"{self.discovery_prefix}/switch/{node_id}/continue_conversation/config"
+    self.client.publish(continue_conversation_topic, json.dumps(continue_conversation_payload), retain=True)
+    self.set_continue_conversation_state(continue_conversation_enabled)
 
     if device_context is not None:
       for field in DEVICE_CONTEXT_TEXT_FIELDS:
@@ -510,6 +537,10 @@ class MQTTClient:  # pylint: disable=too-many-public-methods
 
   def set_conversation_state(self, state: ConversationState) -> None:
     self.client.publish(self.get_conversation_state_topic(), state, retain=True)
+
+  def set_continue_conversation_state(self, enabled: bool) -> None:
+    state = "ON" if enabled else "OFF"
+    self.client.publish(self.get_continue_conversation_state_topic(), state, retain=True)
 
   def set_availability(self, available: bool) -> None:
     message: Literal["online", "offline"] = "online" if available else "offline"

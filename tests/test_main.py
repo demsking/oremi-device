@@ -21,7 +21,10 @@ from device.__main__ import main
 from device.core.app import classify_supervisor_done
 from device.core.app import listening_task_failed
 from device.core.app import parse_device_context_command_field
+from device.core.app import should_continue_conversation
+from device.core.app import should_play_follow_up_end_cue
 from device.core.app import validate_device_context_value
+from device.core.models import ProcessingResponse
 from device.core.settings import SettingsError
 
 
@@ -77,6 +80,63 @@ def test_validate_device_context_value_accepts_timezone() -> None:
 
 def test_validate_device_context_value_rejects_invalid_timezone() -> None:
   assert validate_device_context_value("timezone", "Invalid/Timezone") is None
+
+
+def test_should_continue_conversation_for_classified_follow_up() -> None:
+  response = ProcessingResponse(
+    message="Please share a location so I can check alerts for that area.",
+    continue_conversation=True,
+  )
+
+  assert should_continue_conversation(response, enabled=True, needs_audio=True, microphone_muted=False) is True
+
+
+def test_should_not_continue_conversation_from_processing_data() -> None:
+  response = ProcessingResponse(
+    message="Please share a location so I can check alerts for that area.",
+    data={"error": {"type": "more_information_required"}},
+  )
+
+  assert should_continue_conversation(response, enabled=True, needs_audio=True, microphone_muted=False) is False
+
+
+@pytest.mark.parametrize(
+  ("enabled", "needs_audio", "microphone_muted"),
+  [
+    (False, True, False),
+    (True, False, False),
+    (True, True, True),
+  ],
+)
+def test_should_not_continue_conversation_when_disabled_or_audio_unavailable(
+  enabled: bool,
+  needs_audio: bool,
+  microphone_muted: bool,
+) -> None:
+  response = ProcessingResponse(message="Quel jour ?", continue_conversation=True)
+
+  assert (
+    should_continue_conversation(
+      response,
+      enabled=enabled,
+      needs_audio=needs_audio,
+      microphone_muted=microphone_muted,
+    )
+    is False
+  )
+
+
+@pytest.mark.parametrize(
+  ("follow_up_active", "will_continue", "expected"),
+  [
+    (False, False, False),
+    (False, True, False),
+    (True, True, False),
+    (True, False, True),
+  ],
+)
+def test_should_play_follow_up_end_cue(follow_up_active: bool, will_continue: bool, expected: bool) -> None:
+  assert should_play_follow_up_end_cue(follow_up_active=follow_up_active, will_continue=will_continue) is expected
 
 
 @pytest.mark.asyncio

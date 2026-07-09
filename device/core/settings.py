@@ -15,6 +15,7 @@
 import json
 import logging
 import os
+from datetime import datetime
 from functools import cached_property
 from functools import lru_cache
 from pathlib import Path
@@ -23,10 +24,10 @@ from typing import Literal
 from zoneinfo import ZoneInfo
 from zoneinfo import ZoneInfoNotFoundError
 
-from pydantic import AnyHttpUrl
 from pydantic import BaseModel
 from pydantic import Field
 from pydantic import field_validator
+from pydantic import HttpUrl
 from pydantic import model_validator
 from pydantic import ValidationError
 from pydantic_settings import BaseSettings
@@ -64,6 +65,7 @@ def format_settings_errors(error: ValidationError) -> list[str]:
     if not location and error_type == "value_error":
       issues.append(str(context.get("error", "Invalid transcription backend configuration")))
       continue
+
     if error_type == "missing":
       message = "is required"
     elif field == "language" and error_type == "literal_error":
@@ -121,10 +123,21 @@ class Settings(BaseSettings):
   speaker_device: str | None = None
   speaker_muted: bool = False
   speaker_volume: float = Field(default=1.0, ge=0, le=1)
+  continue_conversation_enabled: bool = True
   delay: int = Field(default=3, gt=0)
   conversation_timeout: float = Field(default=15.0, gt=0)
 
-  akorin_url: AnyHttpUrl | None = None
+  llm_model: str = Field(
+    default="ollama:qwen3.5:2b",
+    description="Fully qualified Pydantic-AI model identifier.",
+  )
+
+  ollama_base_url: HttpUrl | None = Field(
+    default=None,
+    description="Ollama API base URL used when the agent runs on Ollama.",
+  )
+
+  akorin_url: HttpUrl | None = None
 
   ohunerin_host: str
   ohunerin_port: int = Field(default=5023, gt=0, le=65535)
@@ -135,13 +148,13 @@ class Settings(BaseSettings):
   andika_port: int = Field(default=5315, gt=0, le=65535)
   andika_model: AndikaModel = "vosk-model-small-fr-0.22"
   andika_samplerate: int = Field(default=16000, gt=0)
-  whisper_url: AnyHttpUrl | None = None
+  whisper_url: HttpUrl | None = None
   whisper_silence_threshold: int = Field(default=500, ge=0)
   whisper_silence_duration: float = Field(default=1.0, gt=0)
 
   tts_backend: Literal["izwi", "edge-tts"] = "izwi"
-  izwi_url: AnyHttpUrl | None = None
-  edge_tts_url: AnyHttpUrl | None = None
+  izwi_url: HttpUrl | None = None
+  edge_tts_url: HttpUrl | None = None
   edge_tts_api_key: str = "your_api_key_here"
   edge_tts_locale: str | None = None
   edge_tts_model: str = "tts-1"
@@ -163,6 +176,23 @@ class Settings(BaseSettings):
 
   log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = Field(default="INFO")
   log_file: str | None = Field(default=None)
+
+  def uses_ollama(self) -> bool:
+    """Return whether the active agent model uses the Ollama backend."""
+
+    return self.llm_model.startswith("ollama:")
+
+  def resolve_ollama_model_name(self) -> str:
+    """Return the Ollama model name without provider prefix."""
+    return self.llm_model.removeprefix("ollama:")  # pylint: disable=no-member
+
+  @property
+  def ollama_base_url_string(self) -> str:
+    """Return the Ollama base URL for Pydantic AI."""
+    if self.ollama_base_url is None:
+      raise ValueError("OREMI_AKORIN_OLLAMA_BASE_URL is required when using an ollama: model")
+
+    return str(self.ollama_base_url).rstrip("/")
 
   @property
   def context(self) -> dict[str, Any]:
@@ -189,6 +219,8 @@ class Settings(BaseSettings):
 
       if self.timezone == DEFAULT_TIMEZONE and inferred_timezone:
         context["timezone"] = inferred_timezone
+
+    context["device_datetime"] = datetime.now(ZoneInfo(context["timezone"])).isoformat()
 
     return context
 
@@ -248,6 +280,7 @@ class RuntimeSettingsCache(BaseModel):
   speaker_device: str | None = None
   speaker_muted: bool | None = None
   speaker_volume: float | None = Field(default=None, ge=0, le=1)
+  continue_conversation_enabled: bool | None = None
   tts_voice: str | None = None
 
   @field_validator("preferred_currency", mode="before")

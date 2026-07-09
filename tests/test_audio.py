@@ -101,7 +101,7 @@ async def test_main_audio_device_error() -> None:
   )
 
   with (
-    patch("device.core.app.load_settings", return_value=fake_settings),
+    patch("device.core.settings.get_settings", return_value=fake_settings),
     patch("device.core.app.Audio", side_effect=AudioDeviceError("No device")),
     patch("sys.exit", side_effect=SystemExit(1)) as mock_exit,
     patch("device.core.app.MQTTClient") as mock_mqtt_cls,

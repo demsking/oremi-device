@@ -13,6 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 from typing import Annotated
+from typing import Any
 from typing import Literal
 from typing import TypedDict
 
@@ -104,6 +105,7 @@ class AkorinConfig(BaseModel):
   wait_cue_delay: float = Field(default=2.0, ge=0)
   wait_cue_interval: float = Field(default=4.0, gt=0)
   timeout: float = Field(default=30.0, gt=0)
+  conversation_history_limit: int = Field(default=12, gt=0)
 
 
 class Command(BaseModel):
@@ -183,13 +185,27 @@ ProcessingCommand = Annotated[
 ]
 
 
+class ConversationMessage(BaseModel):
+  """Single message in a conversation passed to Akorin."""
+
+  role: Literal["user", "assistant"]
+  content: str = Field(min_length=1)
+
+
 class ProcessingResponse(BaseModel):
   """Validated command envelope published by an Oremi NLP service."""
 
-  service: str
+  ok: bool = True  # pylint: disable=invalid-name
+  service: str = ""
   message: str | None = None
-  confidence: float
+  data: Any = Field(default_factory=dict)
+  continue_conversation: bool = False
+  confidence: float = 0.0
   commands: list[ProcessingCommand] = Field(default_factory=list)
+
+  def requests_user_input(self) -> bool:
+    """Return whether this response was classified as needing user input."""
+    return self.continue_conversation
 
   def resolved_commands(self) -> list[ProcessingCommand]:
     """Use a response message as the conversational speech fallback."""

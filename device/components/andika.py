@@ -258,7 +258,9 @@ class AndikaComponent(AudioStreamComponent[AndikaConfig]):
     self._listening_task: asyncio.Task | None = None
     self._handle_task_done = None
     self._wakeword_event: asyncio.Event | None = None
+    self._continue_conversation_event: asyncio.Event | None = None
     self._transcription_complete_event = asyncio.Event()
+    self._transcription_result_received = False
     self._transcription_active = False
     self._conversation_event_handler: Callable[[ConversationEvent], Awaitable[None]] | None = None
     self._final_transcription_handler: Callable[[str], Awaitable[None]] | None = None
@@ -419,10 +421,80 @@ class AndikaComponent(AudioStreamComponent[AndikaConfig]):
         pass
 
   async def _handle_transcription_event(self, event: ConversationEvent) -> None:
+    self._transcription_result_received = True
     await self._stop_listening()
 
     if self._conversation_event_handler:
       await self._conversation_event_handler(event)
+
+  async def _wait_for_transcription_turn(self) -> None:
+    event_task = asyncio.create_task(self._transcription_complete_event.wait(), name="Andika Transcription Complete Task")
+    wait_tasks = [event_task]
+
+    if self._listening_task is not None:
+      wait_tasks.append(self._listening_task)
+
+    try:
+      done, _ = await asyncio.wait(wait_tasks, timeout=self.settings.conversation_timeout, return_when=asyncio.FIRST_COMPLETED)
+
+      if event_task in done:
+        return
+
+      if self._listening_task is not None and self._listening_task in done:
+        if self._transcription_result_received:
+          await event_task
+          return
+
+        try:
+          self._listening_task.result()
+        except asyncio.CancelledError:
+          pass
+        except Exception as error:
+          logger.warning(f"Andika listening failed before a transcription result was received: {error}")
+        else:
+          logger.warning("Andika listening stopped before a transcription result was received")
+
+        if self._conversation_event_handler:
+          await self._conversation_event_handler("cancelled")
+
+        return
+
+      logger.info(f"Andika conversation timed out after {self.settings.conversation_timeout:g}s")
+
+      if self._conversation_event_handler:
+        await self._conversation_event_handler("cancelled")
+    finally:
+      if not event_task.done():
+        event_task.cancel()
+
+      await asyncio.gather(event_task, return_exceptions=True)
+
+  async def _wait_for_activation(self) -> None:
+    if self._wakeword_event is None:
+      return
+
+    if self._continue_conversation_event is not None and self._continue_conversation_event.is_set():
+      self._continue_conversation_event.clear()
+      return
+
+    wait_tasks = [asyncio.create_task(self._wakeword_event.wait(), name="Andika Wakeword Wait Task")]
+
+    if self._continue_conversation_event is not None:
+      wait_tasks.append(asyncio.create_task(self._continue_conversation_event.wait(), name="Andika Continue Wait Task"))
+
+    try:
+      done, _ = await asyncio.wait(wait_tasks, return_when=asyncio.FIRST_COMPLETED)
+
+      if wait_tasks[0] in done:
+        self._wakeword_event.clear()
+      elif self._continue_conversation_event is not None:
+        self._continue_conversation_event.clear()
+    finally:
+      for task in wait_tasks:
+        if not task.done():
+          task.cancel()
+
+      await asyncio.gather(*wait_tasks, return_exceptions=True)
 
   async def _activate_on_wakeword(self, active_stream_container: dict, device_state: dict | None = None) -> None:
     if self._wakeword_event is None:
@@ -432,9 +504,9 @@ class AndikaComponent(AudioStreamComponent[AndikaConfig]):
       device_state = {"microphone_muted": False}
 
     while True:
-      await self._wakeword_event.wait()
-      self._wakeword_event.clear()
+      await self._wait_for_activation()
       self._transcription_complete_event.clear()
+      self._transcription_result_received = False
       self._transcription_active = True
 
       if self._conversation_event_handler:
@@ -444,24 +516,12 @@ class AndikaComponent(AudioStreamComponent[AndikaConfig]):
         if active_stream_container["stream"] is not None and not device_state["microphone_muted"]:
           self._start_listening()
 
-        try:
-          await asyncio.wait_for(
-            self._transcription_complete_event.wait(),
-            timeout=self.settings.conversation_timeout,
-          )
-        except TimeoutError:
-          logger.info(f"Andika conversation timed out after {self.settings.conversation_timeout:g}s")
-
-          await self._stop_listening()
-
-          if self._conversation_event_handler:
-            await self._conversation_event_handler("cancelled")
+        await self._wait_for_transcription_turn()
       finally:
         try:
           await self._stop_listening()
         finally:
           self._transcription_active = False
-          self._wakeword_event.clear()
 
   async def _run(
     self,
@@ -476,6 +536,7 @@ class AndikaComponent(AudioStreamComponent[AndikaConfig]):
     loop = asyncio.get_running_loop()
     active_stream_container = shared_resources["active_stream_container"]
     self._wakeword_event = shared_resources["wakeword_event"]
+    self._continue_conversation_event = shared_resources.get("continue_conversation_event")
     self._conversation_event_handler = shared_resources.get("conversation_event_handler")
     self._final_transcription_handler = shared_resources.get("final_transcription_handler")
     andika_uri = self.build_connection_uri(config)
@@ -552,6 +613,7 @@ class AndikaComponent(AudioStreamComponent[AndikaConfig]):
   async def _run_whisper(self, mqtt_client: MQTTClient, shared_resources: dict[str, Any]) -> None:
     active_stream_container = shared_resources["active_stream_container"]
     self._wakeword_event = shared_resources["wakeword_event"]
+    self._continue_conversation_event = shared_resources.get("continue_conversation_event")
     self._conversation_event_handler = shared_resources.get("conversation_event_handler")
     self._final_transcription_handler = shared_resources.get("final_transcription_handler")
     self._handle_task_done = shared_resources["handle_task_done"]

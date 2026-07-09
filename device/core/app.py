@@ -127,6 +127,20 @@ def parse_device_context_command_field(topic: str, context_prefix: str) -> str |
   return field.strip("/") or None
 
 
+def should_continue_conversation(
+  response: ProcessingResponse,
+  *,
+  enabled: bool,
+  needs_audio: bool,
+  microphone_muted: bool,
+) -> bool:
+  return response.requests_user_input() and enabled and needs_audio and not microphone_muted
+
+
+def should_play_follow_up_end_cue(*, follow_up_active: bool, will_continue: bool) -> bool:
+  return follow_up_active and not will_continue
+
+
 def format_setting_value(value: object) -> str:
   if value is None or value == "":
     return "unset"
@@ -220,6 +234,7 @@ def log_startup_settings(settings: Settings) -> None:
         "ohunerin_threshold": settings.ohunerin_threshold,
         "delay": settings.delay,
         "conversation_timeout": settings.conversation_timeout,
+        "continue_conversation": settings.continue_conversation_enabled,
         "akorin": settings.akorin_url,
       }
     ),
@@ -380,10 +395,13 @@ async def start() -> None:
   player_stop_queue: asyncio.Queue = asyncio.Queue()
   language_change_queue: asyncio.Queue = asyncio.Queue()
   device_context_change_queue: asyncio.Queue[tuple[str, str]] = asyncio.Queue()
+  continue_conversation_queue: asyncio.Queue[bool] = asyncio.Queue()
   transcription_queue: asyncio.Queue[str] = asyncio.Queue()
   processing_queue: asyncio.Queue[ProcessingResponse] = asyncio.Queue()
+  follow_up_reset_queue: asyncio.Queue[None] = asyncio.Queue()
   voice_change_queue: asyncio.Queue[str] = asyncio.Queue()
   wakeword_event = asyncio.Event()
+  continue_conversation_event = asyncio.Event()
   device_state: dict = {"microphone_muted": settings.microphone_muted}
 
   speaker_state: dict = {
@@ -393,6 +411,8 @@ async def start() -> None:
   }
 
   language_state: dict = {"language": settings.language}
+  continue_conversation_state: dict = {"enabled": settings.continue_conversation_enabled}
+  follow_up_state: dict = {"active": False}
   device_context = build_device_context(settings)
   initial_voices = voices_for_language(tts_voices, settings.language)
   initial_voice_names = [voice.name for voice in initial_voices]
@@ -498,6 +518,8 @@ async def start() -> None:
     else:
       conversation_state["state"] = "idle"
       mqtt_client.set_conversation_state("idle")
+      follow_up_state["active"] = False
+      follow_up_reset_queue.put_nowait(None)
       await play_sound_cue("cancel")
 
   async def run_scheduled(command: AlarmCommand | ReminderCommand) -> None:
@@ -542,6 +564,8 @@ async def start() -> None:
     nonlocal speech_task
 
     response_started_playback = False
+    response_requests_follow_up = response.requests_user_input()
+    follow_up_active = follow_up_state["active"]
 
     for command in response.resolved_commands():
       if speech_task is not None:
@@ -616,6 +640,37 @@ async def start() -> None:
         else:
           logger.warning(f"Ignoring unavailable speech synthesis voice: {command.voice}")
 
+    if response_requests_follow_up and speech_task is not None:
+      await speech_task
+      speech_task = None
+
+    will_continue_conversation = response_requests_follow_up and should_continue_conversation(
+      response,
+      enabled=continue_conversation_state["enabled"],
+      needs_audio=needs_audio,
+      microphone_muted=device_state["microphone_muted"],
+    )
+
+    if will_continue_conversation:
+      logger.info("Continuing conversation after processing response")
+      follow_up_state["active"] = True
+      continue_conversation_event.set()
+      return
+
+    if response_requests_follow_up:
+      logger.info("Follow-up listening skipped because the feature is disabled, audio is unavailable, or capture is muted")
+
+    if should_play_follow_up_end_cue(
+      follow_up_active=follow_up_active,
+      will_continue=will_continue_conversation,
+    ):
+      if speech_task is not None:
+        await speech_task
+        speech_task = None
+
+      await play_sound_cue("cancel")
+      follow_up_state["active"] = False
+
     if speech_task is None and conversation_state["state"] == "processing":
       conversation_state["state"] = "idle"
       mqtt_client.set_conversation_state("idle")
@@ -672,11 +727,13 @@ async def start() -> None:
 
     # Subscribe to the language-select command topic.
     client.subscribe(mqtt_client.get_language_command_topic())
+    client.subscribe(mqtt_client.get_continue_conversation_command_topic())
 
     for field in (*DEVICE_CONTEXT_TEXT_FIELDS, *DEVICE_CONTEXT_OPTIONS):
       client.subscribe(mqtt_client.get_device_context_command_topic(field))
 
     mqtt_client.publish_device_context(device_context)
+    mqtt_client.set_continue_conversation_state(continue_conversation_state["enabled"])
 
     if mqtt_client.discovery_prefix:
       try:
@@ -709,6 +766,7 @@ async def start() -> None:
           device_context=device_context,
           microphone_enabled=microphone_enabled,
           speaker_enabled=speaker_enabled,
+          continue_conversation_enabled=continue_conversation_state["enabled"],
           voices=active_voice_names() if tts_client else None,
           current_voice=voice_state["voice"],
         )
@@ -803,6 +861,16 @@ async def start() -> None:
           logger.warning(f"Ignoring unsupported language command: {new_language}")
       except Exception as error:
         logger.error(f"Error decoding or handling MQTT language command: {error}")
+
+    elif topic == mqtt_client.get_continue_conversation_command_topic():
+      try:
+        payload = message.payload.decode("utf-8").strip().upper()
+        logger.info(f"Received continue conversation command: {payload}")
+
+        if payload in ("ON", "OFF"):
+          loop.call_soon_threadsafe(continue_conversation_queue.put_nowait, payload == "ON")
+      except Exception as error:
+        logger.error(f"Error decoding or handling MQTT continue conversation command: {error}")
 
     elif (field := parse_device_context_command_field(topic, mqtt_client.parse_node_topic("context"))) is not None:
       try:
@@ -921,6 +989,7 @@ async def start() -> None:
           current_language=language_state["language"],
           microphone_enabled=microphone_enabled,
           speaker_enabled=speaker_enabled,
+          continue_conversation_enabled=continue_conversation_state["enabled"],
           voices=active_voice_names() if tts_client else None,
           current_voice=voice_state["voice"],
         )
@@ -958,10 +1027,12 @@ async def start() -> None:
     "speaker_state": speaker_state,
     "language_change_queue": language_change_queue,
     "wakeword_event": wakeword_event,
+    "continue_conversation_event": continue_conversation_event,
     "device_state": device_state,
     "language_state": language_state,
     "transcription_queue": transcription_queue,
     "processing_queue": processing_queue,
+    "follow_up_reset_queue": follow_up_reset_queue,
     "device_context": current_device_context,
     "conversation_event_handler": handle_conversation_event,
     "final_transcription_handler": handle_final_transcription,
@@ -1059,6 +1130,7 @@ async def start() -> None:
             current_language=language_state["language"],
             microphone_enabled=microphone_enabled,
             speaker_enabled=speaker_enabled,
+            continue_conversation_enabled=continue_conversation_state["enabled"],
             voices=active_voice_names() if tts_client else None,
             current_voice=voice_state["voice"],
           )
@@ -1144,10 +1216,12 @@ async def start() -> None:
 
       language_change_task = loop.create_task(language_change_queue.get())
       device_context_change_task = loop.create_task(device_context_change_queue.get())
+      continue_conversation_task = loop.create_task(continue_conversation_queue.get())
       processing_task = loop.create_task(processing_queue.get()) if speaker_enabled else None
       voice_change_task = loop.create_task(voice_change_queue.get()) if tts_voices else None
       tasks.append(language_change_task)
       tasks.append(device_context_change_task)
+      tasks.append(continue_conversation_task)
 
       if processing_task is not None:
         tasks.append(processing_task)
@@ -1174,6 +1248,7 @@ async def start() -> None:
         player_stop_task,
         language_change_task,
         device_context_change_task,
+        continue_conversation_task,
         processing_task,
         voice_change_task,
       ]
@@ -1340,6 +1415,13 @@ async def start() -> None:
         mqtt_client.publish_device_context_value(field, value)
         mqtt_client.publish_device_context(device_context)
         logger.info(f"Device context updated: {field}={value}")
+      elif continue_conversation_task in done:
+        enabled = continue_conversation_task.result()
+        continue_conversation_state["enabled"] = enabled
+        settings.continue_conversation_enabled = enabled
+        await asyncio.to_thread(update_runtime_settings_cache, settings, continue_conversation_enabled=enabled)
+        mqtt_client.set_continue_conversation_state(enabled)
+        logger.info(f"Continue conversation {'enabled' if enabled else 'disabled'}")
       elif language_change_task is not None and language_change_task in done:
         new_language = language_change_task.result()
         language_state["language"] = new_language
@@ -1397,6 +1479,7 @@ async def start() -> None:
               device_context=device_context,
               microphone_enabled=microphone_enabled,
               speaker_enabled=speaker_enabled,
+              continue_conversation_enabled=continue_conversation_state["enabled"],
               voices=available_voices if tts_client else None,
               current_voice=voice_state["voice"],
             )

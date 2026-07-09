@@ -28,6 +28,8 @@ dependencies = [
   "pydantic-settings>=2.14.2",
   "timezonefinder>=8.2.4",
   "geopy>=2.4.1",
+  "pydantic-ai>=2.6.0",
+  "ollama>=0.6.2",
 ]
 
 [project.urls]

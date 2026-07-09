@@ -12,30 +12,17 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-import argparse
 import asyncio
 import sys
-from collections.abc import Sequence
 
 from device.core.app import start
-from device.core.package import APP_DESCRIPTION
+from device.core.args import parse_arguments
 from device.core.package import APP_NAME
-from device.core.package import APP_VERSION
 from device.core.settings import SettingsError
 
 
-parser = argparse.ArgumentParser(prog=APP_NAME, description=APP_DESCRIPTION)
-parser.add_argument(
-  "-v",
-  "--version",
-  action="version",
-  version=f"%(prog)s {APP_VERSION}",
-  help="Show the version of the application.",
-)
-
-
-def main(argv: Sequence[str] | None = None) -> int:
-  parser.parse_args(argv)
+def main() -> int:
+  parse_arguments()
 
   try:
     asyncio.run(start())

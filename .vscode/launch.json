@@ -12,7 +12,8 @@
       "env": {
         "OREMI_DEVICE_LOG_LEVEL": "DEBUG",
         "OREMI_DEVICE_MQTT_BROKER": "ngaoundere",
-        "OREMI_DEVICE_TRANSCRIPTION_BACKEND": "andika"
+        "OREMI_DEVICE_TRANSCRIPTION_BACKEND": "andika",
+        "OREMI_DEVICE_OLLAMA_BASE_URL": "http://localhost:31434"
       }
     },
     {
@@ -26,7 +27,8 @@
       "env": {
         "OREMI_DEVICE_LOG_LEVEL": "DEBUG",
         "OREMI_DEVICE_MQTT_BROKER": "ngaoundere",
-        "OREMI_DEVICE_TRANSCRIPTION_BACKEND": "whisper.cpp"
+        "OREMI_DEVICE_TRANSCRIPTION_BACKEND": "whisper.cpp",
+        "OREMI_DEVICE_OLLAMA_BASE_URL": "http://localhost:31434"
       }
     }
   ]
