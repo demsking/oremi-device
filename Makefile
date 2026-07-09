@@ -111,7 +111,11 @@ image-test:
 live: image-test
 	docker run -it --rm --env-file .env.example -v ./data:/oremi/data --network host --device /dev/snd:/dev/snd --group-add audio $(IMAGE_NAME):test
 
-publish: image-test
+release:
+	uv sync
+	git commit pyproject.toml uv.lock -m "chore(release): bump version to $(APP_VERSION)"
 	git tag v$(APP_VERSION)
+
+publish: image-test
 	$(MAKE) pypi image
 	git push --tags origin main
