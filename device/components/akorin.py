@@ -475,7 +475,7 @@ class AkorinComponent(HttpComponent[AkorinConfig]):
             language=language_state["language"],
             history=history,
           )
-        except (httpx.HTTPError, TimeoutError, ValidationError, ValueError, RuntimeError) as error:
+        except Exception as error:
           logger.warning(f"Follow-up rephrase failed; using original transcription: {error}")
     elif history:
       logger.debug(f"Follow-up rephrase skipped because continue conversation is not pending (history_items={len(history)})")
@@ -513,7 +513,7 @@ class AkorinComponent(HttpComponent[AkorinConfig]):
             language=language_state["language"],
             history=next_history,
           )
-        except (httpx.HTTPError, TimeoutError, ValidationError, ValueError, RuntimeError) as error:
+        except Exception as error:
           logger.warning(f"Continue conversation analysis failed: {error}")
       elif response_text:
         logger.warning("Follow-up analysis skipped because the internal LLM is unavailable")

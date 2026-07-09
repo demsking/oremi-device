@@ -385,6 +385,64 @@ async def test_akorin_does_not_rephrase_without_pending_continue_conversation() 
 
 
 @pytest.mark.asyncio
+async def test_akorin_falls_back_when_continue_conversation_analysis_raises_unexpected_error() -> None:
+  component = AkorinComponent(_make_settings())
+  client = AkorinClient("http://akorin:5020")
+
+  class BrokenInternalLLM:
+    async def should_continue_conversation(self, *args, **kwargs) -> bool:
+      raise AssertionError("analysis failed")
+
+  process = AsyncMock(return_value=ProcessingResponse(message="Pour quel jour ?"))
+
+  with patch.object(client, "process", process):
+    result = await component._process_message(
+      client,
+      BrokenInternalLLM(),
+      AkorinConfig(wait_cue_delay=10),
+      "cree un rappel",
+      {"language": "fr"},
+      lambda: {},
+    )
+
+  assert result is not None
+  assert result.continue_conversation is False
+
+
+@pytest.mark.asyncio
+async def test_akorin_reuses_original_transcription_when_rephrase_raises_unexpected_error() -> None:
+  component = AkorinComponent(_make_settings())
+  component._conversation_history = [
+    ConversationMessage(role="user", content="cree un rappel"),
+    ConversationMessage(role="assistant", content="Pour quel jour ?"),
+  ]
+  component._continue_conversation_pending = True
+  client = AkorinClient("http://akorin:5020")
+
+  class BrokenInternalLLM:
+    async def rephrase_follow_up(self, *args, **kwargs) -> str:
+      raise AssertionError("rephrase failed")
+
+    async def should_continue_conversation(self, *args, **kwargs) -> bool:
+      return False
+
+  process = AsyncMock(return_value=ProcessingResponse(message="Le rappel est cree."))
+
+  with patch.object(client, "process", process):
+    result = await component._process_message(
+      client,
+      BrokenInternalLLM(),
+      AkorinConfig(wait_cue_delay=10),
+      "demain",
+      {"language": "fr"},
+      lambda: {},
+    )
+
+  assert result is not None
+  assert process.await_args.args == ("demain",)
+
+
+@pytest.mark.asyncio
 async def test_akorin_timeout_returns_discreet_error_message() -> None:
   component = AkorinComponent(_make_settings(language="fr"))
   cues = []
