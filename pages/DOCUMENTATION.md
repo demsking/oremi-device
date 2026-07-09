@@ -113,6 +113,7 @@ services:
     environment:
       LOG_LEVEL: info
       OREMI_DEVICE_NODE_ID: living-room
+      OREMI_DEVICE_OLLAMA_BASE_URL: http://ollama:11434
       OREMI_DEVICE_LANGUAGE: fr
       OREMI_DEVICE_LOCATION: Douala, Cameroon
       OREMI_DEVICE_TIMEZONE: Africa/Douala
@@ -140,12 +141,34 @@ services:
       - andika
       - akorin
       - mosquitto
+      - ollama
 
   akorin:
     image: demsking/oremi-akorin
     restart: unless-stopped
     ports:
       - '5020:5020'
+    environment:
+      OREMI_AKORIN_OLLAMA_BASE_URL: http://ollama:11434
+      OREMI_AKORIN_ISINMI_URL: http://isinmi:7337
+      OREMI_AKORIN_WEATHER_URL: http://weather:1777
+      OREMI_AKORIN_REDIYO_URL: http://rediyo:9170
+      OREMI_AKORIN_KANSA_URL: http://kansa:4940
+      OREMI_AKORIN_MQTT_BROKER: mosquitto
+    env_file:
+      - .env
+    healthcheck:
+      test: ['CMD', 'curl', '-f', 'http://localhost:5020/health/']
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    depends_on:
+      - mosquitto
+      - ollama
+      - isinmi
+      - weather
+      - rediyo
+      - kansa
 
   ohunerin:
     image: demsking/oremi-ohunerin:4.0.0b4
@@ -160,6 +183,15 @@ services:
       - '5315:5315'
     volumes:
       - vosk-models:/usr/share/vosk
+
+  ollama:
+    image: ollama/ollama
+    restart: always
+    runtime: nvidia
+    volumes:
+      - ~/.ollama:/root/.ollama
+    environment:
+      CUDA_VISIBLE_DEVICES: 0
 
   mosquitto:
     image: eclipse-mosquitto:2.0.18
@@ -196,6 +228,7 @@ services:
     environment:
       LOG_LEVEL: info
       OREMI_DEVICE_NODE_ID: living-room
+      OREMI_DEVICE_OLLAMA_BASE_URL: http://ollama:11434
       OREMI_DEVICE_LANGUAGE: fr
       OREMI_DEVICE_LOCATION: Douala, Cameroon
       OREMI_DEVICE_TEMPERATURE_UNIT: celsius
@@ -221,12 +254,34 @@ services:
       - whisper
       - akorin
       - mosquitto
+      - ollama
 
   akorin:
     image: demsking/oremi-akorin
     restart: unless-stopped
     ports:
       - '5020:5020'
+    environment:
+      OREMI_AKORIN_OLLAMA_BASE_URL: http://ollama:11434
+      OREMI_AKORIN_ISINMI_URL: http://isinmi:7337
+      OREMI_AKORIN_WEATHER_URL: http://weather:1777
+      OREMI_AKORIN_REDIYO_URL: http://rediyo:9170
+      OREMI_AKORIN_KANSA_URL: http://kansa:4940
+      OREMI_AKORIN_MQTT_BROKER: mosquitto
+    env_file:
+      - .env
+    healthcheck:
+      test: ['CMD', 'curl', '-f', 'http://localhost:5020/health/']
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    depends_on:
+      - mosquitto
+      - ollama
+      - isinmi
+      - weather
+      - rediyo
+      - kansa
 
   ohunerin:
     image: demsking/oremi-ohunerin:4.0.0b4
@@ -253,6 +308,15 @@ services:
     depends_on:
       whisper-model:
         condition: service_completed_successfully
+
+  ollama:
+    image: ollama/ollama
+    restart: always
+    runtime: nvidia
+    volumes:
+      - ~/.ollama:/root/.ollama
+    environment:
+      CUDA_VISIBLE_DEVICES: 0
 
   mosquitto:
     image: eclipse-mosquitto:2.0.18
@@ -289,6 +353,7 @@ services:
     environment:
       LOG_LEVEL: info
       OREMI_DEVICE_NODE_ID: living-room
+      OREMI_DEVICE_OLLAMA_BASE_URL: http://ollama:11434
       OREMI_DEVICE_LANGUAGE: fr
       OREMI_DEVICE_LOCATION: Douala, Cameroon
       OREMI_DEVICE_TEMPERATURE_UNIT: celsius
@@ -320,12 +385,34 @@ services:
       - akorin
       - edge-tts
       - mosquitto
+      - ollama
 
   akorin:
     image: demsking/oremi-akorin
     restart: unless-stopped
     ports:
       - '5020:5020'
+    environment:
+      OREMI_AKORIN_OLLAMA_BASE_URL: http://ollama:11434
+      OREMI_AKORIN_ISINMI_URL: http://isinmi:7337
+      OREMI_AKORIN_WEATHER_URL: http://weather:1777
+      OREMI_AKORIN_REDIYO_URL: http://rediyo:9170
+      OREMI_AKORIN_KANSA_URL: http://kansa:4940
+      OREMI_AKORIN_MQTT_BROKER: mosquitto
+    env_file:
+      - .env
+    healthcheck:
+      test: ['CMD', 'curl', '-f', 'http://localhost:5020/health/']
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    depends_on:
+      - mosquitto
+      - ollama
+      - isinmi
+      - weather
+      - rediyo
+      - kansa
 
   ohunerin:
     image: demsking/oremi-ohunerin:4.0.0b4
@@ -349,6 +436,15 @@ services:
     environment:
       API_KEY: your_api_key_here
       PORT: 5050
+
+  ollama:
+    image: ollama/ollama
+    restart: always
+    runtime: nvidia
+    volumes:
+      - ~/.ollama:/root/.ollama
+    environment:
+      CUDA_VISIBLE_DEVICES: 0
 
   mosquitto:
     image: eclipse-mosquitto:2.0.18
