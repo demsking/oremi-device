@@ -1,8 +1,18 @@
-APP_NAME := $(shell python scripts/metadata.py name)
-APP_VERSION := $(shell python scripts/metadata.py version)
-IMAGE_NAME := demsking/$(APP_NAME)
+APP_NAME := $(shell uvx --from=toml-cli toml get --toml-path pyproject.toml project.name)
+APP_VERSION := $(shell uv version --short)
+APP_DESCRIPTION := $(shell uvx --from=toml-cli toml get --toml-path pyproject.toml project.description)
+APP_LICENSE := $(shell uvx --from=toml-cli toml get --toml-path pyproject.toml project.license.text 2>/dev/null || uvx --from=toml-cli toml get --toml-path pyproject.toml project.license)
 
-.PHONY: install tests dist clean
+DIST_DIR := dist
+BUILD_DIR := build
+BUILDER_NAME := $(APP_NAME)
+
+IMAGE_NAME := demsking/$(APP_NAME)
+IMAGE_PLATFORMS := linux/amd64,linux/arm64
+IMAGE_REVISION := $(shell git rev-parse HEAD)
+IMAGE_CREATED := $(shell date --utc --iso-8601=seconds)
+
+.PHONY: install tests clean package pypi image bump patch minor major release publish check-clean
 
 shell:
 	tmuxinator
@@ -59,48 +69,47 @@ lint:
 fix:
 	ruff check . --fix
 
-clean:
+clean: clean-dist
 	find . -type d -name "__pycache__" -exec rm -rf {} +
 	find . -type f -name "*.pyc" -delete
 	rm -rf .pytest_cache .coverage htmlcov
-	rm -rf dist/
 
 docs:
 	serve -l 9652 pages/
 
 #
 ## Packaging
-package:
-	rm -rf dist/*
+clean-dist:
+	rm -rf $(DIST_DIR)
+
+package: clean-dist
 	devbox run uv build --wheel
-	devbox run twine check dist/*
+	devbox run twine check "$(DIST_DIR)"/*
 
 pypi: package
-	devbox run twine upload dist/*
+	devbox run twine upload "$(DIST_DIR)"/*
 
-build/context:
-	docker buildx create --name $(APP_NAME) --bootstrap
-	mkdir -p build/
-	touch $@
+image:
+	@docker buildx inspect "$(BUILDER_NAME)" >/dev/null 2>&1 || \
+	  docker buildx create --name "$(BUILDER_NAME)" --bootstrap
 
-image: build/context
 	@echo "Building $(IMAGE_NAME):$(APP_VERSION)"
-	uv lock
-	docker buildx use $(APP_NAME)
+	devbox run uv lock --locked
+	docker buildx use "$(BUILDER_NAME)"
 	docker buildx build . \
-	  --platform linux/amd64,linux/arm64 \
+	  --platform "$(IMAGE_PLATFORMS)" \
 	  --push \
 	  --progress plain \
-	  --tag $(IMAGE_NAME):$(APP_VERSION) \
-	  --tag $(IMAGE_NAME):latest \
+	  --tag "$(IMAGE_NAME):$(APP_VERSION)" \
+	  --tag "$(IMAGE_NAME):latest" \
 	  --label "org.opencontainers.image.title=$(APP_NAME)" \
-	  --label "org.opencontainers.image.description=$(shell python scripts/metadata.py description)" \
+	  --label "org.opencontainers.image.description=$(APP_DESCRIPTION)" \
 	  --label "org.opencontainers.image.version=$(APP_VERSION)" \
-	  --label "org.opencontainers.image.revision=$(shell git rev-parse HEAD)" \
+	  --label "org.opencontainers.image.revision=$(IMAGE_REVISION)" \
 	  --label "org.opencontainers.image.authors=Sébastien Demanou <demsking@gmail.com>" \
-	  --label "org.opencontainers.image.created=$(shell date --rfc-3339=seconds)" \
+	  --label "org.opencontainers.image.created=$(IMAGE_CREATED)" \
 	  --label "org.opencontainers.image.vendor=Sébastien Demanou" \
-	  --label "org.opencontainers.image.licenses=$(shell python scripts/metadata.py license)"
+	  --label "org.opencontainers.image.licenses=$(APP_LICENSE)"
 
 image-test:
 	uv lock
@@ -111,11 +120,38 @@ image-test:
 live: image-test
 	docker run -it --rm --env-file .env.example -v ./data:/oremi/data --network host --device /dev/snd:/dev/snd --group-add audio $(IMAGE_NAME):test
 
-release:
-	uv sync
-	git commit pyproject.toml uv.lock -m "chore(release): bump version to $(APP_VERSION)"
-	git tag v$(APP_VERSION)
+check-clean:
+	@test -z "$$(git status --porcelain)" || (echo "Working tree is not clean" && exit 1)
 
-publish: image-test
+bump:
+	@test -n "$(VERSION)" || (echo "Usage: make bump VERSION=1.2.3" && exit 1)
+	uv version "$(VERSION)"
+	uv sync
+	git add pyproject.toml uv.lock
+	git commit -m "chore(release): bump version to $(VERSION)"
+
+patch: check-clean
+	uv version --bump patch
+	uv sync
+	git add pyproject.toml uv.lock
+	git commit -m "chore(release): bump version to $$(uv version --short)"
+
+minor: check-clean
+	uv version --bump minor
+	uv sync
+	git add pyproject.toml uv.lock
+	git commit -m "chore(release): bump version to $$(uv version --short)"
+
+major: check-clean
+	uv version --bump major
+	uv sync
+	git add pyproject.toml uv.lock
+	git commit -m "chore(release): bump version to $$(uv version --short)"
+
+release: check-clean
+	git tag --annotate "v$(APP_VERSION)" --message "Release v$(APP_VERSION)"
+
+publish: check-clean image-test release
 	$(MAKE) pypi image
-	git push --tags origin main
+	git push origin main
+	git push origin "v$(APP_VERSION)"
