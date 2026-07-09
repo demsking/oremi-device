@@ -157,10 +157,10 @@ major: check-clean
 release: check-clean
 	uv sync
 	git add pyproject.toml uv.lock
-	git commit -m "chore(release): bump version to $(uv version --short)"
-	git tag --annotate "v$(uv version --short)" --message "Release v$(uv version --short)"
+	git commit -m "chore(release): bump version to $$(uv version --short)"
+	git tag --annotate "v$$(uv version --short)" --message "Release v$$(uv version --short)"
 
 publish: check-clean image-test
 	$(MAKE) pypi image
 	git push origin main
-	git push origin "v$(uv version --short)"
+	git push origin "v$$(uv version --short)"
