@@ -159,7 +159,7 @@ release: check-clean
 	git commit -m "chore(release): bump version to $$(uv version --short)"
 	git tag --annotate "v$(APP_VERSION)" --message "Release v$(APP_VERSION)"
 
-publish: check-clean image-test release
+publish: check-clean image-test
 	$(MAKE) pypi image
 	git push origin main
 	git push origin "v$(APP_VERSION)"
