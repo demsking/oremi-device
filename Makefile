@@ -12,7 +12,7 @@ IMAGE_PLATFORMS := linux/amd64,linux/arm64
 IMAGE_REVISION := $(shell git rev-parse HEAD)
 IMAGE_CREATED := $(shell date --utc --iso-8601=seconds)
 
-.PHONY: install tests clean package pypi image bump patch minor major release publish check-clean
+.PHONY: install tests clean package pypi image bump patch minor major alpha beta rc release publish check-clean
 
 shell:
 	tmuxinator
@@ -126,29 +126,37 @@ check-clean:
 bump:
 	@test -n "$(VERSION)" || (echo "Usage: make bump VERSION=1.2.3" && exit 1)
 	uv version "$(VERSION)"
-	uv sync
+	uv lock
 	git add pyproject.toml uv.lock
 	git commit -m "chore(release): bump version to $(VERSION)"
 
+alpha: check-clean
+	uv version --bump alpha
+	uv lock
+
+beta: check-clean
+	uv version --bump beta
+	uv lock
+
+rc: check-clean
+	uv version --bump rc
+	uv lock
+
 patch: check-clean
 	uv version --bump patch
-	uv sync
-	git add pyproject.toml uv.lock
-	git commit -m "chore(release): bump version to $$(uv version --short)"
+	uv lock
 
 minor: check-clean
 	uv version --bump minor
-	uv sync
-	git add pyproject.toml uv.lock
-	git commit -m "chore(release): bump version to $$(uv version --short)"
+	uv lock
 
 major: check-clean
 	uv version --bump major
-	uv sync
-	git add pyproject.toml uv.lock
-	git commit -m "chore(release): bump version to $$(uv version --short)"
+	uv lock
 
 release: check-clean
+	git add pyproject.toml uv.lock
+	git commit -m "chore(release): bump version to $$(uv version --short)"
 	git tag --annotate "v$(APP_VERSION)" --message "Release v$(APP_VERSION)"
 
 publish: check-clean image-test release
