@@ -62,4 +62,7 @@ ENV OREMI_DEVICE_DATA="/oremi/data"
 
 VOLUME /oremi/data
 
+HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
+  CMD ["sh", "-c", "tr '\\0' ' ' < /proc/1/cmdline | grep -q '^python /oremi/device'"]
+
 CMD ["python", "/oremi/device"]
