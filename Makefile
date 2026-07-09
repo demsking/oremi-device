@@ -155,6 +155,7 @@ major: check-clean
 	uv lock
 
 release: check-clean
+	uv sync
 	git add pyproject.toml uv.lock
 	git commit -m "chore(release): bump version to $$(uv version --short)"
 	git tag --annotate "v$(APP_VERSION)" --message "Release v$(APP_VERSION)"
