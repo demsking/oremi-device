@@ -31,6 +31,7 @@ from ..components.base import Component
 from ..components.edge_tts import OpenAIEdgeTTSClient
 from ..components.izwi import IzwiClient
 from ..utils.logger import configure_logging
+from ..utils.ollama_model import load_ollama_model
 from .audio import Audio
 from .audio import AudioDeviceError
 from .cues import ConversationEvent
@@ -298,6 +299,13 @@ async def start() -> None:
     component = create_component(settings)  # pylint: disable=abstract-class-instantiated
 
     active_components.append((component, comp_config))
+
+  # ── Load Ollama Model ────────────────────────────────────────────────
+  if settings.should_use_ollama:
+    if settings.ollama_base_url is None:
+      logger.warning("OREMI_DEVICE_OLLAMA_BASE_URL is not configured; LLM-backed endpoints will be unavailable")
+    else:
+      await load_ollama_model(settings)
 
   # ── Audio stream (only for AudioStreamComponents) ────────────────────────────
   # Check whether any active component actually needs the microphone so that
