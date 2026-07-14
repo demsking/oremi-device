@@ -23,7 +23,9 @@
   "shell": {
     "init_hook": [
       "pre-commit install -f",
-      "export PATH=.venv/bin:$PATH"
+      "export PATH=.venv/bin:$PATH",
+      "uv sync",
+      "graphify hook install"
     ],
     "scripts": {}
   }
