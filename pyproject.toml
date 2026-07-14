@@ -20,7 +20,7 @@ classifiers = [
 ]
 
 dependencies = [
-  "websockets>=14.1,<15.0",
+  "websockets>=16.1",
   "sounddevice>=0.5.1,<0.6.0",
   "paho-mqtt>=2.1.0,<3.0.0",
   "pydantic>=2.13.4",
@@ -48,11 +48,11 @@ dev = [
   "bandit>=1.8.3",
   "classify-imports>=4.2.0",
   "graphifyy>=0.8.46",
-  "pylint>=3.3.7",
-  "pyroma>=4.2",
-  "pytest>=8.3.5",
-  "pytest-asyncio>=0.26.0",
-  "pytest-cov>=6.1.1",
+  "pylint>=4.0.6",
+  "pyroma>=5.0.1",
+  "pytest>=9.1.1",
+  "pytest-asyncio>=1.4.0",
+  "pytest-cov>=7.1.0",
   "python-dotenv>=1.1.0",
   "python-slugify>=8.0.4",
   "reorder-python-imports>=3.14.0",
