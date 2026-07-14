@@ -30,8 +30,12 @@ from ..components.base import AudioStreamComponent
 from ..components.base import Component
 from ..components.edge_tts import OpenAIEdgeTTSClient
 from ..components.izwi import IzwiClient
+from ..utils.context import build_device_context
+from ..utils.context import parse_device_context_command_field
+from ..utils.context import validate_device_context_value
 from ..utils.logger import configure_logging
 from ..utils.ollama_model import load_ollama_model
+from ..utils.url import safe_url
 from .audio import Audio
 from .audio import AudioDeviceError
 from .cues import ConversationEvent
@@ -56,7 +60,6 @@ from .mqtt import MQTTClient
 from .package import APP_NAME
 from .package import APP_VERSION
 from .settings import get_settings
-from .settings import RuntimeSettingsCache
 from .settings import Settings
 from .settings import update_runtime_settings_cache
 from .speaker import Speaker
@@ -93,39 +96,6 @@ def classify_supervisor_done(
     return "exit"
 
   return "continue"
-
-
-def build_device_context(settings: Settings) -> dict[str, str]:
-  return settings.context.copy()
-
-
-def validate_device_context_value(field: str, value: str) -> str | None:
-  if field not in (*DEVICE_CONTEXT_TEXT_FIELDS, *DEVICE_CONTEXT_OPTIONS):
-    logger.warning(f"Ignoring unsupported device context command: {field}")
-    return None
-
-  normalized = value.strip()
-
-  if field == "preferred_currency":
-    normalized = normalized.upper()
-
-  try:
-    RuntimeSettingsCache.model_validate({field: normalized})
-  except ValidationError as error:
-    logger.warning(f"Ignoring invalid device context command for {field}: {error}")
-    return None
-
-  return normalized
-
-
-def parse_device_context_command_field(topic: str, context_prefix: str) -> str | None:
-  prefix = f"{context_prefix.rstrip('/')}/"
-
-  if not topic.startswith(prefix) or not topic.endswith("/set"):
-    return None
-
-  field = topic.removeprefix(prefix).removesuffix("/set")
-  return field.strip("/") or None
 
 
 def should_continue_conversation(
@@ -194,6 +164,12 @@ def log_startup_settings(settings: Settings) -> None:
 
   logger.info(f"{APP_NAME} v{APP_VERSION}")
   logger.info(f"Application setting path: {settings.path}")
+
+  logger.info(
+    "LLM: model=%s base_url=%s",
+    settings.llm_model,
+    safe_url(settings.ollama_base_url_string if settings.ollama_base_url is not None else None),
+  )
 
   logger.info(
     "Settings runtime: %s",
