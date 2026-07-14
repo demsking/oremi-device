@@ -204,8 +204,7 @@ class AkorinClient:
         url=self.endpoint,
         json={
           "message": message,
-          "language": language,
-          "context": {"preferences": context},
+          "context": {"preferences": context, "language": language},
           "tags": tags,
         },
       )

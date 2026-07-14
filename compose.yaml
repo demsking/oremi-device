@@ -26,7 +26,7 @@ services:
     image: demsking/oremi-akorin
     depends_on:
       - isinmi
-      - weather
+      - ojo
       - mosquitto
       - rediyo
       - kansa
@@ -34,7 +34,7 @@ services:
     environment:
       OREMI_AKORIN_OLLAMA_BASE_URL: http://ollama:11434
       OREMI_AKORIN_ISINMI_URL: http://isinmi:7337
-      OREMI_AKORIN_WEATHER_URL: http://weather:1777
+      OREMI_AKORIN_OJO_URL: http://ojo:1777
       OREMI_AKORIN_REDIYO_URL: http://rediyo:9170
       OREMI_AKORIN_KANSA_URL: http://kansa:4940
       OREMI_AKORIN_MQTT_BROKER: mosquitto
@@ -71,16 +71,15 @@ services:
       timeout: 10s
       retries: 3
 
-  weather:
-    image: demsking/oremi-weather-agent
+  ojo:
+    image: demsking/oremi-ojo
     restart: always
     depends_on:
       - ollama
     ports:
       - 31777:1777
     environment:
-      OLLAMA_BASEURL: http://ollama:11434
-      OLLAMA_MODEL: qwen3.5:2b
+      OREMI_OJO_OLLAMA_BASE_URL: http://ollama:11434
 
   rediyo:
     image: demsking/oremi-rediyo-agent
