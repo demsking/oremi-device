@@ -177,16 +177,18 @@ class Settings(BaseSettings):
   log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = Field(default="INFO")
   log_file: str | None = Field(default=None)
 
-  def uses_ollama(self) -> bool:
+  @cached_property
+  def should_use_ollama(self) -> bool:
     """Return whether the active agent model uses the Ollama backend."""
 
     return self.llm_model.startswith("ollama:")
 
-  def resolve_ollama_model_name(self) -> str:
+  @cached_property
+  def ollama_model_name(self) -> str:
     """Return the Ollama model name without provider prefix."""
     return self.llm_model.removeprefix("ollama:")  # pylint: disable=no-member
 
-  @property
+  @cached_property
   def ollama_base_url_string(self) -> str:
     """Return the Ollama base URL for Pydantic AI."""
     if self.ollama_base_url is None:

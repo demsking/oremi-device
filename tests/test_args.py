@@ -14,6 +14,7 @@
 # ==============================================================================
 import json
 import os
+from datetime import datetime
 from types import SimpleNamespace
 
 import pytest
@@ -50,7 +51,7 @@ def test_settings_defaults() -> None:
 
   assert settings.microphone_enabled is True
   assert settings.location == ""
-  assert settings.context["timezone"] == "Africa/Douala"
+  assert settings.context["timezone"] == "UTC"
   assert settings.temperature_unit == "celsius"
   assert settings.preferred_currency == "XAF"
   assert settings.measurement_system == "metric"
@@ -121,7 +122,11 @@ def test_settings_are_loaded_from_environment(monkeypatch: pytest.MonkeyPatch) -
   assert settings.time_format == "12h"
   assert settings.date_format == "MM/DD/YYYY"
   assert settings.first_day_of_week == "sunday"
-  assert settings.context == {
+  context = settings.context
+  device_datetime = datetime.fromisoformat(context.pop("device_datetime"))
+
+  assert device_datetime.tzinfo is not None
+  assert context == {
     "language": "fr",
     "location": "12 Rue de Rivoli, Paris",
     "timezone": "Europe/Paris",

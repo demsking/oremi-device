@@ -35,18 +35,16 @@ OutputModel = TypeVar("OutputModel")
 class AgentClient(Generic[OutputModel], ABC):
   def __init__(self, settings: Settings, client: httpx.AsyncClient):
     self.settings = settings
-    self.uses_native_ollama = settings.uses_ollama()
-    self.ollama_model_name = settings.resolve_ollama_model_name() if self.uses_native_ollama else ""
 
-    self.ollama_client = ollama.AsyncClient(host=settings.ollama_base_url_string) if self.uses_native_ollama else None
+    self.ollama_client = ollama.AsyncClient(host=settings.ollama_base_url_string) if settings.should_use_ollama else None
 
     self.model_settings = ModelSettings(
       temperature=0,
       thinking=False,
     )
 
-    self.model = None if self.uses_native_ollama else AgentClient.build_model(settings, self.model_settings, client)
-    self.agent = None if self.uses_native_ollama else self._create_agent()
+    self.model = None if settings.should_use_ollama else AgentClient.build_model(settings, self.model_settings, client)
+    self.agent = None if settings.should_use_ollama else self._create_agent()
 
   @staticmethod
   def build_model(settings: Settings, model_settings: ModelSettings, client: httpx.AsyncClient) -> str:
@@ -93,7 +91,7 @@ class AgentClient(Generic[OutputModel], ABC):
     messages.append({"role": "user", "content": prompt})
 
     response = await self.ollama_client.chat(
-      model=self.ollama_model_name,
+      model=self.settings.ollama_model_name,
       messages=messages,
       stream=False,
       think=False,
@@ -108,7 +106,7 @@ class AgentClient(Generic[OutputModel], ABC):
     return content
 
   async def exec(self, prompt: str) -> OutputModel:
-    if self.uses_native_ollama:
+    if self.settings.should_use_ollama:
       output = await self._run_ollama(prompt, system_prompt=None)
       return self._parse_output(output)
 

@@ -36,8 +36,8 @@ def test_main_prints_clean_configuration_errors(capsys) -> None:
     ]
   )
 
-  with patch("device.__main__.start", side_effect=error):
-    result = main([])
+  with patch("device.__main__.parse_arguments"), patch("device.__main__.start", side_effect=error):
+    result = main()
 
   captured = capsys.readouterr()
   assert result == 2

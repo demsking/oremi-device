@@ -24,7 +24,6 @@ from device.components import COMPONENTS
 from device.components.akorin import AkorinClient
 from device.components.akorin import AkorinComponent
 from device.components.akorin import AkorinInternalLLM
-from device.components.akorin import build_request_context
 from device.components.akorin import format_conversation_history
 from device.components.akorin import is_cancellation_request
 from device.components.akorin import looks_like_follow_up_prompt
@@ -86,16 +85,6 @@ def test_akorin_detects_natural_follow_up_prompt() -> None:
   assert looks_like_follow_up_prompt("Il est 13h30.") is False
 
 
-def test_akorin_builds_context_with_device_preferences_and_history() -> None:
-  history = [ConversationMessage(role="assistant", content="Pour quel jour ?")]
-
-  assert build_request_context({"timezone": "Europe/Paris"}, history) == {
-    "preferences": {"timezone": "Europe/Paris"},
-    "history": [{"role": "assistant", "content": "Pour quel jour ?"}],
-  }
-  assert build_request_context({"timezone": "Europe/Paris"}, []) == {"preferences": {"timezone": "Europe/Paris"}}
-
-
 def test_akorin_formats_conversation_history_for_rephrase_prompt() -> None:
   history = [
     ConversationMessage(role="user", content="allume la lumière"),
@@ -127,12 +116,14 @@ async def test_akorin_client_posts_agent_request() -> None:
   client_class.assert_called_once_with(verify=True, timeout=20)
   http_client.post.assert_awaited_once_with(
     url="http://akorin:5020/api/agent/",
-    json={
-      "message": "bonjour",
-      "language": "fr",
-      "context": {"preferences": {"timezone": "Europe/Paris"}},
-      "tags": ["device_id:test-node"],
-    },
+      json={
+        "message": "bonjour",
+        "context": {
+          "preferences": {"timezone": "Europe/Paris"},
+          "language": "fr",
+        },
+        "tags": ["device_id:test-node"],
+      },
   )
   response.raise_for_status.assert_called_once()
   assert result.resolved_commands() == [SpeakCommand(type="speak", text="Bonjour")]
