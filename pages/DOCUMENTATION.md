@@ -46,10 +46,10 @@ python -m pip install oremi-device
 #### Usage
 
 ```sh
-$export OREMI_DEVICE_NODE_ID=living-room$ export OREMI_DEVICE_LANGUAGE=fr
-$export OREMI_DEVICE_LOCATION="Douala, Cameroon"$ export OREMI_DEVICE_PREFERRED_CURRENCY=XAF
-$export OREMI_DEVICE_OHUNERIN_HOST=localhost$ export OREMI_DEVICE_ANDIKA_HOST=localhost
-$export OREMI_DEVICE_AKORIN_URL=http://localhost:5020$ export OREMI_DEVICE_MQTT_BROKER=localhost
+$ export OREMI_DEVICE_NODE_ID=living-room$ export OREMI_DEVICE_LANGUAGE=fr
+$ export OREMI_DEVICE_LOCATION="Douala, Cameroon"$ export OREMI_DEVICE_PREFERRED_CURRENCY=XAF
+$ export OREMI_DEVICE_OHUNERIN_HOST=localhost$ export OREMI_DEVICE_ANDIKA_HOST=localhost
+$ export OREMI_DEVICE_AKORIN_URL=http://localhost:5020$ export OREMI_DEVICE_MQTT_BROKER=localhost
 
 $ oremi-device
 ```
