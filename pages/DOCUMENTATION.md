@@ -146,43 +146,73 @@ services:
   akorin:
     image: demsking/oremi-akorin
     restart: unless-stopped
-    ports:
-      - '5020:5020'
     environment:
       OREMI_AKORIN_OLLAMA_BASE_URL: http://ollama:11434
       OREMI_AKORIN_ISINMI_URL: http://isinmi:7337
-      OREMI_AKORIN_WEATHER_URL: http://weather:1777
+      OREMI_AKORIN_OJO_URL: http://ojo:1777
       OREMI_AKORIN_REDIYO_URL: http://rediyo:9170
       OREMI_AKORIN_KANSA_URL: http://kansa:4940
       OREMI_AKORIN_MQTT_BROKER: mosquitto
     env_file:
       - .env
-    healthcheck:
-      test: ['CMD', 'curl', '-f', 'http://localhost:5020/health/']
-      interval: 30s
-      timeout: 10s
-      retries: 3
     depends_on:
       - mosquitto
       - ollama
       - isinmi
-      - weather
+      - ojo
       - rediyo
       - kansa
 
   ohunerin:
-    image: demsking/oremi-ohunerin:4.0.0b4
+    image: demsking/oremi-ohunerin
     restart: unless-stopped
-    ports:
-      - '5023:5023'
 
   andika:
     image: demsking/oremi-andika
     restart: unless-stopped
-    ports:
-      - '5315:5315'
     volumes:
-      - vosk-models:/usr/share/vosk
+      - oremi-andika-data:/usr/share/vosk
+
+  isinmi:
+    image: demsking/oremi-isinmi-agent
+    restart: always
+    depends_on:
+      - ollama
+    ports:
+      - 37337:7337
+    environment:
+      OREMI_ISINMI_OLLAMA_BASE_URL: http://ollama:11434
+      OREMI_ISINMI_DATABASE_ENCRYPTION_KEY: your_database_encryption_key_here
+    volumes:
+      - oremi-isinmi-agent-data:/oremi/data
+
+  ojo:
+    image: demsking/oremi-ojo
+    restart: always
+    depends_on:
+      - ollama
+    environment:
+      OREMI_OJO_OLLAMA_BASE_URL: http://ollama:11434
+
+  rediyo:
+    image: demsking/oremi-rediyo-agent
+    restart: always
+    depends_on:
+      - ollama
+    volumes:
+      - oremi-rediyo-agent-data:/var/cache/oremi-rediyo-agent
+    environment:
+      OLLAMA_BASEURL: http://ollama:11434
+
+  kansa:
+    image: demsking/oremi-kansa-agent
+    restart: always
+    depends_on:
+      - ollama
+    volumes:
+      - oremi-kansa-agent-data:/var/cache/oremi-kansa-agent
+    environment:
+      OLLAMA_BASEURL: http://ollama:11434
 
   ollama:
     image: ollama/ollama
@@ -196,14 +226,15 @@ services:
   mosquitto:
     image: eclipse-mosquitto:2.0.18
     restart: unless-stopped
-    ports:
-      - '1883:1883'
     volumes:
       - ./config/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
 
 volumes:
   oremi-device-data:
-  vosk-models:
+  oremi-isinmi-agent-data:
+  oremi-rediyo-agent-data:
+  oremi-kansa-agent-data:
+  oremi-andika-data:
 ```
 
 Save as `docker-compose.andika.yaml`, then run:
@@ -259,35 +290,67 @@ services:
   akorin:
     image: demsking/oremi-akorin
     restart: unless-stopped
-    ports:
-      - '5020:5020'
     environment:
       OREMI_AKORIN_OLLAMA_BASE_URL: http://ollama:11434
       OREMI_AKORIN_ISINMI_URL: http://isinmi:7337
-      OREMI_AKORIN_WEATHER_URL: http://weather:1777
+      OREMI_AKORIN_OJO_URL: http://ojo:1777
       OREMI_AKORIN_REDIYO_URL: http://rediyo:9170
       OREMI_AKORIN_KANSA_URL: http://kansa:4940
       OREMI_AKORIN_MQTT_BROKER: mosquitto
     env_file:
       - .env
-    healthcheck:
-      test: ['CMD', 'curl', '-f', 'http://localhost:5020/health/']
-      interval: 30s
-      timeout: 10s
-      retries: 3
     depends_on:
       - mosquitto
       - ollama
       - isinmi
-      - weather
+      - ojo
       - rediyo
       - kansa
 
   ohunerin:
-    image: demsking/oremi-ohunerin:4.0.0b4
+    image: demsking/oremi-ohunerin
     restart: unless-stopped
+
+  isinmi:
+    image: demsking/oremi-isinmi-agent
+    restart: always
+    depends_on:
+      - ollama
     ports:
-      - '5023:5023'
+      - 37337:7337
+    environment:
+      OREMI_ISINMI_OLLAMA_BASE_URL: http://ollama:11434
+      OREMI_ISINMI_DATABASE_ENCRYPTION_KEY: your_database_encryption_key_here
+    volumes:
+      - oremi-isinmi-agent-data:/oremi/data
+
+  ojo:
+    image: demsking/oremi-ojo
+    restart: always
+    depends_on:
+      - ollama
+    environment:
+      OREMI_OJO_OLLAMA_BASE_URL: http://ollama:11434
+
+  rediyo:
+    image: demsking/oremi-rediyo-agent
+    restart: always
+    depends_on:
+      - ollama
+    volumes:
+      - oremi-rediyo-agent-data:/var/cache/oremi-rediyo-agent
+    environment:
+      OLLAMA_BASEURL: http://ollama:11434
+
+  kansa:
+    image: demsking/oremi-kansa-agent
+    restart: always
+    depends_on:
+      - ollama
+    volumes:
+      - oremi-kansa-agent-data:/var/cache/oremi-kansa-agent
+    environment:
+      OLLAMA_BASEURL: http://ollama:11434
 
   whisper-model:
     image: ghcr.io/ggml-org/whisper.cpp:main
@@ -299,8 +362,6 @@ services:
   whisper:
     image: ghcr.io/ggml-org/whisper.cpp:main
     restart: unless-stopped
-    ports:
-      - '8080:8080'
     volumes:
       - whisper-models:/models:ro
     command:
@@ -321,13 +382,15 @@ services:
   mosquitto:
     image: eclipse-mosquitto:2.0.18
     restart: unless-stopped
-    ports:
-      - '1883:1883'
     volumes:
       - ./compose/mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
 
 volumes:
   oremi-device-data:
+  oremi-isinmi-agent-data:
+  oremi-rediyo-agent-data:
+  oremi-kansa-agent-data:
+  oremi-andika-data:
   whisper-models:
 ```
 
@@ -351,7 +414,6 @@ services:
     volumes:
       - oremi-device-data:/oremi/data
     environment:
-      LOG_LEVEL: info
       OREMI_DEVICE_NODE_ID: living-room
       OREMI_DEVICE_OLLAMA_BASE_URL: http://ollama:11434
       OREMI_DEVICE_LANGUAGE: fr
@@ -390,49 +452,77 @@ services:
   akorin:
     image: demsking/oremi-akorin
     restart: unless-stopped
-    ports:
-      - '5020:5020'
     environment:
       OREMI_AKORIN_OLLAMA_BASE_URL: http://ollama:11434
       OREMI_AKORIN_ISINMI_URL: http://isinmi:7337
-      OREMI_AKORIN_WEATHER_URL: http://weather:1777
+      OREMI_AKORIN_OJO_URL: http://ojo:1777
       OREMI_AKORIN_REDIYO_URL: http://rediyo:9170
       OREMI_AKORIN_KANSA_URL: http://kansa:4940
       OREMI_AKORIN_MQTT_BROKER: mosquitto
     env_file:
       - .env
-    healthcheck:
-      test: ['CMD', 'curl', '-f', 'http://localhost:5020/health/']
-      interval: 30s
-      timeout: 10s
-      retries: 3
     depends_on:
       - mosquitto
       - ollama
       - isinmi
-      - weather
+      - ojo
       - rediyo
       - kansa
 
   ohunerin:
-    image: demsking/oremi-ohunerin:4.0.0b4
+    image: demsking/oremi-ohunerin
     restart: unless-stopped
-    ports:
-      - '5023:5023'
 
   andika:
     image: demsking/oremi-andika
     restart: unless-stopped
-    ports:
-      - '5315:5315'
     volumes:
-      - vosk-models:/usr/share/vosk
+      - oremi-andika-data:/usr/share/vosk
+
+  isinmi:
+    image: demsking/oremi-isinmi-agent
+    restart: always
+    depends_on:
+      - ollama
+    ports:
+      - 37337:7337
+    environment:
+      OREMI_ISINMI_OLLAMA_BASE_URL: http://ollama:11434
+      OREMI_ISINMI_DATABASE_ENCRYPTION_KEY: your_database_encryption_key_here
+    volumes:
+      - oremi-isinmi-agent-data:/oremi/data
+
+  ojo:
+    image: demsking/oremi-ojo
+    restart: always
+    depends_on:
+      - ollama
+    environment:
+      OREMI_OJO_OLLAMA_BASE_URL: http://ollama:11434
+
+  rediyo:
+    image: demsking/oremi-rediyo-agent
+    restart: always
+    depends_on:
+      - ollama
+    volumes:
+      - oremi-rediyo-agent-data:/var/cache/oremi-rediyo-agent
+    environment:
+      OLLAMA_BASEURL: http://ollama:11434
+
+  kansa:
+    image: demsking/oremi-kansa-agent
+    restart: always
+    depends_on:
+      - ollama
+    volumes:
+      - oremi-kansa-agent-data:/var/cache/oremi-kansa-agent
+    environment:
+      OLLAMA_BASEURL: http://ollama:11434
 
   edge-tts:
     image: travisvn/openai-edge-tts:latest
     restart: unless-stopped
-    ports:
-      - '5050:5050'
     environment:
       API_KEY: your_api_key_here
       PORT: 5050
@@ -449,14 +539,15 @@ services:
   mosquitto:
     image: eclipse-mosquitto:2.0.18
     restart: unless-stopped
-    ports:
-      - '1883:1883'
     volumes:
       - ./compose/mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
 
 volumes:
   oremi-device-data:
-  vosk-models:
+  oremi-isinmi-agent-data:
+  oremi-rediyo-agent-data:
+  oremi-kansa-agent-data:
+  oremi-andika-data:
 ```
 
 Save as `docker-compose.edge-tts.yaml`, then run:
@@ -467,7 +558,10 @@ docker compose -f docker-compose.edge-tts.yaml up -d
 
 ## Configuration
 
-Configuration parameters are loaded exclusively out of active environment values matching the structural block patterns declared with the designated `OREMI_DEVICE_` prefixes. Variables can alternatively reside in a local path `.env` module directory.
+Configuration parameters are loaded exclusively out of active environment
+values matching the structural block patterns declared with the designated
+`OREMI_DEVICE_` prefixes. Variables can alternatively reside in a local path
+`.env` module directory.
 
 ### Required Settings
 
@@ -490,7 +584,7 @@ Depending on your configured `OREMI_DEVICE_TRANSCRIPTION_BACKEND`, one additiona
 - **`OREMI_DEVICE_SPEAKER_DEVICE`** – Explicit device identifier assignment mapping the designated sound driver. Default: `None`.
 - **`OREMI_DEVICE_SPEAKER_MUTED`** – Initializes sound rendering outputs to silent runtime configurations. Default: `false`.
 - **`OREMI_DEVICE_SPEAKER_VOLUME`** – Floating level index mapping target playback audio scales between `0.0` and `1.0`. Default: `1.0`.
-- **`OREMI_DEVICE_DATA`** – Explicit folder destination path strings capturing state file targets. Defaults dynamically to user runtime structures path `~/.local/share/oremi-device`.
+- **`OREMI_DEVICE_DATA`** – Explicit folder destination path strings capturing state file targets. Defaults: `/oremi/data`.
 
 ### Transcription Controls
 
