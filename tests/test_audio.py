@@ -12,65 +12,60 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock
+from unittest.mock import patch
+
 import pytest
-import sounddevice as sd
-from device.core.audio import Audio, AudioDeviceError
+
 from device import start
+from device.core.audio import Audio
+from device.core.audio import AudioDeviceError
 from device.core.detector import SoundDetector
 
 
 def test_audio_no_compatible_device() -> None:
-  # Mock sd.query_devices to return some devices but none with max_input_channels > 0
-  with patch("sounddevice.query_devices") as mock_query:
-    mock_query.return_value = [{"name": "Output Device", "max_input_channels": 0, "default_samplerate": 44100}]
+  with patch("miniaudio.Devices") as mock_devices:
+    mock_devices.return_value.get_captures.return_value = []
     with pytest.raises(AudioDeviceError) as exc_info:
       Audio()
     assert "No compatible audio input device found" in str(exc_info.value)
 
 
 def test_audio_query_devices_fails() -> None:
-  # Mock sd.query_devices to raise an exception
-  with patch("sounddevice.query_devices", side_effect=Exception("PortAudio error")):
+  with patch("miniaudio.Devices", side_effect=Exception("miniaudio query error")):
     with pytest.raises(AudioDeviceError) as exc_info:
       Audio()
-    assert "No compatible audio input device found" in str(exc_info.value)
+    assert "Failed to query audio devices" in str(exc_info.value)
 
 
 def test_audio_initialize_fails() -> None:
-  # Mock sd.query_devices to return a compatible device
-  # but mock RawInputStream to raise PortAudioError
   with (
-    patch("sounddevice.query_devices") as mock_query,
-    patch("sounddevice.check_input_settings"),
-    patch("sounddevice.RawInputStream", side_effect=sd.PortAudioError("Init failed")),
+    patch("miniaudio.Devices") as mock_devices,
+    patch("miniaudio.CaptureDevice", side_effect=Exception("Init failed")),
   ):
-    mock_query.return_value = [{"name": "Mic", "max_input_channels": 1, "default_samplerate": 16000, "index": 0}]
+    mock_devices.return_value.get_captures.return_value = [{"name": "Mic", "id": None}]
+    audio = Audio()
     with pytest.raises(AudioDeviceError) as exc_info:
-      Audio()
+      audio.start_stream()
     assert "Failed to initialize audio device" in str(exc_info.value)
 
 
 def test_audio_validates_named_input_device_before_opening_stream() -> None:
   with (
-    patch("sounddevice.query_devices") as mock_query,
-    patch("sounddevice.check_input_settings") as mock_check,
-    patch("sounddevice.RawInputStream") as mock_stream,
+    patch("miniaudio.Devices") as mock_devices,
+    patch("miniaudio.CaptureDevice") as mock_stream,
   ):
-    mock_query.return_value = [
-      {"name": "eMeet Luna: USB Audio", "max_input_channels": 1, "default_samplerate": 48000, "index": 2}
-    ]
+    mock_devices.return_value.get_captures.return_value = [{"name": "eMeet Luna: USB Audio", "id": 2}]
 
-    Audio(device_name="eMeet Luna")
+    audio = Audio(device_name="eMeet Luna")
+    audio.start_stream()
 
-    mock_check.assert_called_once_with(device=2, samplerate=16000, channels=1, dtype="int16")
+    assert audio.device_name == "eMeet Luna: USB Audio"
     mock_stream.assert_called_once()
 
 
 @pytest.mark.asyncio
 async def test_main_audio_device_error() -> None:
-  # Mock settings loading to return a fully-populated model so that
-  # start() can configure MQTT before reaching Audio().
   from device.core.settings import Settings
 
   fake_settings = Settings(
@@ -101,10 +96,10 @@ async def test_main_audio_device_error() -> None:
   )
 
   with (
-    patch("device.core.settings.get_settings", return_value=fake_settings),
-    patch("device.core.app.Audio", side_effect=AudioDeviceError("No device")),
+    patch("device.core.app.get_settings", return_value=fake_settings),
+    patch("device.services.audio_service.Audio", side_effect=AudioDeviceError("No device")),
     patch("sys.exit", side_effect=SystemExit(1)) as mock_exit,
-    patch("device.core.app.MQTTClient") as mock_mqtt_cls,
+    patch("device.core.app.HomeAssistantDevice") as mock_mqtt_cls,
   ):
     mock_mqtt_cls.return_value.connect = MagicMock()
     mock_mqtt_cls.return_value.set_availability = MagicMock()
@@ -120,22 +115,16 @@ async def test_main_audio_device_error() -> None:
 
 
 def test_get_compatible_input_devices() -> None:
-  with patch("sounddevice.query_devices") as mock_query, patch("sounddevice.check_input_settings") as mock_check:
-    mock_query.return_value = [
-      {"name": "Mic 1", "max_input_channels": 1, "default_samplerate": 16000},
-      {"name": "Output Only", "max_input_channels": 0, "default_samplerate": 44100},
-      {"name": "Mic 2", "max_input_channels": 2, "default_samplerate": 16000},
-      {"name": "sysdefault", "max_input_channels": 1, "default_samplerate": 16000},
+  with patch("miniaudio.Devices") as mock_devices:
+    mock_devices.return_value.get_captures.return_value = [
+      {"name": "Mic 1", "id": 1},
+      {"name": "Mic 2", "id": 2},
+      {"name": "sysdefault", "id": 3},
     ]
-    # Simulate checks succeeding
-    mock_check.side_effect = [None, None, None]
 
-    # sysdefault is a virtual device, so it should not be returned when physical ones exist
     devs = Audio.get_compatible_input_devices()
     assert devs == ["Mic 1", "Mic 2"]
 
-    # Test with current_device parameter
-    mock_check.side_effect = [None, None, None, None]
     devs_with_current = Audio.get_compatible_input_devices(current_device="Mic 2")
     assert "Mic 1" in devs_with_current
     assert "Mic 2" in devs_with_current
@@ -147,13 +136,139 @@ def test_is_physical_microphone() -> None:
   assert Audio.is_physical_microphone("spdif") is False
   assert Audio.is_physical_microphone("default") is False
   assert Audio.is_physical_microphone("Default Microphone") is True
+  assert Audio.is_physical_microphone("Monitor of eMeet Luna Mono device") is False
+
+
+def test_audio_prefers_physical_microphone_over_monitor() -> None:
+  with patch("miniaudio.Devices") as mock_devices:
+    mock_devices.return_value.get_captures.return_value = [
+      {"name": "Monitor of eMeet Luna Mono device", "id": 1},
+      {"name": "eMeet Luna Mono", "id": 2},
+    ]
+
+    audio = Audio(device_name="eMeet Luna Mono")
+    assert audio.device_name == "eMeet Luna Mono"
+
+
+def test_match_device_name() -> None:
+  from device.core.audio import match_device_name
+
+  # Exact match
+  assert match_device_name("eMeet Luna Mono", "eMeet Luna Mono") is True
+  # Substring matches
+  assert match_device_name("eMeet Luna", "eMeet Luna Mono") is True
+  assert match_device_name("eMeet Luna Mono", "eMeet Luna") is True
+  # Token-based match with hardware details (ALSA hw suffixes) vs pipewire
+  assert match_device_name("eMeet Luna: USB Audio (hw:2,0)", "eMeet Luna Mono") is True
+  # Mismatched/different devices
+  assert match_device_name("eMeet Luna: USB Audio (hw:2,0)", "Built-in Audio Analog Stereo") is False
+  assert match_device_name("HDA Intel PCH: PHL 325E1 (hw:2,3)", "HDA Intel PCH: HDMI 1 (hw:2,7)") is False
+  assert match_device_name("Built-in Audio Analog Stereo", "Built-in Audio Analog Stereo") is True
 
 
 def test_sound_detector_terminate_with_no_stream() -> None:
   mock_mqtt = MagicMock()
   mock_ws = MagicMock()
   detector = SoundDetector(mock_mqtt, mock_ws, None, delay=3, threshold=0.8)
-  # Should not raise AttributeError when audio_stream is None
   detector.terminate()
   mock_mqtt.set_availability.assert_not_called()
   mock_mqtt.disconnect.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_main_speaker_device_error() -> None:
+  from device.core.settings import Settings
+  from device.core.speaker import SpeakerDeviceError
+
+  fake_settings = Settings(
+    _env_file=None,
+    node_id="test-node",
+    language="fr",
+    delay=3,
+    conversation_timeout=15,
+    ohunerin_host="localhost",
+    ohunerin_port=5023,
+    andika_host="localhost",
+    andika_port=5315,
+    cert_file=None,
+    ohunerin_threshold=0.65,
+    andika_model="vosk-model-small-fr-0.22",
+    andika_samplerate=16000,
+    microphone_device_index=None,
+    microphone_device=None,
+    mqtt_broker="localhost",
+    mqtt_port=1883,
+    mqtt_topic="oremi/test",
+    mqtt_username=None,
+    mqtt_password=None,
+    mqtt_discovery_prefix="homeassistant",
+    mqtt_discovery=False,
+    microphone_enabled=True,
+    speaker_enabled=True,
+  )
+
+  with (
+    patch("device.core.app.get_settings", return_value=fake_settings),
+    patch("device.services.audio_service.Audio"),
+    patch("device.services.audio_service.Speaker", side_effect=SpeakerDeviceError("Speaker error")),
+    patch("sys.exit", side_effect=SystemExit(1)) as mock_exit,
+    patch("device.core.app.HomeAssistantDevice") as mock_mqtt_cls,
+  ):
+    mock_mqtt_cls.return_value.connect = MagicMock()
+    mock_mqtt_cls.return_value.set_availability = MagicMock()
+    mock_mqtt_cls.return_value.client.connect_callback = MagicMock(return_value=lambda f: f)
+    mock_mqtt_cls.return_value.client.disconnect_callback = MagicMock(return_value=lambda f: f)
+    mock_mqtt_cls.return_value.client.message_callback = MagicMock(return_value=lambda f: f)
+
+    with pytest.raises(SystemExit) as exc_info:
+      await start()
+
+    assert exc_info.value.code == 1
+    mock_exit.assert_called_once_with(1)
+
+
+@pytest.mark.asyncio
+async def test_audio_listener_handles_null_stream() -> None:
+  from device.core.listener import AudioListener
+
+  websocket = MagicMock()
+  listener = AudioListener(None, websocket)
+
+  await listener.listening()
+
+
+@pytest.mark.asyncio
+async def test_audio_service_change_device_notifies_components() -> None:
+  from device.core.components import AudioStreamComponent
+  from device.services.audio_service import AudioService
+
+  class DummyComponent(AudioStreamComponent):
+    def __init__(self) -> None:
+      self.device_changed_called = False
+
+    async def on_device_changed(self, new_stream) -> None:
+      self.device_changed_called = True
+
+    async def start(self, config, shared_resources) -> None:
+      pass
+
+    async def stop(self) -> None:
+      pass
+
+    @property
+    def name(self) -> str:
+      return "dummy"
+
+  from device.core.settings import Settings
+
+  settings = Settings(
+    _env_file=None, node_id="test", ohunerin_host="localhost", andika_host="localhost", mqtt_broker="localhost"
+  )
+  service = AudioService(settings)
+  component = DummyComponent()
+
+  with patch("device.services.audio_service.Audio") as mock_audio_cls:
+    mock_audio_cls.find_compatible_device.return_value = {"index": 0}
+    res = await service.change_audio_device("Mic", components=[component])
+    assert res is True
+    assert component.device_changed_called is True

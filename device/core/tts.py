@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
+import abc
 from dataclasses import dataclass
 from typing import Literal
 
@@ -30,6 +31,18 @@ class TTSSynthesisRequest:
   method: Literal["GET", "POST"]
   body: str | None = None
   headers: dict[str, str] | None = None
+
+
+class BaseTTSClient(abc.ABC):
+  """Abstract base class for speech synthesis provider clients."""
+
+  @abc.abstractmethod
+  async def get_voices(self) -> list[TTSVoice]:
+    """Fetch available voices from the backend."""
+
+  @abc.abstractmethod
+  def synthesize_request(self, text: str, voice: str) -> TTSSynthesisRequest:
+    """Build a synthesis request for the given text and voice."""
 
 
 def voices_for_language(voices: list[TTSVoice], language: str) -> list[TTSVoice]:

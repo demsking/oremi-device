@@ -22,19 +22,15 @@ import httpx
 from pydantic import BaseModel
 from websockets.asyncio.client import connect
 
-from ..core.audio import Audio
-from ..core.detector import DETECTION_EVENT_TOPIC
-from ..core.detector import SoundDetector
-from ..core.listener import AudioListener
-from ..core.models import OhunerinConfig
-from ..core.mqtt import MQTTClient
-from ..core.package import APP_NAME
-from ..core.package import APP_VERSION
-from ..core.settings import Settings
-from ..utils.string import sluggify
-from .base import AudioStreamComponent
-from .base import HAEntity
-
+from device.core.audio import Audio
+from device.core.components import ActiveStreamContainer
+from device.core.components import AudioStreamComponent
+from device.core.components import DeviceState
+from device.core.components import SharedResources
+from device.core.detector import SoundDetector
+from device.core.listener import AudioListener
+from device.core.models import OhunerinConfig
+from device.core.settings import Settings
 
 logger = logging.getLogger(__name__)
 
@@ -54,19 +50,21 @@ class OhunerinComponent(AudioStreamComponent[OhunerinConfig]):
     super().__init__(settings)
 
     self._task: asyncio.Task | None = None
-    self._websocket = None
-    self.sound_detector = None
-    self.audio_listener = None
+    self._websocket: Any = None
+    self.sound_detector: SoundDetector | None = None
+    self.audio_listener: AudioListener | None = None
     self._listening_task: asyncio.Task | None = None
-    self._handle_task_done = None
+    self._handle_task_done: Any = None
     self.sounds: list[str] = []
+    self._active_stream_container: ActiveStreamContainer = {}
+    self._device_state: DeviceState = {}
 
   @property
   def name(self) -> str:
     return "ohunerin"
 
   def _get_server_info(self, host: str, port: int) -> OhunerinServerInfo | None:
-    endpoint = f"https://{host}:{port}/info" if self.settings.cert_file else f"http://{host}:{port}/info"
+    endpoint = f"https://{host}:{port}/health" if self.settings.cert_file else f"http://{host}:{port}/health"
 
     try:
       response = httpx.get(endpoint)
@@ -77,75 +75,6 @@ class OhunerinComponent(AudioStreamComponent[OhunerinConfig]):
       logger.error(f"Error response {exc.response.status_code} while requesting {exc.request.url!r}.")
 
     return None
-
-  def ha_entities(self, node_id: str, topic: str, availability_topic: str, device: dict) -> list[HAEntity]:
-    """
-    Register Wakeword and Sound Detector HA sensor entities.
-
-    See https://www.home-assistant.io/integrations/sensor.mqtt/
-    """
-    server_info = self._get_server_info(self.settings.ohunerin_host, self.settings.ohunerin_port)
-    event_topic = f"{topic}/{DETECTION_EVENT_TOPIC}"
-
-    wakeword_payload: dict = {
-      "name": "Wakeword",
-      "unique_id": f"{node_id}_wakeword",
-      "state_topic": event_topic,
-      "value_template": ("{% if value_json.type == 'wakeword' and value_json.sound != '...' %}detected{% else %}💤{% endif %}"),
-      "availability_topic": availability_topic,
-      "payload_available": "online",
-      "payload_not_available": "offline",
-      "device_class": "enum",
-      "options": ["detected", "💤"],
-      "json_attributes_topic": event_topic,
-      "json_attributes_template": (
-        "{% if value_json.type == 'wakeword' and value_json.sound != '...' %}{{ value_json | tojson }}{% else %}{}{% endif %}"
-      ),
-      "icon": "mdi:waveform",
-      "device": device,
-    }
-
-    sound_payload: dict = {
-      "name": "Sound Detector",
-      "unique_id": f"{node_id}_sound",
-      "state_topic": event_topic,
-      "value_template": (
-        "{% if value_json.type == 'sound' and value_json.sound != '...' %}{{ value_json.sound }}{% else %}💤{% endif %}"
-      ),
-      "availability_topic": availability_topic,
-      "payload_available": "online",
-      "payload_not_available": "offline",
-      "json_attributes_topic": event_topic,
-      "json_attributes_template": (
-        "{% if value_json.type == 'sound' and value_json.sound != '...' %}{{ value_json | tojson }}{% else %}{}{% endif %}"
-      ),
-      "icon": "mdi:waveform",
-      "device": device,
-    }
-
-    if server_info and server_info.sounds:
-      sound_payload["device_class"] = "enum"
-      sound_payload["options"] = server_info.sounds + ["💤"]
-      mapper_items = []
-
-      for sound in server_info.sounds:
-        slug = sluggify(sound)
-        escaped_slug = slug.replace("'", "\\'")
-        escaped_sound = sound.replace("'", "\\'")
-        mapper_items.append(f"'{escaped_slug}': '{escaped_sound}'")
-
-      mapper_str = ", ".join(mapper_items)
-      sound_payload["value_template"] = (
-        f"{{% if value_json.type != 'sound' or value_json.sound == '...' %}}💤"
-        f"{{% else %}}{{% set mapper = {{{mapper_str}}} %}}"
-        f"{{{{ mapper.get(value_json.sound, value_json.sound) }}}}"
-        f"{{% endif %}}"
-      )
-
-    return [
-      ("sensor", "wakeword", wakeword_payload),
-      ("sensor", "sound", sound_payload),
-    ]
 
   @property
   def task(self) -> asyncio.Task | None:
@@ -158,9 +87,10 @@ class OhunerinComponent(AudioStreamComponent[OhunerinConfig]):
     return self._listening_task
 
   def build_connection_uri(self, config: OhunerinConfig | None = None) -> str:
+    config = config or OhunerinConfig()
     query_string = urllib.parse.urlencode(
       {
-        "features": "wakeword-detection,sound-detection",
+        "features": ",".join(config.features),
         "language": self.settings.language,
       }
     )
@@ -173,9 +103,11 @@ class OhunerinComponent(AudioStreamComponent[OhunerinConfig]):
   async def start(
     self,
     config: OhunerinConfig | None,
-    mqtt_client: MQTTClient,
-    shared_resources: dict[str, Any],
+    shared_resources: SharedResources,
   ) -> None:
+    publisher = shared_resources.get("mqtt_publisher")
+    resources = shared_resources
+
     if config is None:
       logger.warning("Ohunerin component started without configuration; using defaults.")
       config = OhunerinConfig()
@@ -185,8 +117,10 @@ class OhunerinComponent(AudioStreamComponent[OhunerinConfig]):
     logger.info(f"Ohunerin Threshold: {config.threshold}")
 
     loop = asyncio.get_running_loop()
-    self._handle_task_done = shared_resources["handle_task_done"]
-    self._task = loop.create_task(self._run(config, mqtt_client, shared_resources))
+    self._handle_task_done = resources.get("handle_task_done")
+    self._active_stream_container = resources.get("active_stream_container", {})
+    self._device_state = resources.get("device_state", {})
+    self._task = loop.create_task(self._run(config, publisher, resources))
 
   async def stop(self) -> None:
     if self._task and not self._task.done():
@@ -215,8 +149,30 @@ class OhunerinComponent(AudioStreamComponent[OhunerinConfig]):
       except (asyncio.CancelledError, Exception):
         pass
 
-    # Start new listening task
-    if new_stream is not None and self.audio_listener:
+    # Start new listening task if stream exists and microphone is not muted
+    is_muted = self._device_state.get("microphone_muted", False) if self._device_state else False
+
+    if new_stream is not None and self.audio_listener and not is_muted:
+      loop = asyncio.get_running_loop()
+
+      self._listening_task = loop.create_task(self.audio_listener.listening(), name="Listening Task")
+
+      if self._handle_task_done:
+        self._listening_task.add_done_callback(self._handle_task_done)
+
+  async def on_mute_changed(self, muted: bool) -> None:
+    """Handle microphone mute state change."""
+    if self._listening_task and not self._listening_task.done():
+      self._listening_task.cancel()
+
+      try:
+        await self._listening_task
+      except (asyncio.CancelledError, Exception):
+        pass
+
+    stream = self._active_stream_container.get("stream") if self._active_stream_container else None
+
+    if not muted and stream is not None and self.audio_listener:
       loop = asyncio.get_running_loop()
       self._listening_task = loop.create_task(self.audio_listener.listening(), name="Listening Task")
 
@@ -226,11 +182,13 @@ class OhunerinComponent(AudioStreamComponent[OhunerinConfig]):
   async def _run(
     self,
     config: OhunerinConfig,
-    mqtt_client: MQTTClient,
-    shared_resources: dict[str, Any],
+    publisher: Any,
+    shared_resources: SharedResources,
   ) -> None:
     loop = asyncio.get_running_loop()
-    active_stream_container = shared_resources["active_stream_container"]
+    active_stream_container = shared_resources.get("active_stream_container", {})
+    self._active_stream_container = active_stream_container
+    self._device_state = shared_resources.get("device_state", {})
 
     ohunerin_uri = self.build_connection_uri(config)
 
@@ -248,26 +206,23 @@ class OhunerinComponent(AudioStreamComponent[OhunerinConfig]):
 
     while True:
       try:
-        async with connect(
-          ohunerin_uri, ssl=ssl_context, user_agent_header=f"{APP_NAME}/{APP_VERSION}/{self.settings.node_id}"
-        ) as websocket:
+        async with connect(ohunerin_uri, ssl=ssl_context, user_agent_header=self.settings.user_agent) as websocket:
           self._websocket = websocket
           retry_delay = 2.0  # reset backoff on successful connection
           logger.info(f"Connected to Oremi Ohunerin server at {self.settings.ohunerin_host}:{self.settings.ohunerin_port}")
 
           self.sound_detector = SoundDetector(
-            mqtt_client,
+            publisher,
             websocket,
-            active_stream_container["stream"],
+            active_stream_container.get("stream"),
             delay=self.settings.delay,
             threshold=config.threshold,
-            wakeword_event=shared_resources["wakeword_event"],
+            wakeword_event=shared_resources.get("wakeword_event"),
           )
 
           self.audio_listener = AudioListener(
-            active_stream_container["stream"],
+            active_stream_container.get("stream"),
             websocket,
-            mqtt_client,
           )
 
           detecting_task = loop.create_task(self.sound_detector.detecting(), name="Detection Task")
@@ -275,9 +230,9 @@ class OhunerinComponent(AudioStreamComponent[OhunerinConfig]):
           if self._handle_task_done:
             detecting_task.add_done_callback(self._handle_task_done)
 
-          device_state = shared_resources["device_state"]
+          device_state = shared_resources.get("device_state", {})
 
-          if active_stream_container["stream"] is not None and not device_state["microphone_muted"]:
+          if active_stream_container.get("stream") is not None and not device_state.get("microphone_muted", False):
             self._listening_task = loop.create_task(self.audio_listener.listening(), name="Listening Task")
 
             if self._handle_task_done:

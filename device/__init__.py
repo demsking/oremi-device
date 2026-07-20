@@ -12,4 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-from .core.app import start  # noqa: F401
+from device.core.app import DeviceApplication
+
+
+async def start() -> None:
+  app = DeviceApplication()
+  await app.run()
+
+
+app = start()

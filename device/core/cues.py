@@ -16,7 +16,21 @@ from pathlib import Path
 from typing import Literal
 
 
-SoundCue = Literal["announcement", "cancel", "listening", "ready", "shutdown", "thinking", "volume"]
+SoundCue = Literal[
+  "announcement",
+  "cancel",
+  "error",
+  "listening",
+  "mute_off",
+  "mute_on",
+  "ready",
+  "shutdown",
+  "sleep",
+  "thinking",
+  "volume",
+  "wakeword",
+]
+
 ConversationEvent = Literal["cancelled", "listening", "processing"]
 ConversationState = Literal["idle", "listening", "processing", "speaking"]
 SOUNDS_DIRECTORY = Path(__file__).resolve().parent.parent / "sounds"

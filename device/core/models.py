@@ -21,6 +21,7 @@ from pydantic import AwareDatetime
 from pydantic import BaseModel
 from pydantic import ConfigDict
 from pydantic import Field
+from pydantic import field_validator
 
 
 DetectedSoundType = Literal["sound", "wakeword"]
@@ -43,15 +44,27 @@ class DetectedSound(TypedDict):
   date: str
 
 
+OhunerinConfigFeature = Literal["wakeword-detection", "sound-detection"]
+
+
 class OhunerinConfig(BaseModel):
   """
   The configuration schema for the Ohunerin component.
   """
 
-  threshold: float = Field(
-    default=0.65,
-    description="The minimum confidence score required to trigger a sound event detection. Defaults to 0.65.",
+  features: list[OhunerinConfigFeature] = Field(
+    default_factory=lambda: ["wakeword-detection", "sound-detection"],
+    description=("The list of detection features to enable."),
   )
+
+  threshold: float = Field(
+    default=0.65, description="The minimum confidence score required for a detection to be considered valid. "
+  )
+
+  @field_validator("features")
+  @classmethod
+  def deduplicate_features(cls, value: list[OhunerinConfigFeature]) -> list[OhunerinConfigFeature]:
+    return list(dict.fromkeys(value))
 
 
 AndikaModel = Literal[
@@ -199,13 +212,8 @@ class ProcessingResponse(BaseModel):
   service: str = ""
   message: str | None = None
   data: Any = Field(default_factory=dict)
-  continue_conversation: bool = False
   confidence: float = 0.0
   commands: list[ProcessingCommand] = Field(default_factory=list)
-
-  def requests_user_input(self) -> bool:
-    """Return whether this response was classified as needing user input."""
-    return self.continue_conversation
 
   def resolved_commands(self) -> list[ProcessingCommand]:
     """Use a response message as the conversational speech fallback."""

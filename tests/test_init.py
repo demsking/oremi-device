@@ -13,16 +13,18 @@
 # limitations under the License.
 # ==============================================================================
 import asyncio
+import json
 import urllib.parse
 from unittest.mock import MagicMock
 from unittest.mock import patch
 
 import pytest
 
-from device.components.andika import AndikaComponent
 from device.components.ohunerin import OhunerinComponent
-from device.core.models import AndikaConfig, OhunerinConfig
+from device.core.models import AndikaConfig
+from device.core.models import OhunerinConfig
 from device.core.settings import Settings
+from device.core.stt import AndikaComponent
 
 
 def _make_settings(**kwargs) -> Settings:
@@ -106,24 +108,39 @@ def test_ohunerin_config_with_threshold() -> None:
 
 
 def test_ohunerin_ha_entities_use_event_topics_and_node_availability() -> None:
-  component = OhunerinComponent(_make_settings())
+  from device.core.mqtt import HomeAssistantDevice
 
-  with patch.object(component, "_get_server_info", return_value=None):
-    entities = component.ha_entities(
-      "oremi-device-test-node",
-      "oremi/device/nodes/test-node",
-      "oremi/device/nodes/test-node/available",
-      {"identifiers": ["oremi-device-test-node"]},
-    )
+  client = HomeAssistantDevice(
+    broker="localhost",
+    port=1883,
+    topic="oremi/device",
+    node_id="test-node",
+    discovery_prefix="homeassistant",
+  )
+  mock_client_instance = MagicMock()
+  client.client = mock_client_instance
 
-  payloads = {entity_slug: payload for _, entity_slug, payload in entities}
-  assert payloads["wakeword"]["state_topic"] == "oremi/device/nodes/test-node/event"
-  assert payloads["sound"]["state_topic"] == "oremi/device/nodes/test-node/event"
-  assert payloads["wakeword"]["json_attributes_topic"] == "oremi/device/nodes/test-node/event"
-  assert payloads["sound"]["json_attributes_topic"] == "oremi/device/nodes/test-node/event"
-  assert "value_json.type == 'wakeword'" in payloads["wakeword"]["value_template"]
-  assert "value_json.type == 'sound'" in payloads["sound"]["value_template"]
-  assert all(payload["availability_topic"] == "oremi/device/nodes/test-node/available" for payload in payloads.values())
+  client.publish_discovery_configs(input_devices=[], current_device="")
+
+  wakeword_calls = [
+    call for call in mock_client_instance.publish.call_args_list
+    if call[0][0].endswith("sensor/oremi-device-test-node/wakeword/config")
+  ]
+  sound_calls = [
+    call for call in mock_client_instance.publish.call_args_list
+    if call[0][0].endswith("sensor/oremi-device-test-node/sound/config")
+  ]
+
+  assert len(wakeword_calls) == 1
+  assert len(sound_calls) == 1
+
+  wakeword_payload = json.loads(wakeword_calls[0][0][1])
+  sound_payload = json.loads(sound_calls[0][0][1])
+
+  assert wakeword_payload["state_topic"] == "oremi/device/nodes/test-node/events/detection"
+  assert sound_payload["state_topic"] == "oremi/device/nodes/test-node/events/detection"
+  assert wakeword_payload["availability_topic"] == "oremi/device/nodes/test-node/available"
+  assert sound_payload["availability_topic"] == "oremi/device/nodes/test-node/available"
 
 
 def test_build_andika_connection_uri_default() -> None:
@@ -162,38 +179,17 @@ def test_build_andika_connection_uri_with_config() -> None:
   assert "temperature-unit" not in params
 
 
-def test_andika_ha_entities() -> None:
-  settings = _make_settings()
-  component = AndikaComponent(settings)
-  entities = component.ha_entities(
-    "oremi-device-test-node",
-    "oremi/device/nodes/test-node",
-    "oremi/device/nodes/test-node/available",
-    {"identifiers": ["oremi-device-test-node"]},
-  )
-
-  assert len(entities) == 1
-  ha_domain, entity_slug, payload = entities[0]
-  assert ha_domain == "sensor"
-  assert entity_slug == "transcription"
-  assert payload["name"] == "Transcription"
-  assert payload["unique_id"] == "oremi-device-test-node_transcription"
-  assert payload["state_topic"] == "oremi/device/nodes/test-node/transcription/result"
-  assert payload["availability_topic"] == "oremi/device/nodes/test-node/available"
-  assert payload["value_template"] == "{{ value_json.text }}"
-  assert "json_attributes_topic" not in payload
-
 
 @pytest.mark.asyncio
 async def test_ohunerin_stop_cancels_main_task_without_waiting_for_websocket_close() -> None:
   component = OhunerinComponent(_make_settings())
-  component._websocket = MagicMock()  # noqa: SLF001
-  component._task = asyncio.create_task(asyncio.Event().wait())  # noqa: SLF001
+  component._websocket = MagicMock()
+  component._task = asyncio.create_task(asyncio.Event().wait())
 
   await component.stop()
 
-  assert component._task.cancelled()  # noqa: SLF001
-  component._websocket.close.assert_not_called()  # noqa: SLF001
+  assert component._task.cancelled()
+  component._websocket.close.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -229,7 +225,7 @@ async def test_ohunerin_stop_does_not_reconnect_after_detection_cancellation() -
   }
 
   with patch("device.components.ohunerin.connect", return_value=connection):
-    await component.start(OhunerinConfig(), MagicMock(), shared_resources)
+    await component.start(OhunerinConfig(), shared_resources)
     await asyncio.wait_for(entered.wait(), timeout=1)
     await asyncio.wait_for(component.stop(), timeout=1)
 

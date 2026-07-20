@@ -16,10 +16,10 @@ import logging
 
 from pydantic import ValidationError
 
-from ..core.mqtt import DEVICE_CONTEXT_OPTIONS
-from ..core.mqtt import DEVICE_CONTEXT_TEXT_FIELDS
-from ..core.settings import RuntimeSettingsCache
-from ..core.settings import Settings
+from device.core.mqtt import DEVICE_CONTEXT_OPTIONS
+from device.core.mqtt import DEVICE_CONTEXT_TEXT_FIELDS
+from device.core.settings import RuntimeSettingsCache
+from device.core.settings import Settings
 
 logger = logging.getLogger(__name__)
 

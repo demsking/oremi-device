@@ -29,36 +29,6 @@ def test_processing_message_defaults_to_speech() -> None:
   response = ProcessingResponse.model_validate({"message": "Il est 13h30"})
 
   assert response.resolved_commands() == [SpeakCommand(type="speak", text="Il est 13h30")]
-  assert response.continue_conversation is False
-
-
-def test_processing_response_accepts_continue_conversation_flag() -> None:
-  response = ProcessingResponse.model_validate({"message": "Quel jour ?", "continue_conversation": True})
-
-  assert response.continue_conversation is True
-  assert response.requests_user_input() is True
-  assert response.resolved_commands() == [SpeakCommand(type="speak", text="Quel jour ?")]
-
-
-def test_processing_response_does_not_request_user_input_from_data() -> None:
-  response = ProcessingResponse.model_validate(
-    {
-      "ok": False,
-      "message": "Please share a location so I can check alerts for that area.",
-      "data": {"error": {"type": "more_information_required"}, "required": ["location"]},
-    }
-  )
-
-  assert response.requests_user_input() is False
-  assert response.resolved_commands() == [
-    SpeakCommand(type="speak", text="Please share a location so I can check alerts for that area.")
-  ]
-
-
-def test_processing_response_does_not_request_user_input_for_generic_errors() -> None:
-  response = ProcessingResponse.model_validate({"ok": False, "message": "Please try again shortly.", "data": {}})
-
-  assert response.requests_user_input() is False
 
 
 def test_explicit_commands_override_message_fallback() -> None:

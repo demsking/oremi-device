@@ -33,10 +33,11 @@ from pydantic import ValidationError
 from pydantic_settings import BaseSettings
 from pydantic_settings import SettingsConfigDict
 
-from .geocode import get_location_geocode
-from .models import AndikaModel
-from .package import APP_NAME
-from .timezone import infer_timezone_from_coordinates
+from device.core.geocode import get_location_geocode
+from device.core.models import AndikaModel
+from device.core.package import APP_NAME
+from device.core.package import APP_VERSION
+from device.core.timezone import infer_timezone_from_coordinates
 
 
 DEFAULT_TIMEZONE = "UTC"
@@ -105,6 +106,9 @@ def format_settings_errors(error: ValidationError) -> list[str]:
 class Settings(BaseSettings):
   model_config = SettingsConfigDict(env_prefix="OREMI_DEVICE_", env_file=".env", extra="ignore")
 
+  server_host: str = "127.0.0.1"
+  server_port: int = Field(default=5048, gt=0, le=65535)
+
   language: Literal["fr", "en"] = "fr"
   location: str = ""
   timezone: str = DEFAULT_TIMEZONE
@@ -123,19 +127,8 @@ class Settings(BaseSettings):
   speaker_device: str | None = None
   speaker_muted: bool = False
   speaker_volume: float = Field(default=1.0, ge=0, le=1)
-  continue_conversation_enabled: bool = True
   delay: int = Field(default=3, gt=0)
   conversation_timeout: float = Field(default=15.0, gt=0)
-
-  llm_model: str = Field(
-    default="ollama:qwen3.5:2b",
-    description="Fully qualified Pydantic-AI model identifier.",
-  )
-
-  ollama_base_url: HttpUrl | None = Field(
-    default=None,
-    description="Ollama API base URL used when the agent runs on Ollama.",
-  )
 
   akorin_url: HttpUrl | None = None
 
@@ -164,7 +157,7 @@ class Settings(BaseSettings):
 
   cert_file: str | None = None
   node_id: str
-  data: Path | None = None
+  data_path: Path | None = None
 
   mqtt_broker: str
   mqtt_port: int = Field(default=1883, gt=0, le=65535)
@@ -176,25 +169,6 @@ class Settings(BaseSettings):
 
   log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = Field(default="INFO")
   log_file: str | None = Field(default=None)
-
-  @cached_property
-  def should_use_ollama(self) -> bool:
-    """Return whether the active agent model uses the Ollama backend."""
-
-    return self.llm_model.startswith("ollama:")
-
-  @cached_property
-  def ollama_model_name(self) -> str:
-    """Return the Ollama model name without provider prefix."""
-    return self.llm_model.removeprefix("ollama:")  # pylint: disable=no-member
-
-  @cached_property
-  def ollama_base_url_string(self) -> str:
-    """Return the Ollama base URL for Pydantic AI."""
-    if self.ollama_base_url is None:
-      raise ValueError("OREMI_AKORIN_OLLAMA_BASE_URL is required when using an ollama: model")
-
-    return str(self.ollama_base_url).rstrip("/")
 
   @property
   def context(self) -> dict[str, Any]:
@@ -227,9 +201,13 @@ class Settings(BaseSettings):
     return context
 
   @cached_property
+  def user_agent(self) -> str:
+    return f"{APP_NAME}/{APP_VERSION}/{self.node_id}"
+
+  @cached_property
   def path(self) -> Path:
-    if self.data is not None:
-      return self.data / f"{self.node_id}.json"
+    if self.data_path is not None:
+      return self.data_path / f"{self.node_id}.json"
 
     data_home = Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local" / "share"))
 
@@ -282,7 +260,6 @@ class RuntimeSettingsCache(BaseModel):
   speaker_device: str | None = None
   speaker_muted: bool | None = None
   speaker_volume: float | None = Field(default=None, ge=0, le=1)
-  continue_conversation_enabled: bool | None = None
   tts_voice: str | None = None
 
   @field_validator("preferred_currency", mode="before")
@@ -312,12 +289,14 @@ def read_runtime_settings_cache(settings: Settings) -> RuntimeSettingsCache:
     content = json.loads(settings.path.read_text(encoding="utf-8"))
   except (OSError, json.JSONDecodeError) as error:
     logger.warning(f"Ignoring unreadable runtime settings cache {settings.path}: {error}")
+
     return RuntimeSettingsCache()
 
   try:
     return RuntimeSettingsCache.model_validate(content)
   except ValidationError as error:
     logger.warning(f"Ignoring invalid runtime settings cache {settings.path}: {error}")
+
     return RuntimeSettingsCache()
 
 

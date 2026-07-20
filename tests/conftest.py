@@ -12,6 +12,22 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-from .agent import AgentClient
+from unittest.mock import MagicMock
 
-__all__ = ["AgentClient"]
+import pytest
+
+
+@pytest.fixture(autouse=True)
+def mock_geocode(monkeypatch) -> None:
+  """Automatically mock geocoding network calls for all tests."""
+  mock_result = MagicMock()
+  mock_result.latitude = 4.0510564
+  mock_result.longitude = 9.7678687
+  mock_result.address = "Douala, Littoral, Cameroon"
+
+  def geocode_mock(location: str):
+    if not location or not location.strip():
+      return None
+    return mock_result
+
+  monkeypatch.setattr("device.core.settings.get_location_geocode", geocode_mock)

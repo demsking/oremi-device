@@ -152,10 +152,10 @@ services:
     restart: unless-stopped
     environment:
       OREMI_AKORIN_OLLAMA_BASE_URL: http://ollama:11434
-      OREMI_AKORIN_ISINMI_URL: http://isinmi:7337
-      OREMI_AKORIN_OJO_URL: http://ojo:1777
-      OREMI_AKORIN_REDIYO_URL: http://rediyo:9170
-      OREMI_AKORIN_KANSA_URL: http://kansa:4940
+      OREMI_AKORIN_ISINMI_URL: http://isinmi:5073
+      OREMI_AKORIN_OJO_URL: http://ojo:5040
+      OREMI_AKORIN_REDIYO_URL: http://rediyo:5076
+      OREMI_AKORIN_KANSA_URL: http://kansa:5046
       OREMI_AKORIN_MQTT_BROKER: mosquitto
     env_file:
       - .env
@@ -178,49 +178,32 @@ services:
       - oremi-andika-data:/usr/share/vosk
 
   isinmi:
-    image: demsking/oremi-isinmi-agent
-    restart: always
-    depends_on:
-      - ollama
-    ports:
-      - 37337:7337
+    image: demsking/oremi-isinmi
+    restart: unless-stopped
     environment:
-      OREMI_ISINMI_OLLAMA_BASE_URL: http://ollama:11434
       OREMI_ISINMI_DATABASE_ENCRYPTION_KEY: your_database_encryption_key_here
     volumes:
       - oremi-isinmi-agent-data:/oremi/data
 
   ojo:
     image: demsking/oremi-ojo
-    restart: always
-    depends_on:
-      - ollama
-    environment:
-      OREMI_OJO_OLLAMA_BASE_URL: http://ollama:11434
+    restart: unless-stopped
 
   rediyo:
-    image: demsking/oremi-rediyo-agent
-    restart: always
-    depends_on:
-      - ollama
+    image: demsking/oremi-rediyo
+    restart: unless-stopped
     volumes:
-      - oremi-rediyo-agent-data:/var/cache/oremi-rediyo-agent
-    environment:
-      OLLAMA_BASEURL: http://ollama:11434
+      - oremi-rediyo-data:/oremi/data
 
   kansa:
-    image: demsking/oremi-kansa-agent
-    restart: always
-    depends_on:
-      - ollama
+    image: demsking/oremi-kansa
+    restart: unless-stopped
     volumes:
-      - oremi-kansa-agent-data:/var/cache/oremi-kansa-agent
-    environment:
-      OLLAMA_BASEURL: http://ollama:11434
+      - oremi-kansa-data:/oremi/data
 
   ollama:
     image: ollama/ollama
-    restart: always
+    restart: unless-stopped
     runtime: nvidia
     volumes:
       - ~/.ollama:/root/.ollama
@@ -236,8 +219,8 @@ services:
 volumes:
   oremi-device-data:
   oremi-isinmi-agent-data:
-  oremi-rediyo-agent-data:
-  oremi-kansa-agent-data:
+  oremi-rediyo-data:
+  oremi-kansa-data:
   oremi-andika-data:
 ```
 
@@ -296,10 +279,10 @@ services:
     restart: unless-stopped
     environment:
       OREMI_AKORIN_OLLAMA_BASE_URL: http://ollama:11434
-      OREMI_AKORIN_ISINMI_URL: http://isinmi:7337
-      OREMI_AKORIN_OJO_URL: http://ojo:1777
-      OREMI_AKORIN_REDIYO_URL: http://rediyo:9170
-      OREMI_AKORIN_KANSA_URL: http://kansa:4940
+      OREMI_AKORIN_ISINMI_URL: http://isinmi:5073
+      OREMI_AKORIN_OJO_URL: http://ojo:5040
+      OREMI_AKORIN_REDIYO_URL: http://rediyo:5076
+      OREMI_AKORIN_KANSA_URL: http://kansa:5046
       OREMI_AKORIN_MQTT_BROKER: mosquitto
     env_file:
       - .env
@@ -316,45 +299,28 @@ services:
     restart: unless-stopped
 
   isinmi:
-    image: demsking/oremi-isinmi-agent
-    restart: always
-    depends_on:
-      - ollama
-    ports:
-      - 37337:7337
+    image: demsking/oremi-isinmi
+    restart: unless-stopped
     environment:
-      OREMI_ISINMI_OLLAMA_BASE_URL: http://ollama:11434
       OREMI_ISINMI_DATABASE_ENCRYPTION_KEY: your_database_encryption_key_here
     volumes:
       - oremi-isinmi-agent-data:/oremi/data
 
   ojo:
     image: demsking/oremi-ojo
-    restart: always
-    depends_on:
-      - ollama
-    environment:
-      OREMI_OJO_OLLAMA_BASE_URL: http://ollama:11434
+    restart: unless-stopped
 
   rediyo:
-    image: demsking/oremi-rediyo-agent
-    restart: always
-    depends_on:
-      - ollama
+    image: demsking/oremi-rediyo
+    restart: unless-stopped
     volumes:
-      - oremi-rediyo-agent-data:/var/cache/oremi-rediyo-agent
-    environment:
-      OLLAMA_BASEURL: http://ollama:11434
+      - oremi-rediyo-data:/oremi/data
 
   kansa:
-    image: demsking/oremi-kansa-agent
-    restart: always
-    depends_on:
-      - ollama
+    image: demsking/oremi-kansa
+    restart: unless-stopped
     volumes:
-      - oremi-kansa-agent-data:/var/cache/oremi-kansa-agent
-    environment:
-      OLLAMA_BASEURL: http://ollama:11434
+      - oremi-kansa-data:/oremi/data
 
   whisper-model:
     image: ghcr.io/ggml-org/whisper.cpp:main
@@ -376,7 +342,7 @@ services:
 
   ollama:
     image: ollama/ollama
-    restart: always
+    restart: unless-stopped
     runtime: nvidia
     volumes:
       - ~/.ollama:/root/.ollama
@@ -392,8 +358,8 @@ services:
 volumes:
   oremi-device-data:
   oremi-isinmi-agent-data:
-  oremi-rediyo-agent-data:
-  oremi-kansa-agent-data:
+  oremi-rediyo-data:
+  oremi-kansa-data:
   oremi-andika-data:
   whisper-models:
 ```
@@ -458,10 +424,10 @@ services:
     restart: unless-stopped
     environment:
       OREMI_AKORIN_OLLAMA_BASE_URL: http://ollama:11434
-      OREMI_AKORIN_ISINMI_URL: http://isinmi:7337
-      OREMI_AKORIN_OJO_URL: http://ojo:1777
-      OREMI_AKORIN_REDIYO_URL: http://rediyo:9170
-      OREMI_AKORIN_KANSA_URL: http://kansa:4940
+      OREMI_AKORIN_ISINMI_URL: http://isinmi:5073
+      OREMI_AKORIN_OJO_URL: http://ojo:5040
+      OREMI_AKORIN_REDIYO_URL: http://rediyo:5076
+      OREMI_AKORIN_KANSA_URL: http://kansa:5046
       OREMI_AKORIN_MQTT_BROKER: mosquitto
     env_file:
       - .env
@@ -484,45 +450,28 @@ services:
       - oremi-andika-data:/usr/share/vosk
 
   isinmi:
-    image: demsking/oremi-isinmi-agent
-    restart: always
-    depends_on:
-      - ollama
-    ports:
-      - 37337:7337
+    image: demsking/oremi-isinmi
+    restart: unless-stopped
     environment:
-      OREMI_ISINMI_OLLAMA_BASE_URL: http://ollama:11434
       OREMI_ISINMI_DATABASE_ENCRYPTION_KEY: your_database_encryption_key_here
     volumes:
       - oremi-isinmi-agent-data:/oremi/data
 
   ojo:
     image: demsking/oremi-ojo
-    restart: always
-    depends_on:
-      - ollama
-    environment:
-      OREMI_OJO_OLLAMA_BASE_URL: http://ollama:11434
+    restart: unless-stopped
 
   rediyo:
-    image: demsking/oremi-rediyo-agent
-    restart: always
-    depends_on:
-      - ollama
+    image: demsking/oremi-rediyo
+    restart: unless-stopped
     volumes:
-      - oremi-rediyo-agent-data:/var/cache/oremi-rediyo-agent
-    environment:
-      OLLAMA_BASEURL: http://ollama:11434
+      - oremi-rediyo-data:/oremi/data
 
   kansa:
-    image: demsking/oremi-kansa-agent
-    restart: always
-    depends_on:
-      - ollama
+    image: demsking/oremi-kansa
+    restart: unless-stopped
     volumes:
-      - oremi-kansa-agent-data:/var/cache/oremi-kansa-agent
-    environment:
-      OLLAMA_BASEURL: http://ollama:11434
+      - oremi-kansa-data:/oremi/data
 
   edge-tts:
     image: travisvn/openai-edge-tts:latest
@@ -533,7 +482,7 @@ services:
 
   ollama:
     image: ollama/ollama
-    restart: always
+    restart: unless-stopped
     runtime: nvidia
     volumes:
       - ~/.ollama:/root/.ollama
@@ -549,8 +498,8 @@ services:
 volumes:
   oremi-device-data:
   oremi-isinmi-agent-data:
-  oremi-rediyo-agent-data:
-  oremi-kansa-agent-data:
+  oremi-rediyo-data:
+  oremi-kansa-data:
   oremi-andika-data:
 ```
 
@@ -595,7 +544,6 @@ Depending on your configured `OREMI_DEVICE_TRANSCRIPTION_BACKEND`, one additiona
 - **`OREMI_DEVICE_TRANSCRIPTION_BACKEND`** – Speech analysis target platform processor type options (`andika` | `whisper.cpp`). Default: `andika`.
 - **`OREMI_DEVICE_DELAY`** – Processing interval delay threshold measuring session boundaries. Default: `3`.
 - **`OREMI_DEVICE_CONVERSATION_TIMEOUT`** – Limit boundary window monitoring speech capturing before cutoff. Default: `15.0`.
-- **`OREMI_DEVICE_CONTINUE_CONVERSATION_ENABLED`** – Allows processing responses marked for follow-up to reopen listening automatically. Default: `true`.
 
 ### Akọrin Orchestration
 
@@ -700,28 +648,19 @@ oremi-device: configuration error
   - OREMI_DEVICE_MQTT_BROKER is required
 ```
 
-## Runtime Behavior
+## Model Context Protocol
 
-At startup, Oremi Device:
+Oremi Device implements the Model Context Protocol (MCP) using a strongly-typed
+server. It exposes its core functionality as a set of tools, resources and
+prompts that LLM agents can call directly.
 
-1. Loads and validates the environment settings.
-2. Initializes the preferred microphone and speaker when enabled.
-3. Connects to MQTT and subscribes to this node's control topics.
-4. Starts the Ohunerin, Andika, and Akorin components with their configured settings.
-5. Streams microphone audio continuously to Ohunerin.
-6. Starts streaming audio to Andika after a wake-word event and stops after
-   Andika returns a final transcription or the conversation timeout expires.
-7. Sends each final transcription to Akorin and executes the returned commands sequentially.
+The MCP server uses the **Streamable HTTP transport** protocol and is mounted at:
 
-Ohunerin and Andika reconnect with exponential backoff when their WebSocket
-connections fail. Akorin requests are handled one at a time over HTTP. The application also polls for audio-device changes and
-updates Home Assistant discovery options when devices appear or disappear.
+```txt
+/mcp
+```
 
-The microphone mute control pauses audio streaming without stopping the service
-connections. A language command updates the retained MQTT state and reconnects
-Ohunerin with the newly selected language. Device-context commands update the
-retained context document so subscribing services can immediately react to
-preference changes.
+### Available MCP Tools
 
 ## MQTT
 
@@ -956,21 +895,6 @@ A response containing only `message` is spoken with the active speech synthesis 
 ```json
 {
   "message": "Il est 13h30"
-}
-```
-
-When Akorin returns a spoken `message`, the device asks Akorin to classify that
-message as either needing a user answer or not. If the message asks for more
-information, `OREMI_DEVICE_CONTINUE_CONVERSATION_ENABLED` is enabled, and the
-microphone is available, the device waits until the response speech finishes and
-then reopens listening without requiring another wake word. The next
-transcription is first rewritten into a standalone request using the previous
-user request and Akorin clarification, then sent to Akorin as a normal request.
-
-```json
-{
-  "ok": false,
-  "message": "Please share a location so I can check alerts for that area."
 }
 ```
 
@@ -1317,6 +1241,75 @@ The resulting `media_player` supports Home Assistant TTS and audio media-source
 URLs, stop, mute, and volume controls. Playback requires `ffmpeg`; it is included
 in the Docker image and must be installed separately when running from source.
 
+## Model Context Protocol (MCP)
+
+Oremi Device implements the [Model Context Protocol (MCP)](https://modelcontextprotocol.io/), allowing LLM-based agents and assistants to inspect the device's status, configure settings, and manage audio devices directly.
+
+#### Available MCP Tools
+
+The following tools are registered on the MCP server:
+
+#### `get_device_status`
+
+Retrieves the current status, audio settings, and general configuration of the device.
+
+- **Type**: Read-only
+- **Arguments**: None
+- **Response**: A JSON object containing the node's profile, settings, and hardware state.
+
+#### `list_audio_devices`
+
+Lists all compatible microphone (input) and speaker (output) devices discovered on the host system.
+
+- **Type**: Read-only
+- **Arguments**: None
+- **Response**: Discovered audio devices classified as `input_devices` and `output_devices`.
+
+#### `list_voices`
+
+Retrieves available text-to-speech (TTS) voices from the configured speech synthesis backend (e.g., `izwi` or `edge-tts`).
+
+- **Type**: Read-only
+- **Arguments**:
+  - `language` (string, optional): A two-letter language code (e.g., `fr`, `en`) to filter voices.
+- **Response**: A list of compatible voice profiles.
+
+#### `update_device_settings`
+
+Updates the device's runtime configuration dynamically. Changes are immediately applied to memory and persisted in the node's local configuration cache file.
+
+- **Type**: Mutation
+- **Arguments**:
+  - `language` (string, optional): The device language (`fr` or `en`).
+  - `location` (string, optional): Geolocation name (e.g., `"Douala, Cameroon"`).
+  - `timezone` (string, optional): Standard IANA timezone (e.g., `"Africa/Douala"`).
+  - `temperature_unit` (string, optional): Unit selector (`celsius` or `fahrenheit`).
+  - `preferred_currency` (string, optional): Currency code (e.g., `XAF`).
+  - `measurement_system` (string, optional): Measurement system (`metric` or `imperial`).
+  - `distance_unit` (string, optional): Distance unit (`kilometer` or `mile`).
+  - `time_format` (string, optional): Time format (`12h` or `24h`).
+  - `date_format` (string, optional): Date format (`DD/MM/YYYY`, `MM/DD/YYYY`, or `YYYY-MM-DD`).
+  - `first_day_of_week` (string, optional): First day of the week (`monday`, `sunday`, or `saturday`).
+  - `microphone_muted` (boolean, optional): Whether to mute the microphone capture stream.
+  - `speaker_muted` (boolean, optional): Whether to mute the speaker playback stream.
+  - `speaker_volume` (number, optional): Playback gain scalar between `0.0` and `1.0`.
+  - `tts_voice` (string, optional): Speech synthesis voice name.
+- **Response**: The updated `DeviceStatus` model.
+
+#### Available MCP Resources
+
+The server exposes the following resources to provide raw configuration templates:
+
+- **`device:///status`**: Exposes the active device status profile (`application/json`).
+- **`device:///settings`**: Exposes raw, non-sensitive configuration settings (`application/json`).
+
+#### Available MCP Prompts
+
+Predefined prompts are available to help users orchestrate tasks:
+
+- **`configure_device`**: Interactive guidance directing agents to update language, location, or timezone.
+- **`adjust_audio`**: Streamlined workflow assisting users with muting states and volume level modifications.
+
 ## Development
 
 Oremi Device is built with Python and uses `uv` for dependency management. The
@@ -1329,14 +1322,8 @@ tests, code style guidelines, and the pull request process, please refer to
 
 ## Versioning
 
-Oremi Device project adheres to [Semantic Versioning](https://semver.org/)
-(SemVer). Version numbers follow the `MAJOR.MINOR.PATCH` format:
-
-- **MAJOR** version increments for incompatible API changes
-- **MINOR** version increments for backward-compatible new functionality
-- **PATCH** version increments for backward-compatible bug fixes
-
-The current version can be found by running:
+Oremi Ojọ follows [Semantic Versioning](https://semver.org/). Display the
+installed version with:
 
 ```bash
 oremi-device --version

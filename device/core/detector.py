@@ -15,17 +15,16 @@
 import asyncio
 import json
 import logging
+from collections.abc import Callable
 from datetime import datetime
+from typing import Any
 
-from websockets.asyncio.client import ClientConnection as WebSocket
 from websockets.exceptions import ConnectionClosedError
 
-from ..utils.string import sluggify
-from .audio import Audio
-from .models import DetectedSound
-from .models import DetectedSoundType
-from .mqtt import MQTTClient
-
+from device.core.audio import Audio
+from device.core.models import DetectedSound
+from device.core.models import DetectedSoundType
+from device.utils.string import sluggify
 
 logger = logging.getLogger(__name__)
 
@@ -33,23 +32,45 @@ DETECTION_EVENT_TOPIC = "event"
 
 
 class SoundDetector:
+  """Processes classification events and wakeword signals from an Ohunerin audio detector."""
+
   def __init__(
     self,
-    mqtt_client: MQTTClient,
-    websocket: WebSocket,
-    audio_stream: Audio | None,
+    websocket_or_publisher: Any,
+    websocket: Any = None,
+    audio_stream: Audio | None = None,
     *,
-    delay: int,
-    threshold: float,
+    delay: int = 3,
+    threshold: float = 0.65,
     wakeword_event: asyncio.Event | None = None,
-  ):
-    self.mqtt_client = mqtt_client
-    self.websocket = websocket
+    on_detection: Callable[[str, str, bool], None] | Any | None = None,
+  ) -> None:
+    if websocket is None and (hasattr(websocket_or_publisher, "__aiter__") or hasattr(websocket_or_publisher, "recv")):
+      self.websocket = websocket_or_publisher
+      self._publisher: Any = on_detection
+    else:
+      self.websocket = websocket
+      self._publisher: Any = websocket_or_publisher or on_detection
+
     self.audio_stream: Audio | None = audio_stream
-    self.delay = delay
-    self.threshold = threshold
-    self.wakeword_event = wakeword_event
+    self.delay: int = delay
+    self.threshold: float = threshold
+    self.wakeword_event: asyncio.Event | None = wakeword_event
     self.published_sound_sentinel: dict[str, tuple[DetectedSoundType, asyncio.Task]] = {}
+
+  def _publish_event(self, topic: str, payload: str, retain: bool = False) -> None:
+    if self._publisher is None:
+      return
+
+    publish_event = getattr(self._publisher, "publish_event", None)
+
+    if callable(publish_event):
+      publish_event(topic, payload, retain=retain)
+    elif callable(self._publisher):
+      try:
+        self._publisher(topic, payload, retain=retain)
+      except TypeError:
+        self._publisher(topic, payload)
 
   async def clear_sound_after_delay(self, data: DetectedSound) -> None:
     try:
@@ -76,9 +97,12 @@ class SoundDetector:
       "date": datetime.now().isoformat(),
     }
     message = json.dumps(data)
-    self.mqtt_client.publish_event(DETECTION_EVENT_TOPIC, message, retain=True)
+    self._publish_event(DETECTION_EVENT_TOPIC, message, retain=True)
 
   async def detecting(self) -> None:
+    if self.websocket is None:
+      return
+
     try:
       async for message in self.websocket:
         data: DetectedSound = json.loads(message)
@@ -99,13 +123,13 @@ class SoundDetector:
     payload = json.dumps(data)
 
     if data["type"] == "wakeword":
-      self.mqtt_client.publish_event(DETECTION_EVENT_TOPIC, payload)
+      self._publish_event(DETECTION_EVENT_TOPIC, payload)
       self.schedule_clearing_task(data)
 
       if self.wakeword_event:
         self.wakeword_event.set()
     elif current_sound not in self.published_sound_sentinel:
-      self.mqtt_client.publish_event(DETECTION_EVENT_TOPIC, payload)
+      self._publish_event(DETECTION_EVENT_TOPIC, payload)
       self.schedule_clearing_task(data)
 
   def schedule_clearing_task(self, data: DetectedSound) -> None:

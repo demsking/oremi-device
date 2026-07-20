@@ -12,17 +12,35 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
+import logging
+from typing import Any
+
+from geopy.exc import GeocoderUnavailable
 from geopy.geocoders import Nominatim
 
-from .package import APP_NAME
-from .package import APP_VERSION
+from device.core.package import APP_NAME
+from device.core.package import APP_VERSION
 
+logger = logging.getLogger(__name__)
 
 _geocoder = Nominatim(user_agent=f"{APP_NAME}/{APP_VERSION}")
+_unavailable_locations: set[str] = set()
 
 
-def get_location_geocode(location: str):
+def get_location_geocode(location: str) -> Any:
   normalized = location.strip()
-  result = _geocoder.geocode(normalized)
+  if not normalized:
+    return None
 
-  return result
+  try:
+    result = _geocoder.geocode(normalized)
+    _unavailable_locations.discard(normalized)
+    return result
+  except GeocoderUnavailable as error:
+    logger.warning(f"Geocoder service is unavailable for '{normalized}': {error}")
+    _unavailable_locations.add(normalized)
+    return None
+
+
+def is_geocode_unavailable(location: str) -> bool:
+  return location.strip() in _unavailable_locations

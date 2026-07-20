@@ -11,7 +11,7 @@ SHELL ["/bin/ash", "-eo", "pipefail", "-c"]
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
 # Install build tools for dependencies without Alpine wheels on all target architectures.
-RUN apk add --no-cache build-base
+RUN apk add --no-cache build-base alsa-lib-dev
 
 # Change the working directory
 WORKDIR /app
@@ -30,10 +30,9 @@ FROM python:3.12-alpine3.21
 SHELL ["/bin/ash", "-eo", "pipefail", "-c"]
 
 RUN apk add --no-cache \
+  alsa-lib \
   build-base \
   ffmpeg \
-  portaudio \
-  portaudio-dev \
   pulseaudio-utils \
   tzdata
 

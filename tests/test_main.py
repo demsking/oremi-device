@@ -13,18 +13,15 @@
 # limitations under the License.
 # ==============================================================================
 import asyncio
+from unittest.mock import AsyncMock
+from unittest.mock import MagicMock
 from unittest.mock import patch
 
 import pytest
 
 from device.__main__ import main
-from device.core.app import classify_supervisor_done
-from device.core.app import listening_task_failed
 from device.core.app import parse_device_context_command_field
-from device.core.app import should_continue_conversation
-from device.core.app import should_play_follow_up_end_cue
 from device.core.app import validate_device_context_value
-from device.core.models import ProcessingResponse
 from device.core.settings import SettingsError
 
 
@@ -82,118 +79,182 @@ def test_validate_device_context_value_rejects_invalid_timezone() -> None:
   assert validate_device_context_value("timezone", "Invalid/Timezone") is None
 
 
-def test_should_continue_conversation_for_classified_follow_up() -> None:
-  response = ProcessingResponse(
-    message="Please share a location so I can check alerts for that area.",
-    continue_conversation=True,
+@pytest.mark.asyncio
+async def test_ready_and_shutdown_sounds_played() -> None:
+  from device.core.app import DeviceApplication
+  from device.core.settings import Settings
+
+  fake_settings = Settings(
+    _env_file=None,
+    node_id="test-node",
+    language="fr",
+    delay=3,
+    conversation_timeout=15,
+    ohunerin_host="localhost",
+    ohunerin_port=5023,
+    andika_host="localhost",
+    andika_port=5315,
+    cert_file=None,
+    ohunerin_threshold=0.65,
+    andika_model="vosk-model-small-fr-0.22",
+    andika_samplerate=16000,
+    microphone_device_index=None,
+    microphone_device=None,
+    mqtt_broker="localhost",
+    mqtt_port=1883,
+    mqtt_topic="oremi/test",
+    mqtt_username=None,
+    mqtt_password=None,
+    mqtt_discovery_prefix="homeassistant",
+    mqtt_discovery=False,
+    microphone_enabled=True,
+    speaker_enabled=True,
   )
 
-  assert should_continue_conversation(response, enabled=True, needs_audio=True, microphone_muted=False) is True
+  with (
+    patch("device.core.app.get_settings", return_value=fake_settings),
+    patch("device.core.app.AudioService") as mock_audio_service_cls,
+    patch("device.core.app.HomeAssistantDevice") as mock_mqtt_cls,
+    patch("device.core.app.FastMCP") as mock_mcp_cls,
+    patch("device.core.app.TTSManager"),
+    patch("device.core.app.CommandExecutor") as mock_executor_cls,
+  ):
+    mock_audio_service = mock_audio_service_cls.return_value
+    mock_audio_service.needs_audio = True
+    mock_audio_service.speaker_enabled = True
+    mock_speaker = MagicMock()
+    mock_audio_service.speaker = mock_speaker
+    mock_audio_service.audio_stream = MagicMock()
+    mock_audio_service.monitor_devices.return_value = asyncio.sleep(0)
+
+    mock_mqtt = mock_mqtt_cls.return_value
+    mock_mqtt.connect = MagicMock()
+    mock_mqtt.set_availability = MagicMock()
+    mock_mqtt.disconnect = MagicMock()
+    mock_mqtt.client.connect_callback = MagicMock(return_value=lambda f: f)
+    mock_mqtt.client.disconnect_callback = MagicMock(return_value=lambda f: f)
+    mock_mqtt.client.message_callback = MagicMock(return_value=lambda f: f)
+
+    mock_mcp = mock_mcp_cls.return_value
+    mock_mcp.run_streamable_http_async.return_value = asyncio.sleep(0)
+
+    mock_executor = mock_executor_cls.return_value
+    mock_executor.cancel_active = AsyncMock()
+
+    app = DeviceApplication()
+    run_task = asyncio.create_task(app.run())
+
+    await asyncio.sleep(0.1)
+    app.shutdown_event.set()
+    await run_task
+
+    assert mock_speaker.play_file.call_count == 2
+    calls = mock_speaker.play_file.call_args_list
+    ready_path = calls[0][0][0]
+    shutdown_path = calls[1][0][0]
+    assert ready_path.name == "ready.ogg"
+    assert shutdown_path.name == "shutdown.ogg"
 
 
-def test_should_not_continue_conversation_from_processing_data() -> None:
-  response = ProcessingResponse(
-    message="Please share a location so I can check alerts for that area.",
-    data={"error": {"type": "more_information_required"}},
+@pytest.mark.asyncio
+async def test_geocode_background_retry(monkeypatch: pytest.MonkeyPatch) -> None:
+  from device.core.app import DeviceApplication
+  from device.core.settings import Settings
+  from geopy.exc import GeocoderUnavailable
+  from device.core.geocode import _unavailable_locations
+
+  _unavailable_locations.clear()
+
+  fake_settings = Settings(
+    _env_file=None,
+    node_id="test-node",
+    language="fr",
+    delay=3,
+    conversation_timeout=15,
+    location="Paris, France",
+    ohunerin_host="localhost",
+    ohunerin_port=5023,
+    andika_host="localhost",
+    andika_port=5315,
+    cert_file=None,
+    ohunerin_threshold=0.65,
+    andika_model="vosk-model-small-fr-0.22",
+    andika_samplerate=16000,
+    microphone_device_index=None,
+    microphone_device=None,
+    mqtt_broker="localhost",
+    mqtt_port=1883,
+    mqtt_topic="oremi/test",
+    mqtt_username=None,
+    mqtt_password=None,
+    mqtt_discovery_prefix="homeassistant",
+    mqtt_discovery=False,
+    microphone_enabled=True,
+    speaker_enabled=True,
   )
 
-  assert should_continue_conversation(response, enabled=True, needs_audio=True, microphone_muted=False) is False
+  # Initially, geocoder raises GeocoderUnavailable, then succeeds on retry
+  geocode_calls = []
 
+  def mock_geocode(location: str):
+    geocode_calls.append(location)
+    if len(geocode_calls) <= 2:
+      raise GeocoderUnavailable("Down")
+    return SimpleNamespace(latitude=48.8566, longitude=2.3522, address="Paris, France")
 
-@pytest.mark.parametrize(
-  ("enabled", "needs_audio", "microphone_muted"),
-  [
-    (False, True, False),
-    (True, False, False),
-    (True, True, True),
-  ],
-)
-def test_should_not_continue_conversation_when_disabled_or_audio_unavailable(
-  enabled: bool,
-  needs_audio: bool,
-  microphone_muted: bool,
-) -> None:
-  response = ProcessingResponse(message="Quel jour ?", continue_conversation=True)
+  from types import SimpleNamespace
+  from device.core.geocode import get_location_geocode
 
-  assert (
-    should_continue_conversation(
-      response,
-      enabled=enabled,
-      needs_audio=needs_audio,
-      microphone_muted=microphone_muted,
-    )
-    is False
-  )
+  monkeypatch.setattr("device.core.settings.get_location_geocode", get_location_geocode)
+  monkeypatch.setattr("device.core.geocode._geocoder", SimpleNamespace(geocode=mock_geocode))
 
+  with (
+    patch("device.core.app.get_settings", return_value=fake_settings),
+    patch("device.core.app.AudioService") as mock_audio_service_cls,
+    patch("device.core.app.HomeAssistantDevice") as mock_mqtt_cls,
+    patch("device.core.app.FastMCP") as mock_mcp_cls,
+    patch("device.core.app.TTSManager"),
+    patch("device.core.app.CommandExecutor") as mock_executor_cls,
+  ):
+    mock_audio_service = mock_audio_service_cls.return_value
+    mock_audio_service.needs_audio = True
+    mock_audio_service.speaker_enabled = True
+    mock_audio_service.speaker = MagicMock()
+    mock_audio_service.audio_stream = MagicMock()
+    mock_audio_service.monitor_devices.return_value = asyncio.sleep(0)
 
-@pytest.mark.parametrize(
-  ("follow_up_active", "will_continue", "expected"),
-  [
-    (False, False, False),
-    (False, True, False),
-    (True, True, False),
-    (True, False, True),
-  ],
-)
-def test_should_play_follow_up_end_cue(follow_up_active: bool, will_continue: bool, expected: bool) -> None:
-  assert should_play_follow_up_end_cue(follow_up_active=follow_up_active, will_continue=will_continue) is expected
+    mock_mqtt = mock_mqtt_cls.return_value
+    mock_mqtt.connect = MagicMock()
+    mock_mqtt.set_availability = MagicMock()
+    mock_mqtt.disconnect = MagicMock()
+    mock_mqtt.client.connect_callback = MagicMock(return_value=lambda f: f)
+    mock_mqtt.client.disconnect_callback = MagicMock(return_value=lambda f: f)
+    mock_mqtt.client.message_callback = MagicMock(return_value=lambda f: f)
 
+    mock_mcp = mock_mcp_cls.return_value
+    mock_mcp.run_streamable_http_async.return_value = asyncio.sleep(0)
 
-@pytest.mark.asyncio
-async def test_cancelled_listening_task_is_not_unexpected() -> None:
-  task = asyncio.create_task(asyncio.sleep(60))
-  task.cancel()
+    mock_executor = mock_executor_cls.return_value
+    mock_executor.cancel_active = AsyncMock()
 
-  try:
-    await task
-  except asyncio.CancelledError:
-    pass
+    app = DeviceApplication()
+    # Check that geocoding wasn't successful initially (no lat/lng keys in context)
+    assert "latitude" not in app.device_context
 
-  assert listening_task_failed(task) is False
+    # Speed up retry loop for testing
+    app._geocode_retry_interval = 0.05
 
+    run_task = asyncio.create_task(app.run())
 
-@pytest.mark.asyncio
-async def test_failed_listening_task_is_unexpected() -> None:
-  async def fail() -> None:
-    raise RuntimeError("audio failed")
+    # Wait for the background retry task to run and succeed
+    await asyncio.sleep(0.3)
 
-  task = asyncio.create_task(fail())
+    assert "latitude" in app.device_context
+    assert app.device_context["latitude"] == 48.8566
+    assert app.device_context["longitude"] == 2.3522
 
-  with pytest.raises(RuntimeError):
-    await task
+    # Verify context update was published
+    assert mock_mqtt.publish_device_context.called
 
-  assert listening_task_failed(task) is True
-
-
-@pytest.mark.asyncio
-async def test_supervisor_continues_after_expected_listening_task_completion() -> None:
-  task = asyncio.create_task(asyncio.sleep(60))
-  task.cancel()
-
-  try:
-    await task
-  except asyncio.CancelledError:
-    pass
-
-  assert classify_supervisor_done({task}, {task: object()}, {}) == "continue"
-
-
-@pytest.mark.asyncio
-async def test_supervisor_recovers_after_failed_listening_task() -> None:
-  async def fail() -> None:
-    raise RuntimeError("audio failed")
-
-  task = asyncio.create_task(fail())
-
-  with pytest.raises(RuntimeError):
-    await task
-
-  assert classify_supervisor_done({task}, {task: object()}, {}) == "recover_audio"
-
-
-@pytest.mark.asyncio
-async def test_supervisor_exits_after_main_component_task_finishes() -> None:
-  task = asyncio.create_task(asyncio.sleep(0))
-  await task
-
-  assert classify_supervisor_done({task}, {}, {task: object()}) == "exit"
+    app.shutdown_event.set()
+    await run_task

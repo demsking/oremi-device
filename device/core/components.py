@@ -32,39 +32,56 @@ to inherit from the one that matches its transport model:
     microphone stream (e.g. Injini).  The device runner will start these
     components alongside audio-stream components without opening any audio
     device on their behalf.
-
-Example - adding a new HTTP component:
-
-    # device/components/injini.py
-    from .base import HttpComponent
-
-    class InjiniComponent(HttpComponent):
-        @property
-        def name(self) -> str:
-            return "injini"
-
-        async def start(self, config, mqtt_client, shared_resources):
-            ...
-
-        async def stop(self):
-            ...
 """
 import abc
 import asyncio
+from collections.abc import Awaitable
+from collections.abc import Callable
 from typing import Any
 from typing import Generic
+from typing import TypedDict
 from typing import TypeVar
 
 from pydantic import BaseModel
 
-from ..core.audio import Audio
-from ..core.mqtt import MQTTClient
-from ..core.settings import Settings
+from device.core.audio import Audio
+from device.core.cues import ConversationEvent
+from device.core.cues import SoundCue
+from device.core.models import ProcessingResponse
+from device.core.settings import Settings
 
 # Type alias: (ha_domain, entity_slug, payload_dict)
 # e.g. ("sensor", "wakeword", {"name": "Wakeword", ...})
 HAEntity = tuple[str, str, dict]
 ComponentConfigModel = TypeVar("ComponentConfigModel", bound=BaseModel)
+
+
+class ActiveStreamContainer(TypedDict, total=False):
+  stream: Audio | None
+
+
+class DeviceState(TypedDict, total=False):
+  """Strongly typed dictionary representing device-level runtime state."""
+
+  microphone_muted: bool
+
+
+class SharedResources(TypedDict):
+  """Strongly typed dictionary representing shared device-level resources."""
+
+  active_stream_container: ActiveStreamContainer
+  wakeword_event: asyncio.Event
+  device_state: DeviceState
+  handle_task_done: Callable[[asyncio.Task], None]
+  transcription_queue: asyncio.Queue[str]
+  processing_queue: asyncio.Queue[ProcessingResponse]
+  language_state: dict[str, str]
+  device_context: Callable[[], dict[str, Any]]
+  conversation_event_handler: Callable[[ConversationEvent], Awaitable[None]]
+  final_transcription_handler: Callable[[str], Awaitable[None]]
+  sound_cue_handler: Callable[[SoundCue], Awaitable[None]]
+  cancel_active_processing: Callable[[], Awaitable[None]]
+  mqtt_publisher: Any
 
 
 class Component(Generic[ComponentConfigModel], abc.ABC):
@@ -90,47 +107,17 @@ class Component(Generic[ComponentConfigModel], abc.ABC):
     """The main asyncio task driving the component, or ``None`` if not started."""
     return None
 
-  def ha_entities(self, node_id: str, topic: str, availability_topic: str, device: dict) -> list["HAEntity"]:
-    """Return Home Assistant MQTT discovery entity registrations.
-
-    Each element is a ``(ha_domain, entity_slug, payload)`` triple where:
-
-    - ``ha_domain``: HA platform string, e.g. ``"sensor"``, ``"binary_sensor"``.
-    - ``entity_slug``: Short identifier used in the discovery topic,
-      e.g. ``"wakeword"``.  Must be unique within the component.
-    - ``payload``: The full HA MQTT discovery payload dict (without the
-      ``"device"`` key — it is injected automatically by
-      :meth:`MQTTClient.publish_discovery_configs`).
-
-    The default implementation returns an empty list.  Subclasses that want
-    to register HA entities should override this method.
-
-    Args:
-      node_id: The slugified device node identifier (already prefixed with
-        ``"oremi-device-"`` by the MQTT client).
-      topic: The event topic for this device (e.g.
-        ``"oremi/device/nodes/living-room"``).
-      availability_topic: The node availability topic used by Home Assistant.
-      device: The HA device descriptor dict shared across all entities for
-        this device.  Pass it through as the ``"device"`` key of each
-        returned payload.
-    """
-    return []
-
   @abc.abstractmethod
   async def start(
     self,
     config: ComponentConfigModel | None,
-    mqtt_client: MQTTClient,
-    shared_resources: dict[str, Any],
+    shared_resources: SharedResources,
   ) -> None:
     """Start the component.
 
     Args:
       config: The component-specific Pydantic config model (may be ``None``).
-      mqtt_client: The shared MQTT client for publishing/subscribing.
-      shared_resources: A dict of device-level resources (audio stream
-        container, device-change queue, helper callbacks, etc.).
+      shared_resources: Device-level resources container.
     """
 
   @abc.abstractmethod
@@ -158,23 +145,13 @@ class AudioStreamComponent(Generic[ComponentConfigModel], Component[ComponentCon
 
   @abc.abstractmethod
   async def on_device_changed(self, new_stream: Audio | None) -> None:
-    """React to the active microphone being swapped.
+    """React to the active microphone being swapped."""
 
-    Called by the device runner both when the old stream is torn down
-    (``new_stream=None``) and when the new stream is ready.
-
-    Args:
-      new_stream: The newly opened ``Audio`` stream, or ``None`` if no
-        compatible device is currently available.
-    """
+  async def on_mute_changed(self, muted: bool) -> None:
+    """React to the microphone mute state changing."""
 
 
 class HttpComponent(Generic[ComponentConfigModel], Component[ComponentConfigModel]):
-  """Base class for components that communicate over HTTP only.
-
-  These components do not receive any audio stream and are unaffected by
-  microphone plug/unplug events.  The device runner will start them alongside
-  audio-stream components without opening a microphone on their behalf.
-  """
+  """Base class for components that communicate over HTTP only."""
 
   needs_audio: bool = False

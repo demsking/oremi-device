@@ -12,8 +12,12 @@
       "env": {
         "OREMI_DEVICE_LOG_LEVEL": "DEBUG",
         "OREMI_DEVICE_MQTT_BROKER": "ngaoundere",
+        "OREMI_DEVICE_MQTT_PORT": "51883",
         "OREMI_DEVICE_TRANSCRIPTION_BACKEND": "andika",
-        "OREMI_DEVICE_OLLAMA_BASE_URL": "http://localhost:31434"
+        "OREMI_DEVICE_OLLAMA_BASE_URL": "http://localhost:41434",
+        "OREMI_DEVICE_EDGE_TTS_URL": "http://localhost:45050",
+        "OREMI_DEVICE_OHUNERIN_PORT": "45023",
+        "OREMI_DEVICE_ANDIKA_PORT": "45315"
       }
     },
     {
@@ -27,8 +31,11 @@
       "env": {
         "OREMI_DEVICE_LOG_LEVEL": "DEBUG",
         "OREMI_DEVICE_MQTT_BROKER": "ngaoundere",
+        "OREMI_DEVICE_MQTT_PORT": "51883",
         "OREMI_DEVICE_TRANSCRIPTION_BACKEND": "whisper.cpp",
-        "OREMI_DEVICE_OLLAMA_BASE_URL": "http://localhost:31434"
+        "OREMI_DEVICE_OLLAMA_BASE_URL": "http://localhost:41434",
+        "OREMI_DEVICE_EDGE_TTS_URL": "http://localhost:45050",
+        "OREMI_DEVICE_WHISPER_URL": "http://localhost:48080"
       }
     }
   ]

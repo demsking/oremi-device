@@ -21,11 +21,10 @@ import paho.mqtt.client as mqtt
 import paho.mqtt.properties as mqtt_properties
 from paho.mqtt.enums import CallbackAPIVersion
 
-from ..utils.string import sluggify
-from .cues import ConversationState
-from .models import DetectedSoundType
-from .package import APP_VERSION
-
+from device.core.cues import ConversationState
+from device.core.models import DetectedSoundType
+from device.core.package import APP_VERSION
+from device.utils.string import sluggify
 
 logger = logging.getLogger(__name__)
 
@@ -73,8 +72,9 @@ DEVICE_CONTEXT_ICONS = {
 }
 
 
-class MQTTClient:  # pylint: disable=too-many-public-methods
-  # pylint: disable=too-many-arguments
+class HomeAssistantDevice:
+  """Central MQTT manager responsible for Home Assistant device status, discovery, and component events."""
+
   def __init__(
     self,
     broker: str,
@@ -103,8 +103,7 @@ class MQTTClient:  # pylint: disable=too-many-public-methods
     return sluggify(f"oremi-device-{self.node_id}")
 
   def get_device_descriptor(self) -> dict:
-    """
-    Return the HA device descriptor dict shared across all entities.
+    """Return the HA device descriptor dict shared across all entities.
 
     See https://www.home-assistant.io/integrations/mqtt/
     """
@@ -154,11 +153,7 @@ class MQTTClient:  # pylint: disable=too-many-public-methods
     self.client.publish(node_topic, message, qos=qos, retain=retain, properties=props)
 
   def get_microphone_command_topic(self) -> str:
-    """Return the instance-scoped MQTT topic for microphone select commands.
-
-    Using the node_id ensures that when multiple instances share the same
-    base topic, each instance only reacts to commands addressed to it.
-    """
+    """Return the instance-scoped MQTT topic for microphone select commands."""
     return self.parse_node_topic("microphone/set")
 
   def get_mute_command_topic(self) -> str:
@@ -228,12 +223,6 @@ class MQTTClient:  # pylint: disable=too-many-public-methods
   def get_conversation_state_topic(self) -> str:
     return self.parse_node_topic("conversation/state")
 
-  def get_continue_conversation_command_topic(self) -> str:
-    return self.parse_node_topic("conversation/continue/set")
-
-  def get_continue_conversation_state_topic(self) -> str:
-    return self.parse_node_topic("conversation/continue/state")
-
   def get_voice_command_topic(self) -> str:
     return self.parse_node_topic("voice/set")
 
@@ -262,44 +251,91 @@ class MQTTClient:  # pylint: disable=too-many-public-methods
     device_context: dict[str, str] | None = None,
     microphone_enabled: bool = True,
     speaker_enabled: bool = True,
-    continue_conversation_enabled: bool = True,
     voices: list[str] | None = None,
     current_voice: str = "",
+    ohunerin_sounds: list[str] | None = None,
   ) -> None:
-    """Publish Home Assistant MQTT discovery configs.
-
-    Publishes device-level entities and any additional entities supplied by
-    components via their ``ha_entities()`` hook.
-
-    Args:
-      input_devices: Available input device names for the HA select entity.
-      current_device: Currently active input device name.
-      entities: Optional list of ``(ha_domain, entity_slug, payload)`` tuples
-        collected from active components. Each payload should already contain
-        the ``"device"`` key.
-      microphone_muted: Whether microphone audio capture is currently muted.
-      output_devices: Available speaker output names for the HA select entity.
-      current_output: Currently selected speaker output name.
-      speaker_muted: Whether speaker playback is currently muted.
-      speaker_volume: Current speaker gain, between 0.0 and 1.0.
-      current_language: The currently active language code (e.g. ``'fr'``).
-      supported_languages: List of language codes to present in the HA select.
-        Defaults to ``['fr', 'en']`` when not provided.
-      device_context: Mutable app preferences published for subscribers and
-        exposed as Home Assistant controls.
-      microphone_enabled: Whether microphone controls should be advertised.
-      speaker_enabled: Whether speaker controls should be advertised.
-      continue_conversation_enabled: Whether Akorin follow-up prompts can reopen listening.
-      voices: Speech synthesis voices matching the active device language.
-      current_voice: Currently selected speech synthesis voice.
-    """
+    """Publish Home Assistant MQTT discovery configs."""
     if not self.discovery_prefix:
       return
 
     node_id = self.get_node_id()
     device = self.get_device_descriptor()
 
-    # ── Component-provided entities ──────────────────────────────────────────
+    # ── Core Home Assistant Entities Managed ONLY by HomeAssistantDevice ─────
+    transcription_payload = {
+      "name": "Transcription",
+      "unique_id": f"{node_id}_transcription",
+      "state_topic": self.parse_node_topic("transcription/result"),
+      "value_template": "{{ value_json.text }}",
+      "availability_topic": self.parse_node_topic("available"),
+      "payload_available": "online",
+      "payload_not_available": "offline",
+      "icon": "mdi:subtitles",
+      "device": device,
+    }
+    transcription_topic = f"{self.discovery_prefix}/sensor/{node_id}/transcription/config"
+    self.client.publish(transcription_topic, json.dumps(transcription_payload), retain=True)
+
+    event_topic = self.parse_node_topic("events/detection")
+    wakeword_payload = {
+      "name": "Wakeword",
+      "unique_id": f"{node_id}_wakeword",
+      "state_topic": event_topic,
+      "value_template": ("{% if value_json.type == 'wakeword' and value_json.sound != '...' %}detected{% else %}💤{% endif %}"),
+      "availability_topic": self.parse_node_topic("available"),
+      "payload_available": "online",
+      "payload_not_available": "offline",
+      "device_class": "enum",
+      "options": ["detected", "💤"],
+      "json_attributes_topic": event_topic,
+      "json_attributes_template": (
+        "{% if value_json.type == 'wakeword' and value_json.sound != '...' %}{{ value_json | tojson }}{% else %}{}{% endif %}"
+      ),
+      "icon": "mdi:waveform",
+      "device": device,
+    }
+    wakeword_topic = f"{self.discovery_prefix}/sensor/{node_id}/wakeword/config"
+    self.client.publish(wakeword_topic, json.dumps(wakeword_payload), retain=True)
+
+    sound_payload: dict = {
+      "name": "Sound Detector",
+      "unique_id": f"{node_id}_sound",
+      "state_topic": event_topic,
+      "value_template": (
+        "{% if value_json.type == 'sound' and value_json.sound != '...' %}{{ value_json.sound }}{% else %}💤{% endif %}"
+      ),
+      "availability_topic": self.parse_node_topic("available"),
+      "payload_available": "online",
+      "payload_not_available": "offline",
+      "json_attributes_topic": event_topic,
+      "json_attributes_template": (
+        "{% if value_json.type == 'sound' and value_json.sound != '...' %}{{ value_json | tojson }}{% else %}{}{% endif %}"
+      ),
+      "icon": "mdi:waveform",
+      "device": device,
+    }
+
+    if ohunerin_sounds:
+      sound_payload["device_class"] = "enum"
+      sound_payload["options"] = ohunerin_sounds + ["💤"]
+      mapper_items = []
+      for sound in ohunerin_sounds:
+        slug = sluggify(sound)
+        escaped_slug = slug.replace("'", "\\'")
+        escaped_sound = sound.replace("'", "\\'")
+        mapper_items.append(f"'{escaped_slug}': '{escaped_sound}'")
+      mapper_str = ", ".join(mapper_items)
+      sound_payload["value_template"] = (
+        f"{{% if value_json.type != 'sound' or value_json.sound == '...' %}}💤"
+        f"{{% else %}}{{% set mapper = {{{mapper_str}}} %}}"
+        f"{{{{ mapper.get(value_json.sound, value_json.sound) }}}}"
+        f"{{% endif %}}"
+      )
+    sound_topic = f"{self.discovery_prefix}/sensor/{node_id}/sound/config"
+    self.client.publish(sound_topic, json.dumps(sound_payload), retain=True)
+
+    # ── Additional custom entities (if provided) ──────────────────────────────
     for ha_domain, entity_slug, payload in entities or []:
       discovery_topic = f"{self.discovery_prefix}/{ha_domain}/{node_id}/{entity_slug}/config"
 
@@ -323,28 +359,7 @@ class MQTTClient:  # pylint: disable=too-many-public-methods
       language_topic = f"{self.discovery_prefix}/select/{node_id}/language/config"
       self.client.publish(language_topic, json.dumps(language_payload), retain=True)
 
-    # Keep the legacy language state topic updated while the app-level
-    # discovery path uses the device-context language control.
     self.client.publish(self.get_language_state_topic(), current_language, retain=True)
-
-    continue_conversation_payload = {
-      "name": "Continue conversation",
-      "unique_id": f"{node_id}_continue_conversation",
-      "state_topic": self.get_continue_conversation_state_topic(),
-      "command_topic": self.get_continue_conversation_command_topic(),
-      "payload_on": "ON",
-      "payload_off": "OFF",
-      "state_on": "ON",
-      "state_off": "OFF",
-      "availability_topic": self.parse_node_topic("available"),
-      "payload_available": "online",
-      "payload_not_available": "offline",
-      "icon": "mdi:chat-processing-outline",
-      "device": device,
-    }
-    continue_conversation_topic = f"{self.discovery_prefix}/switch/{node_id}/continue_conversation/config"
-    self.client.publish(continue_conversation_topic, json.dumps(continue_conversation_payload), retain=True)
-    self.set_continue_conversation_state(continue_conversation_enabled)
 
     if device_context is not None:
       for field in DEVICE_CONTEXT_TEXT_FIELDS:
@@ -425,7 +440,6 @@ class MQTTClient:  # pylint: disable=too-many-public-methods
       self.set_mute_state(microphone_muted)
 
     # ── Device-level: microphone select ─────────────────────────────────────
-    # See https://www.home-assistant.io/integrations/select.mqtt/
     select_payload = {
       "name": "Microphone Device",
       "unique_id": f"{node_id}_microphone_device",
@@ -444,7 +458,6 @@ class MQTTClient:  # pylint: disable=too-many-public-methods
     logger.info(f"Publishing MQTT Discovery configurations to {self.discovery_prefix}...")
     self.client.publish(select_topic, json.dumps(select_payload) if microphone_enabled else "", retain=True)
 
-    # Publish currently active device state
     if microphone_enabled:
       self.publish_node("microphone/state", current_device, retain=True)
 
@@ -538,10 +551,6 @@ class MQTTClient:  # pylint: disable=too-many-public-methods
   def set_conversation_state(self, state: ConversationState) -> None:
     self.client.publish(self.get_conversation_state_topic(), state, retain=True)
 
-  def set_continue_conversation_state(self, enabled: bool) -> None:
-    state = "ON" if enabled else "OFF"
-    self.client.publish(self.get_continue_conversation_state_topic(), state, retain=True)
-
   def set_availability(self, available: bool) -> None:
     message: Literal["online", "offline"] = "online" if available else "offline"
     self.publish_node("available", message, retain=True)
@@ -573,3 +582,7 @@ class MQTTClient:  # pylint: disable=too-many-public-methods
   def disconnect(self) -> None:
     self.client.disconnect()
     self.client.loop_stop()
+
+
+# Backward compatibility alias
+MqttDevice = HomeAssistantDevice

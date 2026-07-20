@@ -22,11 +22,11 @@ from pydantic import ValidationError
 
 from device.core.geocode import get_location_geocode
 from device.core.settings import apply_runtime_settings_cache
-from device.core.settings import Settings
 from device.core.settings import format_settings_errors
 from device.core.settings import get_settings
 from device.core.settings import read_runtime_settings_cache
 from device.core.settings import RuntimeSettingsCache
+from device.core.settings import Settings
 from device.core.settings import update_runtime_settings_cache
 from device.core.timezone import infer_timezone_from_coordinates
 
@@ -66,7 +66,6 @@ def test_settings_defaults() -> None:
   assert settings.speaker_device is None
   assert settings.speaker_muted is False
   assert settings.speaker_volume == 1.0
-  assert settings.continue_conversation_enabled is True
   assert settings.akorin_url is None
   assert settings.ohunerin_threshold == 0.25
   assert settings.andika_model == "vosk-model-small-fr-0.22"
@@ -107,7 +106,6 @@ def test_settings_are_loaded_from_environment(monkeypatch: pytest.MonkeyPatch) -
   monkeypatch.setenv("OREMI_DEVICE_EDGE_TTS_URL", "http://edge-tts:5050")
   monkeypatch.setenv("OREMI_DEVICE_EDGE_TTS_API_KEY", "test-key")
   monkeypatch.setenv("OREMI_DEVICE_EDGE_TTS_LOCALE", "fr-FR")
-  monkeypatch.setenv("OREMI_DEVICE_CONTINUE_CONVERSATION_ENABLED", "false")
 
   settings = Settings(_env_file=None)
 
@@ -148,7 +146,6 @@ def test_settings_are_loaded_from_environment(monkeypatch: pytest.MonkeyPatch) -
   assert str(settings.edge_tts_url) == "http://edge-tts:5050/"
   assert settings.edge_tts_api_key == "test-key"
   assert settings.edge_tts_locale == "fr-FR"
-  assert settings.continue_conversation_enabled is False
 
 
 @pytest.mark.parametrize(
@@ -288,7 +285,6 @@ def test_runtime_settings_cache_overrides_mutable_settings(tmp_path, monkeypatch
         "speaker_device": "USB Speaker",
         "speaker_muted": True,
         "speaker_volume": 0.35,
-        "continue_conversation_enabled": False,
         "tts_voice": "en-US-JennyNeural",
       }
     ),
@@ -301,7 +297,7 @@ def test_runtime_settings_cache_overrides_mutable_settings(tmp_path, monkeypatch
   monkeypatch.setenv("OREMI_DEVICE_MQTT_BROKER", "mqtt")
   monkeypatch.setenv("OREMI_DEVICE_LANGUAGE", "fr")
   monkeypatch.setenv("OREMI_DEVICE_MICROPHONE_DEVICE_INDEX", "2")
-  monkeypatch.setenv("OREMI_DEVICE_DATA", str(data_dir))
+  monkeypatch.setenv("OREMI_DEVICE_DATA_PATH", str(data_dir))
 
   settings = get_settings()
 
@@ -322,12 +318,11 @@ def test_runtime_settings_cache_overrides_mutable_settings(tmp_path, monkeypatch
   assert settings.speaker_device == "USB Speaker"
   assert settings.speaker_muted is True
   assert settings.speaker_volume == 0.35
-  assert settings.continue_conversation_enabled is False
   assert settings.tts_voice == "en-US-JennyNeural"
 
 
 def test_runtime_settings_cache_update_preserves_existing_values(tmp_path) -> None:
-  settings = Settings(_env_file=None, **REQUIRED_SETTINGS, data=tmp_path)
+  settings = Settings(_env_file=None, **REQUIRED_SETTINGS, data_path=tmp_path)
   cache_file = tmp_path / "test-node.json"
 
   update_runtime_settings_cache(
@@ -335,21 +330,19 @@ def test_runtime_settings_cache_update_preserves_existing_values(tmp_path) -> No
     language="en",
     location="12 Rue de Rivoli, Paris",
     speaker_volume=0.4,
-    continue_conversation_enabled=False,
   )
   update_runtime_settings_cache(settings, speaker_muted=True)
 
   assert json.loads(cache_file.read_text(encoding="utf-8")) == {
     "language": "en",
     "location": "12 Rue de Rivoli, Paris",
-    "continue_conversation_enabled": False,
     "speaker_muted": True,
     "speaker_volume": 0.4,
   }
 
 
 def test_invalid_runtime_settings_cache_is_ignored(tmp_path) -> None:
-  settings = Settings(_env_file=None, **REQUIRED_SETTINGS, data=tmp_path)
+  settings = Settings(_env_file=None, **REQUIRED_SETTINGS, data_path=tmp_path)
   cache_file = tmp_path / "test-node.json"
   cache_file.write_text('{"language":"de","speaker_volume":2}', encoding="utf-8")
 
@@ -359,3 +352,26 @@ def test_invalid_runtime_settings_cache_is_ignored(tmp_path) -> None:
   assert cache == RuntimeSettingsCache()
   assert applied.language == "fr"
   assert applied.speaker_volume == 1.0
+
+
+def test_get_location_geocode_handles_unavailable(monkeypatch: pytest.MonkeyPatch) -> None:
+  from geopy.exc import GeocoderUnavailable
+  from device.core.geocode import is_geocode_unavailable, _unavailable_locations
+
+  _unavailable_locations.clear()
+
+  def geocode(location: str) -> None:
+    raise GeocoderUnavailable("Service temporarily down")
+
+  monkeypatch.setattr("device.core.geocode._geocoder", SimpleNamespace(geocode=geocode))
+
+  assert get_location_geocode("Paris") is None
+  assert is_geocode_unavailable("Paris") is True
+
+  # Succeeded request clears unavailable status
+  def geocode_ok(location: str) -> object:
+    return SimpleNamespace(latitude=1.0, longitude=2.0, address=location)
+
+  monkeypatch.setattr("device.core.geocode._geocoder", SimpleNamespace(geocode=geocode_ok))
+  assert get_location_geocode("Paris") is not None
+  assert is_geocode_unavailable("Paris") is False

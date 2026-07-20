@@ -12,8 +12,7 @@
     "ruff": "latest",
     "skjold": "latest",
     "yamllint": "latest",
-    "portaudio": "latest",
-    "python312Packages.pyaudio": "latest",
+    "alsa-lib": "latest",
     "serve": "latest"
   },
   "env": {

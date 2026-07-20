@@ -14,19 +14,19 @@
 # ==============================================================================
 from pydantic import BaseModel
 
-from ..core.models import AkorinConfig
-from ..core.models import AndikaConfig
-from ..core.models import OhunerinConfig
-from .akorin import AkorinComponent
-from .andika import AndikaComponent
-from .base import AudioStreamComponent
-from .base import Component
-from .base import HttpComponent
-from .ohunerin import OhunerinComponent
+from device.components.akorin import AkorinComponent
+from device.components.ohunerin import OhunerinComponent
+from device.core.components import AudioStreamComponent
+from device.core.components import Component
+from device.core.components import HttpComponent
+from device.core.models import AkorinConfig
+from device.core.models import AndikaConfig
+from device.core.models import OhunerinConfig
+from device.core.stt import Speech2Text
 
 COMPONENTS: dict[str, tuple[type[BaseModel], type[Component]]] = {
   "ohunerin": (OhunerinConfig, OhunerinComponent),
-  "andika": (AndikaConfig, AndikaComponent),
+  "andika": (AndikaConfig, Speech2Text),
   "akorin": (AkorinConfig, AkorinComponent),
 }
 

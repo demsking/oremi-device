@@ -16,11 +16,12 @@ import json
 
 import httpx
 
-from ..core.tts import TTSSynthesisRequest
-from ..core.tts import TTSVoice
+from device.core.tts import BaseTTSClient
+from device.core.tts import TTSSynthesisRequest
+from device.core.tts import TTSVoice
 
 
-class OpenAIEdgeTTSClient:
+class OpenAIEdgeTTSClient(BaseTTSClient):
   def __init__(
     self,
     url: str,

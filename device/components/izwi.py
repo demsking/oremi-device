@@ -17,11 +17,12 @@ import urllib.parse
 
 import httpx
 
-from ..core.tts import TTSSynthesisRequest
-from ..core.tts import TTSVoice
+from device.core.tts import BaseTTSClient
+from device.core.tts import TTSSynthesisRequest
+from device.core.tts import TTSVoice
 
 
-class IzwiClient:
+class IzwiClient(BaseTTSClient):
   MAX_GET_URL_LENGTH = 2000
 
   def __init__(self, url: str, *, ca_file: str | None = None) -> None:

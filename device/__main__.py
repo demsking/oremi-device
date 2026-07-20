@@ -15,7 +15,7 @@
 import asyncio
 import sys
 
-from device.core.app import start
+from device import start
 from device.core.args import parse_arguments
 from device.core.package import APP_NAME
 from device.core.settings import SettingsError

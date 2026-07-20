@@ -15,6 +15,7 @@
 from unittest.mock import MagicMock
 from unittest.mock import patch
 
+import miniaudio
 import pytest
 
 from device.core.cues import get_sound_cue_path
@@ -31,9 +32,9 @@ def test_bundled_sound_cues_exist(cue: str) -> None:
   assert get_sound_cue_path(cue).is_file()
 
 
-@patch("sounddevice.query_devices")
-def test_default_output(mock_query_devices) -> None:
-  mock_query_devices.return_value = {"name": "Built-in Audio", "max_output_channels": 2}
+@patch("miniaudio.Devices")
+def test_default_output(mock_devices) -> None:
+  mock_devices.return_value.get_playbacks.return_value = [{"name": "Built-in Audio", "id": None}]
 
   speaker = Speaker(volume=0.5)
 
@@ -43,7 +44,8 @@ def test_default_output(mock_query_devices) -> None:
 
 
 def test_muted_gain() -> None:
-  with patch("sounddevice.query_devices", return_value={"name": "Speaker", "max_output_channels": 2}):
+  with patch("miniaudio.Devices") as mock_devices:
+    mock_devices.return_value.get_playbacks.return_value = [{"name": "Speaker", "id": None}]
     speaker = Speaker(volume=0.75)
 
   speaker.set_muted(True)
@@ -52,7 +54,8 @@ def test_muted_gain() -> None:
 
 
 def test_ducking_reduces_only_media_gain_and_preserves_volume() -> None:
-  with patch("sounddevice.query_devices", return_value={"name": "Speaker", "max_output_channels": 2}):
+  with patch("miniaudio.Devices") as mock_devices:
+    mock_devices.return_value.get_playbacks.return_value = [{"name": "Speaker", "id": None}]
     speaker = Speaker(volume=0.8)
 
   speaker.begin_ducking()
@@ -71,101 +74,77 @@ def test_ducking_reduces_only_media_gain_and_preserves_volume() -> None:
 
 
 def test_invalid_volume() -> None:
-  with patch("sounddevice.query_devices", return_value={"name": "Speaker", "max_output_channels": 2}):
+  with patch("miniaudio.Devices") as mock_devices:
+    mock_devices.return_value.get_playbacks.return_value = [{"name": "Speaker", "id": None}]
     speaker = Speaker()
 
   with pytest.raises(ValueError):
     speaker.set_volume(1.1)
 
 
-@patch("sounddevice.check_output_settings")
-@patch("sounddevice.query_devices")
-def test_select_output(mock_query_devices, mock_check_output) -> None:
-  mock_query_devices.side_effect = [
-    {"name": "Built-in Audio", "max_output_channels": 2},
-    [
-      {"name": "Microphone", "max_output_channels": 0},
-      {"name": "USB Speaker", "max_output_channels": 2},
-    ],
-    {"name": "USB Speaker", "max_output_channels": 2},
+@patch("miniaudio.Devices")
+def test_select_output(mock_devices) -> None:
+  mock_devices.return_value.get_playbacks.return_value = [
+    {"name": "Built-in Audio", "id": 1},
+    {"name": "USB Speaker", "id": 2},
   ]
   speaker = Speaker()
 
   assert speaker.select_device("usb") == "USB Speaker"
   assert speaker.device_name == "USB Speaker"
-  mock_check_output.assert_called_with(device="USB Speaker")
 
 
-@patch("sounddevice.query_devices", return_value={"name": "Speaker", "max_output_channels": 0})
-def test_output_required(mock_query_devices) -> None:
+@patch("miniaudio.Devices")
+def test_output_required(mock_devices) -> None:
+  mock_devices.return_value.get_playbacks.return_value = []
   with pytest.raises(SpeakerDeviceError):
     Speaker()
 
 
-@patch("sounddevice.query_devices", return_value={"name": "Speaker", "max_output_channels": 2})
-def test_empty_output_rejected(mock_query_devices) -> None:
+@patch("miniaudio.Devices")
+def test_empty_output_rejected(mock_devices) -> None:
+  mock_devices.return_value.get_playbacks.return_value = [{"name": "Speaker", "id": None}]
   speaker = Speaker()
 
   with pytest.raises(SpeakerDeviceError):
     speaker.select_device("  ")
 
 
-@patch("sounddevice.query_devices", return_value={"name": "Built-in Audio", "max_output_channels": 2})
-@patch("sounddevice.RawOutputStream")
-def test_play_url_decodes_audio_to_selected_device(mock_output_stream, mock_query_devices) -> None:
+@patch("miniaudio.Devices")
+@patch("miniaudio.PlaybackDevice")
+def test_play_url_decodes_audio_to_selected_device(mock_playback_device, mock_devices) -> None:
+  mock_devices.return_value.get_playbacks.return_value = [{"name": "Built-in Audio", "id": None}]
   speaker = Speaker(volume=0.5)
   process = MagicMock()
   process.stdout.read.side_effect = [(b"\x00\x00\x80?" * 4), b""]
   process.wait.return_value = 0
   process.poll.return_value = 0
-  stream = mock_output_stream.return_value.__enter__.return_value
 
   with patch("device.core.speaker.subprocess.Popen", return_value=process) as popen:
     speaker.play_url("https://home-assistant.local/api/tts.wav")
 
   assert popen.call_args.args[0][0] == "ffmpeg"
-  mock_output_stream.assert_called_once_with(
-    samplerate=48000,
-    channels=2,
-    dtype="float32",
-    device="Built-in Audio",
-  )
-  assert stream.write.call_count == 1
-
-
-@patch("sounddevice.query_devices", return_value={"name": "Container Speaker", "max_output_channels": 1})
-@patch("sounddevice.RawOutputStream")
-def test_play_url_uses_mono_stream_when_output_device_is_mono(mock_output_stream, mock_query_devices) -> None:
-  speaker = Speaker(volume=0.5)
-  process = MagicMock()
-  process.stdout.read.side_effect = [(b"\x00\x00\x80?" * 4), b""]
-  process.wait.return_value = 0
-  process.poll.return_value = 0
-
-  with patch("device.core.speaker.subprocess.Popen", return_value=process) as popen:
-    speaker.play_url("https://home-assistant.local/api/tts.wav")
-
-  command = popen.call_args.args[0]
-  assert command[command.index("-ac") + 1] == "1"
-  mock_output_stream.assert_called_once_with(
-    samplerate=48000,
-    channels=1,
-    dtype="float32",
-    device="Container Speaker",
+  mock_playback_device.assert_called_once_with(
+    output_format=miniaudio.SampleFormat.FLOAT32,
+    nchannels=2,
+    sample_rate=48000,
+    device_id=None,
   )
 
 
-@patch("sounddevice.query_devices", return_value={"name": "Speaker", "max_output_channels": 2})
-def test_play_url_rejects_non_http_media(mock_query_devices) -> None:
+@patch("miniaudio.Devices")
+def test_play_url_rejects_non_http_media(mock_devices) -> None:
+  mock_devices.return_value.get_playbacks.return_value = [{"name": "Speaker", "id": None}]
   speaker = Speaker()
 
   with pytest.raises(SpeakerPlaybackError, match="HTTP or HTTPS"):
     speaker.play_url("file:///tmp/private.wav")
 
 
-@patch("sounddevice.query_devices", return_value={"name": "Speaker", "max_output_channels": 2})
-@patch("sounddevice.RawOutputStream")
-def test_play_file_accepts_packaged_audio(mock_output_stream, mock_query_devices, tmp_path) -> None:
+@patch("miniaudio.Devices")
+@patch("miniaudio.PlaybackDevice")
+def test_play_file_accepts_packaged_audio(mock_playback_device, mock_devices, tmp_path) -> None:
+  mock_devices.return_value.get_playbacks.return_value = [{"name": "Speaker", "id": None}]
   cue = tmp_path / "cue.ogg"
   cue.write_bytes(b"OggS")
   speaker = Speaker()
@@ -181,9 +160,10 @@ def test_play_file_accepts_packaged_audio(mock_output_stream, mock_query_devices
   assert command[command.index("-i") + 1] == str(cue)
 
 
-@patch("sounddevice.query_devices", return_value={"name": "Speaker", "max_output_channels": 2})
-@patch("sounddevice.RawOutputStream")
-def test_play_url_supports_post_stream(mock_output_stream, mock_query_devices) -> None:
+@patch("miniaudio.Devices")
+@patch("miniaudio.PlaybackDevice")
+def test_play_url_supports_post_stream(mock_playback_device, mock_devices) -> None:
+  mock_devices.return_value.get_playbacks.return_value = [{"name": "Speaker", "id": None}]
   speaker = Speaker()
   process = MagicMock()
   process.stdout.read.return_value = b""
@@ -204,9 +184,10 @@ def test_play_url_supports_post_stream(mock_output_stream, mock_query_devices) -
   assert command[command.index("-post_data") + 1] == expected_body
 
 
-@patch("sounddevice.query_devices", return_value={"name": "Speaker", "max_output_channels": 2})
-@patch("sounddevice.RawOutputStream")
-def test_play_url_forwards_http_headers(mock_output_stream, mock_query_devices) -> None:
+@patch("miniaudio.Devices")
+@patch("miniaudio.PlaybackDevice")
+def test_play_url_forwards_http_headers(mock_playback_device, mock_devices) -> None:
+  mock_devices.return_value.get_playbacks.return_value = [{"name": "Speaker", "id": None}]
   speaker = Speaker()
   process = MagicMock()
   process.stdout.read.return_value = b""
@@ -225,9 +206,10 @@ def test_play_url_forwards_http_headers(mock_output_stream, mock_query_devices) 
   assert command[command.index("-headers") + 1] == "Authorization: Bearer secret\r\n"
 
 
-@patch("sounddevice.query_devices", return_value={"name": "Speaker", "max_output_channels": 2})
-@patch("sounddevice.RawOutputStream")
-def test_non_interrupting_speech_does_not_stop_media(mock_output_stream, mock_query_devices) -> None:
+@patch("miniaudio.Devices")
+@patch("miniaudio.PlaybackDevice")
+def test_non_interrupting_speech_does_not_stop_media(mock_playback_device, mock_devices) -> None:
+  mock_devices.return_value.get_playbacks.return_value = [{"name": "Speaker", "id": None}]
   speaker = Speaker()
   process = MagicMock()
   process.stdout.read.return_value = b""
@@ -247,26 +229,52 @@ def test_non_interrupting_speech_does_not_stop_media(mock_output_stream, mock_qu
   stop.assert_not_called()
 
 
-@patch("sounddevice.query_devices", return_value={"name": "Speaker", "max_output_channels": 2})
-def test_stop_terminates_active_decoder(mock_query_devices) -> None:
+@patch("miniaudio.Devices")
+def test_stop_terminates_active_decoder(mock_devices) -> None:
+  mock_devices.return_value.get_playbacks.return_value = [{"name": "Speaker", "id": None}]
   speaker = Speaker()
   process = MagicMock()
   process.poll.return_value = None
-  speaker._playback_process = process  # noqa: SLF001
+  speaker._playback_process = process
 
   speaker.stop()
 
   process.terminate.assert_called_once_with()
 
 
-@patch("sounddevice.query_devices", return_value={"name": "Speaker", "max_output_channels": 2})
-def test_pause_and_resume_signal_active_decoder(mock_query_devices) -> None:
+@patch("miniaudio.Devices")
+def test_pause_and_resume_signal_active_decoder(mock_devices) -> None:
+  mock_devices.return_value.get_playbacks.return_value = [{"name": "Speaker", "id": None}]
   speaker = Speaker()
   process = MagicMock()
   process.poll.return_value = None
-  speaker._playback_process = process  # noqa: SLF001
+  speaker._playback_process = process
 
   speaker.pause()
   speaker.resume()
 
   assert process.send_signal.call_count == 2
+
+
+@patch("miniaudio.Devices")
+def test_verify_device_success(mock_devices) -> None:
+  mock_devices.return_value.get_playbacks.return_value = [{"name": "Speaker", "id": None}]
+  speaker = Speaker()
+  with patch("miniaudio.PlaybackDevice") as mock_stream:
+    speaker.verify_device()
+    mock_stream.assert_called_once_with(
+      output_format=miniaudio.SampleFormat.FLOAT32,
+      nchannels=speaker.output_channels,
+      sample_rate=48000,
+      device_id=None,
+    )
+
+
+@patch("miniaudio.Devices")
+def test_verify_device_failure(mock_devices) -> None:
+  mock_devices.return_value.get_playbacks.return_value = [{"name": "Speaker", "id": None}]
+  speaker = Speaker()
+  with patch("miniaudio.PlaybackDevice", side_effect=Exception("miniaudio error")):
+    with pytest.raises(SpeakerDeviceError) as exc_info:
+      speaker.verify_device()
+    assert "Speaker output device is not working" in str(exc_info.value)

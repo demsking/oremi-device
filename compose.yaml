@@ -2,23 +2,32 @@
 name: dev-oremi-device
 
 services:
+  inspector:
+    image: ghcr.io/modelcontextprotocol/inspector:0.22.0
+    ports:
+      - '6574:6274'
+    environment:
+      HOST: 0.0.0.0
+      MCP_AUTO_OPEN_ENABLED: false
+      DANGEROUSLY_OMIT_AUTH: true
+
   mosquitto:
     image: eclipse-mosquitto:2.0.18
-    restart: always
+    restart: unless-stopped
     ports:
-      - 31883:1883
+      - 41883:1883
     volumes:
       - ./config/mosquitto.conf:/mosquitto/config/mosquitto.conf
 
   ollama:
     tty: true
     image: ollama/ollama
-    restart: always
+    restart: unless-stopped
     runtime: nvidia
     volumes:
       - ~/.ollama:/root/.ollama
     ports:
-      - 31434:11434
+      - 41434:11434
     environment:
       CUDA_VISIBLE_DEVICES: 0
 
@@ -34,9 +43,9 @@ services:
     environment:
       OREMI_AKORIN_OLLAMA_BASE_URL: http://ollama:11434
       OREMI_AKORIN_ISINMI_URL: http://isinmi:7337
-      OREMI_AKORIN_OJO_URL: http://ojo:1777
-      OREMI_AKORIN_REDIYO_URL: http://rediyo:9170
-      OREMI_AKORIN_KANSA_URL: http://kansa:4940
+      OREMI_AKORIN_OJO_URL: http://ojo:5040
+      OREMI_AKORIN_REDIYO_URL: http://rediyo:5076
+      OREMI_AKORIN_KANSA_URL: http://kansa:5046
       OREMI_AKORIN_MQTT_BROKER: mosquitto
     ports:
       - 45020:5020
@@ -54,58 +63,34 @@ services:
       - ~/.cache/vosk/models:/usr/share/vosk
 
   isinmi:
-    image: demsking/oremi-isinmi-agent
-    restart: always
-    depends_on:
-      - ollama
+    image: demsking/oremi-isinmi
+    restart: unless-stopped
     ports:
-      - 37337:7337
+      - 45073:5073
     environment:
-      OREMI_ISINMI_OLLAMA_BASE_URL: http://ollama:11434
       OREMI_ISINMI_DATABASE_ENCRYPTION_KEY: B0JJTY+h9x1u36hFuD0UqakgN0P//DWk+r+3+nY3JFo=
     volumes:
       - ~/.config/oremi-isinmi-agent:/oremi/data
-    healthcheck:
-      test: ['CMD', 'curl', '-f', 'http://localhost:7337/health/']
-      interval: 30s
-      timeout: 10s
-      retries: 3
 
   ojo:
     image: demsking/oremi-ojo
-    restart: always
-    depends_on:
-      - ollama
+    restart: unless-stopped
     ports:
-      - 31777:1777
-    environment:
-      OREMI_OJO_OLLAMA_BASE_URL: http://ollama:11434
+      - 45040:5040
 
   rediyo:
-    image: demsking/oremi-rediyo-agent
-    restart: always
-    depends_on:
-      - ollama
+    image: demsking/oremi-rediyo
+    restart: unless-stopped
     ports:
-      - 39170:9170
-    volumes:
-      - ~/.config/oremi-rediyo-agent:/var/cache/oremi-rediyo-agent
-    environment:
-      OLLAMA_BASEURL: http://ollama:11434
-      OLLAMA_MODEL: qwen3.5:2b
+      - 45076:5076
 
   kansa:
-    image: demsking/oremi-kansa-agent
-    restart: always
-    depends_on:
-      - ollama
+    image: demsking/oremi-kansa
+    restart: unless-stopped
     ports:
-      - 34940:4940
+      - 45046:5046
     volumes:
-      - ~/.config/oremi-kansa-agent:/var/cache/oremi-kansa-agent
-    environment:
-      OLLAMA_BASEURL: http://ollama:11434
-      OLLAMA_MODEL: qwen3.5:2b
+      - ~/.config/oremi-kansa-agent:/oremi/data
 
   whisper-model:
     image: ghcr.io/ggml-org/whisper.cpp:main

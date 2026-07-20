@@ -19,7 +19,10 @@ import subprocess  # nosec B404
 import threading
 from pathlib import Path
 
-import sounddevice as sd
+import miniaudio
+
+from device.core.audio import match_device_name
+from device.core.playback import PlaybackState
 
 
 logger = logging.getLogger(__name__)
@@ -34,10 +37,11 @@ class SpeakerPlaybackError(Exception):
 
 
 class Speaker:
-  """Shared output-device and playback-control state."""
+  """Shared output-device and playback-control state using miniaudio."""
 
   def __init__(self, device_name: str | None = None, *, volume: float = 1.0, muted: bool = False) -> None:
     self._device_name = ""
+    self._device_id = None
     self._output_channels = 2
     self._volume = 1.0
     self._muted = muted
@@ -46,21 +50,38 @@ class Speaker:
     self._playback_processes: dict[subprocess.Popen, threading.Event] = {}
     self._ducking_count = 0
     self._ducking_gain = 0.25
+    self.playback_state = PlaybackState(self)
+
     self.set_volume(volume)
 
     if device_name:
       self.select_device(device_name)
     else:
       try:
-        default_device = sd.query_devices(kind="output")
+        playbacks = miniaudio.Devices().get_playbacks()
       except Exception as error:
         raise SpeakerDeviceError(f"Failed to query the default speaker: {error}") from error
 
-      if not default_device or default_device.get("max_output_channels", 0) <= 0:
+      if not playbacks:
         raise SpeakerDeviceError("No compatible speaker output device found")
 
-      self._device_name = default_device["name"]
-      self._output_channels = self._get_stream_channels(default_device)
+      default_dev = playbacks[0]
+      self._device_name = default_dev["name"]
+      self._device_id = default_dev.get("id")
+      self._output_channels = 2
+
+  def verify_device(self) -> None:
+    """Verify that the speaker output device is ready and working."""
+    try:
+      with miniaudio.PlaybackDevice(
+        output_format=miniaudio.SampleFormat.FLOAT32,
+        nchannels=self._output_channels,
+        sample_rate=48000,
+        device_id=self._device_id,
+      ):
+        pass
+    except Exception as error:
+      raise SpeakerDeviceError(f"Speaker output device is not working: {self._device_name}. Error: {error}") from error
 
   @property
   def device_name(self) -> str:
@@ -110,28 +131,31 @@ class Speaker:
     if not requested:
       raise SpeakerDeviceError("Speaker output device name cannot be empty")
 
-    matched_name = next(
-      (name for name in self.get_compatible_output_devices() if requested in name.lower()),
-      None,
-    )
+    try:
+      playbacks = miniaudio.Devices().get_playbacks()
+    except Exception as error:
+      raise SpeakerDeviceError(f"Failed to query speaker output devices: {error}") from error
 
-    if matched_name is None:
+    matched_dev = None
+    for dev in playbacks:
+      if match_device_name(device_name, dev["name"]):
+        matched_dev = dev
+        break
+
+    if matched_dev is None:
+      for dev in playbacks:
+        if requested in dev["name"].lower():
+          matched_dev = dev
+          break
+
+    if matched_dev is None:
       raise SpeakerDeviceError(f"Speaker output device not found: {device_name}")
 
-    try:
-      sd.check_output_settings(device=matched_name)
-    except Exception as error:
-      raise SpeakerDeviceError(f"Speaker output device is not compatible: {matched_name}") from error
+    self._device_name = matched_dev["name"]
+    self._device_id = matched_dev.get("id")
+    self._output_channels = 2
 
-    try:
-      device_info = sd.query_devices(matched_name, kind="output")
-    except Exception as error:
-      raise SpeakerDeviceError(f"Failed to query speaker output device: {matched_name}") from error
-
-    self._device_name = matched_name
-    self._output_channels = self._get_stream_channels(device_info)
-
-    return matched_name
+    return self._device_name
 
   def set_muted(self, muted: bool) -> None:
     self._muted = muted
@@ -243,8 +267,7 @@ class Speaker:
     )
 
     try:
-      # The source is validated by play_url() or play_file() and remains one argv value.
-      process = subprocess.Popen(  # nosec B603  # pylint: disable=consider-using-with
+      process = subprocess.Popen(  # nosec B603
         command,
         stdout=subprocess.PIPE,
         stderr=subprocess.DEVNULL,
@@ -259,41 +282,47 @@ class Speaker:
       if interrupt:
         self._playback_process = process
 
-    try:
-      with sd.RawOutputStream(
-        samplerate=48000,
-        channels=self._output_channels,
-        dtype="float32",
-        device=self._device_name,
-      ) as stream:
-        remainder = b""
-
-        while not stop_event.is_set():
-          chunk = remainder + (process.stdout.read(16384) if process.stdout else b"")
-
+    def stream_generator():
+      remainder = b""
+      num_frames = yield b""
+      while not stop_event.is_set():
+        if num_frames is None:
+          num_frames = 1024
+        bytes_needed = num_frames * self._output_channels * 4
+        while len(remainder) < bytes_needed:
+          chunk = process.stdout.read(16384) if process.stdout else b""
           if not chunk:
             break
+          remainder += chunk
+        if not remainder:
+          break
+        to_send = remainder[:bytes_needed]
+        remainder = remainder[bytes_needed:]
 
-          complete_length = len(chunk) - (len(chunk) % 4)
-          remainder = chunk[complete_length:]
-
-          if complete_length == 0:
-            continue
-
+        gain = self.playback_gain(duckable=duckable)
+        if gain != 1.0 and to_send:
           samples = array.array("f")
-          samples.frombytes(chunk[:complete_length])
-          gain = self.playback_gain(duckable=duckable)
+          samples.frombytes(to_send)
+          for i in range(len(samples)):
+            samples[i] *= gain
+          to_send = samples.tobytes()
 
-          if gain != 1.0:
-            for index, sample in enumerate(samples):
-              samples[index] = sample * gain
+        num_frames = yield to_send
 
-          stream.write(samples.tobytes())
+    try:
+      gen = stream_generator()
+      next(gen)
+      with miniaudio.PlaybackDevice(
+        output_format=miniaudio.SampleFormat.FLOAT32,
+        nchannels=self._output_channels,
+        sample_rate=48000,
+        device_id=self._device_id,
+      ) as stream:
+        stream.start(gen)
+        return_code = process.wait()
 
-      return_code = process.wait()
-
-      if return_code and not stop_event.is_set():
-        raise SpeakerPlaybackError(f"ffmpeg exited with status {return_code}")
+        if return_code and not stop_event.is_set():
+          raise SpeakerPlaybackError(f"ffmpeg exited with status {return_code}")
     except SpeakerPlaybackError:
       raise
     except Exception as error:
@@ -344,7 +373,7 @@ class Speaker:
   @staticmethod
   def get_compatible_output_devices() -> list[str]:
     try:
-      devices = sd.query_devices()
+      devices = miniaudio.Devices().get_playbacks()
     except Exception:
       return []
 
@@ -353,23 +382,8 @@ class Speaker:
 
     for device in devices:
       name = device["name"]
-
-      if device.get("max_output_channels", 0) <= 0 or name in seen:
-        continue
-
-      try:
-        sd.check_output_settings(device=name)
-      except Exception as error:
-        logger.debug(f"Ignoring incompatible speaker output '{name}': {error}")
-        continue
-
-      seen.add(name)
-      compatible_devices.append(name)
+      if name not in seen:
+        seen.add(name)
+        compatible_devices.append(name)
 
     return compatible_devices
-
-  @staticmethod
-  def _get_stream_channels(device_info: dict) -> int:
-    """Normalize output channel count to a stream-safe value."""
-    max_channels = int(device_info.get("max_output_channels", 0))
-    return 1 if max_channels <= 1 else 2

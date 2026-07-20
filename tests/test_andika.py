@@ -26,11 +26,11 @@ import httpx
 import pytest
 
 from device.components import COMPONENTS
-from device.components.andika import AndikaComponent
-from device.components.andika import AndikaTranscriber
-from device.components.andika import WhisperCppListener
 from device.core.models import AndikaConfig
 from device.core.settings import Settings
+from device.core.stt import AndikaComponent
+from device.core.stt import AndikaTranscriber
+from device.core.stt import WhisperCppListener
 
 
 class AsyncMessages:
@@ -159,15 +159,26 @@ async def test_andika_transcriber_uses_fixed_topics() -> None:
 
 
 def test_andika_discovery_uses_final_result_topic() -> None:
-  component = AndikaComponent(_make_settings())
+  from device.core.mqtt import HomeAssistantDevice
 
-  _, _, payload = component.ha_entities(
-    "test-node",
-    "oremi/device/nodes/test-node",
-    "oremi/device/nodes/test-node/available",
-    {},
-  )[0]
+  client = HomeAssistantDevice(
+    broker="localhost",
+    port=1883,
+    topic="oremi/device",
+    node_id="test-node",
+    discovery_prefix="homeassistant",
+  )
+  mock_client_instance = MagicMock()
+  client.client = mock_client_instance
 
+  client.publish_discovery_configs(input_devices=[], current_device="")
+
+  transcription_calls = [
+    call for call in mock_client_instance.publish.call_args_list
+    if call[0][0].endswith("sensor/oremi-device-test-node/transcription/config")
+  ]
+  assert len(transcription_calls) == 1
+  payload = json.loads(transcription_calls[0][0][1])
   assert payload["state_topic"] == "oremi/device/nodes/test-node/transcription/result"
   assert payload["availability_topic"] == "oremi/device/nodes/test-node/available"
   assert payload["value_template"] == "{{ value_json.text }}"
@@ -318,46 +329,6 @@ async def test_andika_cancels_turn_when_listening_stops_before_transcription() -
 
 
 @pytest.mark.asyncio
-async def test_andika_preserves_continue_request_set_during_previous_turn_cleanup() -> None:
-  component = AndikaComponent(_make_settings(conversation_timeout=60))
-  component._wakeword_event = asyncio.Event()
-  component._continue_conversation_event = asyncio.Event()
-  listening_started = asyncio.Event()
-
-  class AudioListenerStub:
-    def __init__(self) -> None:
-      self.call_count = 0
-
-    async def listening(self) -> None:
-      self.call_count += 1
-      listening_started.set()
-      await asyncio.Event().wait()
-
-  audio_listener = AudioListenerStub()
-  component.audio_listener = audio_listener
-  activation_task = asyncio.create_task(component._activate_on_wakeword({"stream": MagicMock()}))
-  component._wakeword_event.set()
-
-  await asyncio.wait_for(listening_started.wait(), timeout=1)
-  assert audio_listener.call_count == 1
-
-  component._continue_conversation_event.set()
-  component._transcription_complete_event.set()
-
-  async def wait_for_second_turn() -> None:
-    while audio_listener.call_count < 2:
-      await asyncio.sleep(0)
-
-  await asyncio.wait_for(wait_for_second_turn(), timeout=1)
-  assert audio_listener.call_count == 2
-
-  activation_task.cancel()
-
-  with pytest.raises(asyncio.CancelledError):
-    await activation_task
-
-
-@pytest.mark.asyncio
 async def test_andika_stops_listening_before_processing_cue() -> None:
   component = AndikaComponent(_make_settings())
   component._listening_task = asyncio.create_task(asyncio.Event().wait())
@@ -477,7 +448,7 @@ def test_andika_get_supported_models() -> None:
     {"id": "vosk-model-small-en-us-0.15", "name": "English US (Small)", "language": "en"},
   ]
 
-  with patch("device.components.andika.httpx.get", return_value=response) as mock_get:
+  with patch("device.components.transcribers.andika_ws.httpx.get", return_value=response) as mock_get:
     models = component._get_supported_models()
 
   mock_get.assert_called_once_with("http://andika:5315/api/models")
@@ -491,7 +462,7 @@ def test_andika_get_supported_models_secure_endpoint() -> None:
   response = MagicMock()
   response.json.return_value = []
 
-  with patch("device.components.andika.httpx.get", return_value=response) as mock_get:
+  with patch("device.components.transcribers.andika_ws.httpx.get", return_value=response) as mock_get:
     assert component._get_supported_models() == []
 
   mock_get.assert_called_once_with("https://127.0.0.1:9443/api/models")
@@ -500,7 +471,7 @@ def test_andika_get_supported_models_secure_endpoint() -> None:
 def test_andika_get_supported_models_returns_empty_on_error() -> None:
   component = AndikaComponent(_make_settings())
 
-  with patch("device.components.andika.httpx.get", side_effect=RuntimeError("offline")):
+  with patch("device.components.transcribers.andika_ws.httpx.get", side_effect=RuntimeError("offline")):
     assert component._get_supported_models() == []
 
 
@@ -582,7 +553,7 @@ async def test_whisper_listener_posts_wav_and_publishes_result() -> None:
   )
   listener._capture = AsyncMock(return_value=array("h", [1000] * 160).tobytes())  # type: ignore[method-assign]
 
-  with patch("device.components.andika.httpx.AsyncClient", return_value=client_context):
+  with patch("device.components.transcribers.whisper_cpp.httpx.AsyncClient", return_value=client_context):
     await listener.listening()
 
   response.raise_for_status.assert_called_once()
@@ -629,9 +600,51 @@ async def test_whisper_listener_cancels_conversation_on_request_error() -> None:
   )
   listener._capture = AsyncMock(return_value=array("h", [1000] * 160).tobytes())  # type: ignore[method-assign]
 
-  with patch("device.components.andika.httpx.AsyncClient", return_value=client_context):
+  with patch("device.components.transcribers.whisper_cpp.httpx.AsyncClient", return_value=client_context):
     await listener.listening()
 
   assert events == ["processing", "cancelled"]
   assert complete.is_set()
   mqtt_client.publish_event.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_andika_multiple_consecutive_wakeword_turns() -> None:
+  component = AndikaComponent(_make_settings())
+  component._wakeword_event = asyncio.Event()
+
+  class AudioListenerStub:
+    def __init__(self) -> None:
+      self.call_count = 0
+
+    async def listening(self) -> None:
+      self.call_count += 1
+      await asyncio.Event().wait()
+
+  audio_listener = AudioListenerStub()
+  component.audio_listener = audio_listener
+  activation_task = asyncio.create_task(component._activate_on_wakeword({"stream": MagicMock()}))
+
+  for turn in range(1, 4):
+    component._wakeword_event.set()
+
+    async def wait_until_turn_started() -> None:
+      while component._listening_task is None or component._listening_task.done():
+        await asyncio.sleep(0.01)
+
+    await asyncio.wait_for(wait_until_turn_started(), timeout=1)
+    assert audio_listener.call_count == turn
+    assert component._listening_task is not None
+    assert not component._listening_task.done()
+
+    component._transcription_complete_event.set()
+
+    async def wait_until_turn_stopped() -> None:
+      while component._transcription_active:
+        await asyncio.sleep(0.01)
+
+    await asyncio.wait_for(wait_until_turn_stopped(), timeout=1)
+
+  activation_task.cancel()
+  with pytest.raises(asyncio.CancelledError):
+    await activation_task
