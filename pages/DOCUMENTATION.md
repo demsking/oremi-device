@@ -175,7 +175,7 @@ services:
     image: demsking/oremi-andika
     restart: unless-stopped
     volumes:
-      - oremi-andika-data:/usr/share/vosk
+      - oremi-andika-data:/oremi/data/models
 
   isinmi:
     image: demsking/oremi-isinmi
@@ -447,7 +447,7 @@ services:
     image: demsking/oremi-andika
     restart: unless-stopped
     volumes:
-      - oremi-andika-data:/usr/share/vosk
+      - oremi-andika-data:/oremi/data/models
 
   isinmi:
     image: demsking/oremi-isinmi
@@ -537,7 +537,7 @@ Depending on your configured `OREMI_DEVICE_TRANSCRIPTION_BACKEND`, one additiona
 - **`OREMI_DEVICE_SPEAKER_DEVICE`** – Explicit device identifier assignment mapping the designated sound driver. Default: `None`.
 - **`OREMI_DEVICE_SPEAKER_MUTED`** – Initializes sound rendering outputs to silent runtime configurations. Default: `false`.
 - **`OREMI_DEVICE_SPEAKER_VOLUME`** – Floating level index mapping target playback audio scales between `0.0` and `1.0`. Default: `1.0`.
-- **`OREMI_DEVICE_DATA`** – Explicit folder destination path strings capturing state file targets. Defaults: `/oremi/data`.
+- **`OREMI_DEVICE_DATA_PATH`** – Explicit folder destination path strings capturing state file targets. Defaults: `/oremi/data`.
 
 ### Transcription Controls
 
@@ -1206,7 +1206,7 @@ Changes made through the discovered Home Assistant controls are cached by
 Oremi Device and applied on restart. The cache includes language, device
 context preferences, microphone device and mute state, speaker device, speaker
 mute and volume, and speech synthesis voice. Mount the data directory or set
-`OREMI_DEVICE_DATA` to a persistent path when running in a container.
+`OREMI_DEVICE_DATA_PATH` to a persistent path when running in a container.
 The transcription sensor follows the node's `transcription/result` topic and
 extracts its state from the final JSON payload's `text` field.
 

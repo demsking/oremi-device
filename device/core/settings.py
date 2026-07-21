@@ -157,7 +157,7 @@ class Settings(BaseSettings):
 
   cert_file: str | None = None
   node_id: str
-  data_path: Path | None = None
+  data_path: Path = Field(default=None)  # type: ignore
 
   mqtt_broker: str
   mqtt_port: int = Field(default=1883, gt=0, le=65535)
@@ -206,12 +206,15 @@ class Settings(BaseSettings):
 
   @cached_property
   def path(self) -> Path:
-    if self.data_path is not None:
-      return self.data_path / f"{self.node_id}.json"
+    return self.data_path / f"{self.node_id}.json"
 
-    data_home = Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local" / "share"))
+  @field_validator("data_path", mode="before")
+  @classmethod
+  def validate_data_path(cls, value) -> Path:
+    if value is not None:
+      return value
 
-    return data_home / APP_NAME / f"{self.node_id}.json"
+    return Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local" / "share")) / APP_NAME
 
   @field_validator("preferred_currency", mode="before")
   @classmethod

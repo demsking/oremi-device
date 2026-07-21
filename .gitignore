@@ -4,7 +4,6 @@
 htmlcov/
 dist/
 __pycache__/
-graphify-out/
 .ruff_cache/
 .nix-node/
 .directory

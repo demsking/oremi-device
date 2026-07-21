@@ -41,6 +41,8 @@ REQUIRED_SETTINGS = {
 
 @pytest.fixture(autouse=True)
 def clean_oremi_environment(monkeypatch: pytest.MonkeyPatch) -> None:
+  get_settings.cache_clear()
+
   for name in tuple(os.environ):
     if name.startswith("OREMI_DEVICE_"):
       monkeypatch.delenv(name)

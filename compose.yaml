@@ -42,7 +42,7 @@ services:
       - ollama
     environment:
       OREMI_AKORIN_OLLAMA_BASE_URL: http://ollama:11434
-      OREMI_AKORIN_ISINMI_URL: http://isinmi:7337
+      OREMI_AKORIN_ISINMI_URL: http://isinmi:5073
       OREMI_AKORIN_OJO_URL: http://ojo:5040
       OREMI_AKORIN_REDIYO_URL: http://rediyo:5076
       OREMI_AKORIN_KANSA_URL: http://kansa:5046
@@ -60,7 +60,7 @@ services:
     ports:
       - 45315:5315
     volumes:
-      - ~/.cache/vosk/models:/usr/share/vosk
+      - ~/.local/share/oremi-andika:/oremi/data/models
 
   isinmi:
     image: demsking/oremi-isinmi
@@ -70,7 +70,7 @@ services:
     environment:
       OREMI_ISINMI_DATABASE_ENCRYPTION_KEY: B0JJTY+h9x1u36hFuD0UqakgN0P//DWk+r+3+nY3JFo=
     volumes:
-      - ~/.config/oremi-isinmi-agent:/oremi/data
+      - ~/.local/share/oremi-isinmi-agent:/oremi/data
 
   ojo:
     image: demsking/oremi-ojo
@@ -90,7 +90,7 @@ services:
     ports:
       - 45046:5046
     volumes:
-      - ~/.config/oremi-kansa-agent:/oremi/data
+      - ~/.local/share/oremi-kansa-agent:/oremi/data
 
   whisper-model:
     image: ghcr.io/ggml-org/whisper.cpp:main

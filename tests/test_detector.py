@@ -87,7 +87,7 @@ async def test_detector_threshold_filtering() -> None:
         "type": "sound",
         "sound": "cough",
         "score": 0.5,
-        "date": "2026-06-15T09:00:00",
+        "datetime": "2026-06-15T09:00:00",
       }
     ),
     json.dumps(
@@ -95,7 +95,7 @@ async def test_detector_threshold_filtering() -> None:
         "type": "sound",
         "sound": "cough",
         "score": 0.6677674,
-        "date": "2026-06-13T07:35:04.123456",
+        "datetime": "2026-06-13T07:35:04.123456",
       }
     ),
   ]
@@ -126,7 +126,7 @@ async def test_detector_cooldown_normal_sound() -> None:
     "type": "sound",
     "sound": "cough",
     "score": 0.9,
-    "date": "2026-06-15T09:00:00",
+    "datetime": "2026-06-15T09:00:00",
   }
 
   # First occurrence should publish and schedule clearing task
@@ -170,7 +170,7 @@ async def test_detector_wakeword_no_cooldown() -> None:
     "type": "wakeword",
     "sound": "hey assistant",
     "score": 0.9,
-    "date": "2026-06-15T09:00:00",
+    "datetime": "2026-06-15T09:00:00",
   }
 
   # First occurrence
@@ -199,14 +199,14 @@ async def test_detector_multiple_active_sounds_clearing() -> None:
     "type": "sound",
     "sound": "cough",
     "score": 0.9,
-    "date": "2026-06-15T09:00:00",
+    "datetime": "2026-06-15T09:00:00",
   }
 
   sound2: DetectedSound = {
     "type": "sound",
     "sound": "snoring",
     "score": 0.9,
-    "date": "2026-06-15T09:00:00",
+    "datetime": "2026-06-15T09:00:00",
   }
 
   # Publish sound1
