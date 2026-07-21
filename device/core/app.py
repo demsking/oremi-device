@@ -23,7 +23,6 @@ from mcp.server.fastmcp import FastMCP
 from pydantic import ValidationError
 
 from device.components import COMPONENTS
-from device.core import speaker
 from device.core.audio import AudioDeviceError
 from device.core.components import ActiveStreamContainer
 from device.core.components import AudioStreamComponent
@@ -554,7 +553,7 @@ class DeviceApplication:
 
     try:
       self.audio.initialize_hardware()
-    except (AudioDeviceError, speaker.SpeakerDeviceError) as error:
+    except AudioDeviceError as error:
       logger.error(str(error))
       sys.exit(1)
 

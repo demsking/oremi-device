@@ -118,7 +118,22 @@ image-test:
 	  --tag $(IMAGE_NAME):test
 
 live: image-test
-	docker run -it --rm --env-file .env.example -v ./data:/oremi/data --network host --device /dev/snd:/dev/snd --group-add audio $(IMAGE_NAME):test
+	docker run -it --rm --env-file .env.example \
+		--env-file .env.example \
+		-e OREMI_DEVICE_LOG_LEVEL=DEBUG \
+		-e OREMI_DEVICE_MQTT_BROKER=ngaoundere \
+		-e OREMI_DEVICE_MQTT_PORT=51883 \
+		-e OREMI_DEVICE_DATA_PATH=data \
+		-e OREMI_DEVICE_TRANSCRIPTION_BACKEND=andika \
+		-e OREMI_DEVICE_OLLAMA_BASE_URL=http://localhost:41434 \
+		-e OREMI_DEVICE_EDGE_TTS_URL=http://localhost:45050 \
+		-e OREMI_DEVICE_OHUNERIN_PORT=45023 \
+		-e OREMI_DEVICE_ANDIKA_PORT=45315 \
+		-v ./data:/oremi/data \
+		--network host \
+		--device /dev/snd:/dev/snd \
+		--group-add audio \
+	  $(IMAGE_NAME):test
 
 check-clean:
 	@test -z "$$(git status --porcelain)" || (echo "Working tree is not clean" && exit 1)

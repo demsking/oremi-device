@@ -70,7 +70,7 @@ services:
     environment:
       OREMI_ISINMI_DATABASE_ENCRYPTION_KEY: B0JJTY+h9x1u36hFuD0UqakgN0P//DWk+r+3+nY3JFo=
     volumes:
-      - ~/.local/share/oremi-isinmi-agent:/oremi/data
+      - ~/.local/share/oremi-isinmi:/oremi/data
 
   ojo:
     image: demsking/oremi-ojo

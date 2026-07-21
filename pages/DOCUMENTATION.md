@@ -183,7 +183,7 @@ services:
     environment:
       OREMI_ISINMI_DATABASE_ENCRYPTION_KEY: your_database_encryption_key_here
     volumes:
-      - oremi-isinmi-agent-data:/oremi/data
+      - oremi-isinmi-data:/oremi/data
 
   ojo:
     image: demsking/oremi-ojo
@@ -218,7 +218,7 @@ services:
 
 volumes:
   oremi-device-data:
-  oremi-isinmi-agent-data:
+  oremi-isinmi-data:
   oremi-rediyo-data:
   oremi-kansa-data:
   oremi-andika-data:
@@ -304,7 +304,7 @@ services:
     environment:
       OREMI_ISINMI_DATABASE_ENCRYPTION_KEY: your_database_encryption_key_here
     volumes:
-      - oremi-isinmi-agent-data:/oremi/data
+      - oremi-isinmi-data:/oremi/data
 
   ojo:
     image: demsking/oremi-ojo
@@ -357,7 +357,7 @@ services:
 
 volumes:
   oremi-device-data:
-  oremi-isinmi-agent-data:
+  oremi-isinmi-data:
   oremi-rediyo-data:
   oremi-kansa-data:
   oremi-andika-data:
@@ -455,7 +455,7 @@ services:
     environment:
       OREMI_ISINMI_DATABASE_ENCRYPTION_KEY: your_database_encryption_key_here
     volumes:
-      - oremi-isinmi-agent-data:/oremi/data
+      - oremi-isinmi-data:/oremi/data
 
   ojo:
     image: demsking/oremi-ojo
@@ -497,7 +497,7 @@ services:
 
 volumes:
   oremi-device-data:
-  oremi-isinmi-agent-data:
+  oremi-isinmi-data:
   oremi-rediyo-data:
   oremi-kansa-data:
   oremi-andika-data:

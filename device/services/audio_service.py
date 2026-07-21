@@ -61,8 +61,9 @@ class AudioService:
 
         logger.info(f"Active Speaker Device: {self.speaker.device_name}")
       except SpeakerDeviceError as error:
-        logger.error(f"Speaker initialization failed: {error}")
-        raise
+        logger.warning(f"Speaker initialization failed, running without speaker support: {error}")
+        self.speaker = None
+        self.speaker_enabled = False
 
   async def change_audio_device(self, target_device, components) -> bool:
     if self.audio_stream:
