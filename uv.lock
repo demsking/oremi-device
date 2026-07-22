@@ -1129,7 +1129,7 @@ wheels = [
 
 [[package]]
 name = "oremi-device"
-version = "1.0.0b18"
+version = "1.0.0b19"
 source = { editable = "." }
 dependencies = [
     { name = "geopy" },
