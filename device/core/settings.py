@@ -21,6 +21,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any
 from typing import Literal
+from typing import TypedDict
 from zoneinfo import ZoneInfo
 from zoneinfo import ZoneInfoNotFoundError
 
@@ -42,6 +43,18 @@ from device.core.timezone import infer_timezone_from_coordinates
 
 DEFAULT_TIMEZONE = "UTC"
 logger = logging.getLogger(__name__)
+
+LanguageSetting = Literal["fr", "en"]
+TemperatureUnitSetting = Literal["celsius", "fahrenheit"]
+MeasurementSystemSetting = Literal["metric", "imperial"]
+DistanceUnitSetting = Literal["kilometer", "mile"]
+TimeFormatSetting = Literal["12h", "24h"]
+DateFormatSetting = Literal["DD/MM/YYYY", "MM/DD/YYYY", "YYYY-MM-DD"]
+FirstDayOfWeekSetting = Literal["monday", "sunday", "saturday"]
+TranscriptionBackendSetting = Literal["andika", "whisper.cpp"]
+TTSBackendSetting = Literal["izwi", "edge-tts"]
+EdgeTTSResponseFormatSetting = Literal["mp3", "opus", "aac", "flac", "wav", "pcm"]
+LogLevelSetting = Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
 
 
 class SettingsError(Exception):
@@ -109,16 +122,16 @@ class Settings(BaseSettings):
   server_host: str = "127.0.0.1"
   server_port: int = Field(default=5048, gt=0, le=65535)
 
-  language: Literal["fr", "en"] = "fr"
+  language: LanguageSetting = "fr"
   location: str = ""
   timezone: str = DEFAULT_TIMEZONE
-  temperature_unit: Literal["celsius", "fahrenheit"] = "celsius"
+  temperature_unit: TemperatureUnitSetting = "celsius"
   preferred_currency: str = Field(default="XAF", pattern=r"^[A-Z]{3}$")
-  measurement_system: Literal["metric", "imperial"] = "metric"
-  distance_unit: Literal["kilometer", "mile"] = "kilometer"
-  time_format: Literal["12h", "24h"] = "24h"
-  date_format: Literal["DD/MM/YYYY", "MM/DD/YYYY", "YYYY-MM-DD"] = "DD/MM/YYYY"
-  first_day_of_week: Literal["monday", "sunday", "saturday"] = "monday"
+  measurement_system: MeasurementSystemSetting = "metric"
+  distance_unit: DistanceUnitSetting = "kilometer"
+  time_format: TimeFormatSetting = "24h"
+  date_format: DateFormatSetting = "DD/MM/YYYY"
+  first_day_of_week: FirstDayOfWeekSetting = "monday"
   microphone_device_index: int | None = None
   microphone_device: str | None = None
   microphone_enabled: bool = True
@@ -136,7 +149,7 @@ class Settings(BaseSettings):
   ohunerin_port: int = Field(default=5023, gt=0, le=65535)
   ohunerin_threshold: float = Field(default=0.25, gt=0)
 
-  transcription_backend: Literal["andika", "whisper.cpp"] = "andika"
+  transcription_backend: TranscriptionBackendSetting = "andika"
   andika_host: str | None = None
   andika_port: int = Field(default=5315, gt=0, le=65535)
   andika_model: AndikaModel = "vosk-model-small-fr-0.22"
@@ -145,13 +158,13 @@ class Settings(BaseSettings):
   whisper_silence_threshold: int = Field(default=500, ge=0)
   whisper_silence_duration: float = Field(default=1.0, gt=0)
 
-  tts_backend: Literal["izwi", "edge-tts"] = "izwi"
+  tts_backend: TTSBackendSetting = "izwi"
   izwi_url: HttpUrl | None = None
   edge_tts_url: HttpUrl | None = None
   edge_tts_api_key: str = "your_api_key_here"
   edge_tts_locale: str | None = None
   edge_tts_model: str = "tts-1"
-  edge_tts_response_format: Literal["mp3", "opus", "aac", "flac", "wav", "pcm"] = "mp3"
+  edge_tts_response_format: EdgeTTSResponseFormatSetting = "mp3"
   edge_tts_speed: float = Field(default=1.0, ge=0.25, le=4.0)
   tts_voice: str | None = None
 
@@ -167,7 +180,7 @@ class Settings(BaseSettings):
   mqtt_discovery: bool = True
   mqtt_discovery_prefix: str = "homeassistant"
 
-  log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = Field(default="INFO")
+  log_level: LogLevelSetting = Field(default="INFO")
   log_file: str | None = Field(default=None)
 
   @property
@@ -245,19 +258,40 @@ class Settings(BaseSettings):
     return self
 
 
+class SettingsUpdates(TypedDict, total=False):
+  """Typed dictionary representing runtime settings update payloads."""
+
+  language: LanguageSetting
+  location: str | None
+  timezone: str | None
+  temperature_unit: TemperatureUnitSetting
+  preferred_currency: str
+  measurement_system: MeasurementSystemSetting
+  distance_unit: DistanceUnitSetting
+  time_format: TimeFormatSetting
+  date_format: DateFormatSetting
+  first_day_of_week: FirstDayOfWeekSetting
+  microphone_device: str | None
+  microphone_muted: bool
+  speaker_device: str | None
+  speaker_muted: bool
+  speaker_volume: float
+  tts_voice: str | None
+
+
 class RuntimeSettingsCache(BaseModel):
   """Runtime settings changed through MQTT/Home Assistant controls."""
 
-  language: Literal["fr", "en"] | None = None
+  language: LanguageSetting | None = None
   location: str | None = None
   timezone: str | None = None
-  temperature_unit: Literal["celsius", "fahrenheit"] | None = None
+  temperature_unit: TemperatureUnitSetting | None = None
   preferred_currency: str | None = Field(default=None, pattern=r"^[A-Z]{3}$")
-  measurement_system: Literal["metric", "imperial"] | None = None
-  distance_unit: Literal["kilometer", "mile"] | None = None
-  time_format: Literal["12h", "24h"] | None = None
-  date_format: Literal["DD/MM/YYYY", "MM/DD/YYYY", "YYYY-MM-DD"] | None = None
-  first_day_of_week: Literal["monday", "sunday", "saturday"] | None = None
+  measurement_system: MeasurementSystemSetting | None = None
+  distance_unit: DistanceUnitSetting | None = None
+  time_format: TimeFormatSetting | None = None
+  date_format: DateFormatSetting | None = None
+  first_day_of_week: FirstDayOfWeekSetting | None = None
   microphone_device: str | None = None
   microphone_muted: bool | None = None
   speaker_device: str | None = None

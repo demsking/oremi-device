@@ -41,6 +41,7 @@ from device.core.mcp import SetActiveOutputDeviceResponse
 from device.core.mcp import SleepTimerResponse
 from device.core.mcp import VolumeMutationResponse
 from device.core.mcp import VolumeStatus
+from device.core.settings import SettingsUpdates
 from device.core.speaker import Speaker
 from device.core.tts import TTSVoice
 from device.core.tts import voices_for_language
@@ -108,7 +109,7 @@ def register_mcp_tools(mcp: FastMCP, device: McpDevice) -> None:
     speaker_volume: float | None = None,
     tts_voice: str | None = None,
   ) -> DeviceStatus:
-    updates = {}
+    updates: SettingsUpdates = {}
 
     for key, val in [
       ("language", language),

@@ -258,3 +258,74 @@ async def test_geocode_background_retry(monkeypatch: pytest.MonkeyPatch) -> None
 
     app.shutdown_event.set()
     await run_task
+
+
+@pytest.mark.asyncio
+async def test_handle_event_calls_apply_settings_updates() -> None:
+  from device.core.app import DeviceApplication
+  from device.core.settings import Settings
+
+  fake_settings = Settings(
+    _env_file=None,
+    node_id="test-node",
+    language="fr",
+    delay=3,
+    conversation_timeout=15,
+    ohunerin_host="localhost",
+    ohunerin_port=5023,
+    andika_host="localhost",
+    andika_port=5315,
+    cert_file=None,
+    ohunerin_threshold=0.65,
+    andika_model="vosk-model-small-fr-0.22",
+    andika_samplerate=16000,
+    microphone_device_index=None,
+    microphone_device=None,
+    mqtt_broker="localhost",
+    mqtt_port=1883,
+    mqtt_topic="oremi/test",
+    mqtt_username=None,
+    mqtt_password=None,
+    mqtt_discovery_prefix="homeassistant",
+    mqtt_discovery=False,
+    microphone_enabled=True,
+    speaker_enabled=True,
+  )
+
+  with (
+    patch("device.core.app.get_settings", return_value=fake_settings),
+    patch("device.core.app.AudioService"),
+    patch("device.core.app.HomeAssistantDevice"),
+    patch("device.core.app.FastMCP"),
+    patch("device.core.app.TTSManager"),
+    patch("device.core.app.CommandExecutor"),
+  ):
+    app = DeviceApplication()
+    app.apply_settings_updates = AsyncMock()
+
+    await app._handle_event("device_change", "mic_1")
+    app.apply_settings_updates.assert_called_once_with({"microphone_device": "mic_1"})
+    app.apply_settings_updates.reset_mock()
+
+    await app._handle_event("microphone_mute", True)
+    app.apply_settings_updates.assert_called_once_with({"microphone_muted": True})
+    app.apply_settings_updates.reset_mock()
+
+    await app._handle_event("speaker_change", "spk_1")
+    app.apply_settings_updates.assert_called_once_with({"speaker_device": "spk_1"})
+    app.apply_settings_updates.reset_mock()
+
+    await app._handle_event("speaker_mute", True)
+    app.apply_settings_updates.assert_called_once_with({"speaker_muted": True})
+    app.apply_settings_updates.reset_mock()
+
+    await app._handle_event("speaker_volume", 80)
+    app.apply_settings_updates.assert_called_once_with({"speaker_volume": 80})
+    app.apply_settings_updates.reset_mock()
+
+    await app._handle_event("language_change", "en")
+    app.apply_settings_updates.assert_called_once_with({"language": "en"})
+    app.apply_settings_updates.reset_mock()
+
+    await app._handle_event("device_context_change", ("timezone", "Africa/Douala"))
+    app.apply_settings_updates.assert_called_once_with({"timezone": "Africa/Douala"})

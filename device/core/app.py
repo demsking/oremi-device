@@ -40,6 +40,7 @@ from device.core.package import APP_DOCUMENTATION_URL
 from device.core.settings import apply_runtime_settings_cache
 from device.core.settings import get_settings
 from device.core.settings import read_runtime_settings_cache
+from device.core.settings import SettingsUpdates
 from device.core.settings import update_runtime_settings_cache
 from device.mcp.prompts import register_mcp_prompts
 from device.mcp.resources import register_mcp_resources
@@ -52,8 +53,7 @@ from device.utils.context import parse_device_context_command_field
 from device.utils.context import validate_device_context_value
 from device.utils.logger import configure_logging
 from device.utils.startup_logger import log_startup_settings
-# MCP imports
-# Services imported from the new modular structure
+
 
 logger = logging.getLogger(__name__)
 
@@ -276,56 +276,19 @@ class DeviceApplication:
   async def _handle_event(self, event_type: str, data: Any):
     """Route mapped events to their respective service handlers."""
     if event_type == "device_change":
-      await self.audio.change_audio_device(data, self.components.values())
-      if self.audio.audio_stream:
-        self.active_stream_container["stream"] = self.audio.audio_stream
-        self.ha_device.publish_node("microphone/state", self.audio.audio_stream.device_name, retain=True)
-      else:
-        self.active_stream_container["stream"] = None
-        self.ha_device.publish_node("microphone/state", "None", retain=True)
-      self._publish_discovery()
+      await self.apply_settings_updates({"microphone_device": data})
 
     elif event_type == "microphone_mute":
-      self.settings.microphone_muted = data
-      self.audio.device_state["microphone_muted"] = data
-
-      await asyncio.to_thread(update_runtime_settings_cache, self.settings, microphone_muted=data)
-      self.ha_device.set_mute_state(data)
-
-      for component in self.components.values():
-        if isinstance(component, AudioStreamComponent):
-          await component.on_mute_changed(data)
+      await self.apply_settings_updates({"microphone_muted": data})
 
     elif event_type == "speaker_change":
-      # Delegate to executor or audio service
-      if self.audio.speaker:
-        self.audio.speaker.select_device(data)
-        self.settings.speaker_device = data
-        await asyncio.to_thread(update_runtime_settings_cache, self.settings, speaker_device=data)
-        self.ha_device.set_speaker_state(data)
-        self._publish_discovery()
+      await self.apply_settings_updates({"speaker_device": data})
 
     elif event_type == "speaker_mute":
-      self.settings.speaker_muted = data
-
-      if self.audio.speaker:
-        self.audio.speaker.set_muted(data)
-        await self.play_sound_cue("mute_on" if data else "mute_off")
-
-      await asyncio.to_thread(update_runtime_settings_cache, self.settings, speaker_muted=data)
-      self.ha_device.set_speaker_mute_state(data)
-      self._publish_discovery()
+      await self.apply_settings_updates({"speaker_muted": data})
 
     elif event_type == "speaker_volume":
-      self.settings.speaker_volume = data
-
-      if self.audio.speaker:
-        self.audio.speaker.set_volume(data)
-        await self.play_sound_cue("volume")
-
-      await asyncio.to_thread(update_runtime_settings_cache, self.settings, speaker_volume=data)
-      self.ha_device.set_speaker_volume_state(data)
-      self._publish_discovery()
+      await self.apply_settings_updates({"speaker_volume": data})
 
     elif event_type == "player_play":
       await self.executor.cancel_active()
@@ -340,44 +303,19 @@ class DeviceApplication:
       await self.executor.cancel_active()
 
     elif event_type == "language_change":
-      self.settings.language = data
-      self.device_context["language"] = data
-
-      await asyncio.to_thread(update_runtime_settings_cache, self.settings, language=data)
-      self.ha_device.publish_language_state(data)
-      self.ha_device.publish_device_context(self.device_context)
-
-      if self.tts:
-        self.tts.update_voice_for_language(data)
-        if self.tts.current_voice:
-          self.ha_device.publish_voice_state(self.tts.current_voice)
-
-      self._publish_discovery()
-
-      # Re-start ohunerin component so it gets the new language in shared_resources
-      if "ohunerin" in self.components:
-        await self.components["ohunerin"].stop()
-        self.shared_resources["language_state"]["language"] = data
-        await self.components["ohunerin"].start(self.component_configs["ohunerin"], self.shared_resources)
+      await self.apply_settings_updates({"language": data})
 
     elif event_type == "device_context_change":
       field, value = data
-      setattr(self.settings, field, value)
-      self.device_context = await asyncio.to_thread(build_device_context, self.settings)
-      await asyncio.to_thread(update_runtime_settings_cache, self.settings, **{field: value})
-      self.ha_device.publish_device_context_value(field, value)
-      self.ha_device.publish_device_context(self.device_context)
+      await self.apply_settings_updates({field: value})
 
     elif event_type == "processing":
       await self.executor.execute_response(data)
 
-  async def apply_settings_updates(self, updates: dict[str, Any]) -> None:
+  async def apply_settings_updates(self, updates: SettingsUpdates) -> None:
     """Apply updated runtime settings across running application subsystems."""
     if not updates:
       return
-
-    await asyncio.to_thread(update_runtime_settings_cache, self.settings, **updates)
-    apply_runtime_settings_cache(self.settings, read_runtime_settings_cache(self.settings))
 
     if "microphone_device" in updates:
       device_name = updates["microphone_device"]
@@ -389,11 +327,13 @@ class DeviceApplication:
         if self.audio.audio_stream:
           if hasattr(self, "active_stream_container"):
             self.active_stream_container["stream"] = self.audio.audio_stream
+
           if hasattr(self, "ha_device") and self.ha_device:
             self.ha_device.publish_node("microphone/state", self.audio.audio_stream.device_name, retain=True)
         else:
           if hasattr(self, "active_stream_container"):
             self.active_stream_container["stream"] = None
+
           if hasattr(self, "ha_device") and self.ha_device:
             self.ha_device.publish_node("microphone/state", "None", retain=True)
 
@@ -493,6 +433,9 @@ class DeviceApplication:
     updated_context_fields = context_fields.intersection(updates.keys())
 
     if updated_context_fields:
+      for field in updated_context_fields:
+        setattr(self.settings, field, updates[field])  # type: ignore[literal-required]
+
       self.device_context = await asyncio.to_thread(build_device_context, self.settings)
 
       if hasattr(self, "ha_device") and self.ha_device:
@@ -511,6 +454,9 @@ class DeviceApplication:
         self.ha_device.publish_voice_state(tts_voice)
 
       self._publish_discovery()
+
+    await asyncio.to_thread(update_runtime_settings_cache, self.settings, **updates)
+    apply_runtime_settings_cache(self.settings, read_runtime_settings_cache(self.settings))
 
   async def _geocode_retry_loop(self) -> None:
     """Periodically retries geocoding if it previously failed due to service unavailability."""
