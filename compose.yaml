@@ -54,6 +54,8 @@ services:
     image: demsking/oremi-ohunerin
     ports:
       - 45023:5023
+    volumes:
+      - ./config/ohunerin.json:/oremi/data/config.json
 
   andika:
     image: demsking/oremi-andika
