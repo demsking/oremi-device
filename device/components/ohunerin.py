@@ -40,7 +40,7 @@ class OhunerinServerInfo(BaseModel):
   version: str
   threshold: float
   wakewords: dict[str, list[str]]
-  sounds: list[str]
+  sounds: dict[str, list[str]]
 
 
 class OhunerinComponent(AudioStreamComponent[OhunerinConfig]):
@@ -75,6 +75,24 @@ class OhunerinComponent(AudioStreamComponent[OhunerinConfig]):
       logger.error(f"Error response {exc.response.status_code} while requesting {exc.request.url!r}.")
 
     return None
+
+  def get_supported_sounds(self) -> list[str]:
+    path = "/api/sounds"
+
+    if self.settings.cert_file:
+      endpoint = f"https://{self.settings.ohunerin_host}:{self.settings.ohunerin_port}{path}"
+    else:
+      endpoint = f"http://{self.settings.ohunerin_host}:{self.settings.ohunerin_port}{path}"
+
+    try:
+      response = httpx.get(endpoint)
+      response.raise_for_status()
+
+      return response.json()
+    except httpx.HTTPStatusError as exc:
+      logger.error(f"Error response {exc.response.status_code} while requesting {exc.request.url!r}.")
+
+    return []
 
   @property
   def task(self) -> asyncio.Task | None:

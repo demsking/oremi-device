@@ -702,7 +702,7 @@ Ambient sound event:
   "type": "sound",
   "sound": "baby-cry-infant-cry",
   "score": 0.91,
-  "date": "2026-06-19T12:04:10.123456"
+  "datetime": "2026-06-19T12:04:10.123456"
 }
 ```
 
@@ -713,7 +713,7 @@ Wake-word event:
   "type": "wakeword",
   "sound": "oremi",
   "score": 1.0,
-  "date": "2026-06-19T12:05:22.654321"
+  "datetime": "2026-06-19T12:05:22.654321"
 }
 ```
 

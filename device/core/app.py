@@ -23,6 +23,7 @@ from mcp.server.fastmcp import FastMCP
 from pydantic import ValidationError
 
 from device.components import COMPONENTS
+from device.components.ohunerin import OhunerinComponent
 from device.core.audio import AudioDeviceError
 from device.core.components import ActiveStreamContainer
 from device.core.components import AudioStreamComponent
@@ -125,15 +126,8 @@ class DeviceApplication:
         curr_stream_name = self.audio.audio_stream.device_name if self.audio.audio_stream else None
         input_devices = Audio.get_compatible_input_devices(current_device=curr_stream_name) if self.audio.needs_audio else []
         output_devices = Speaker.get_compatible_output_devices() if self.audio.speaker_enabled else []
-        ohunerin_comp = self.components.get("ohunerin") if hasattr(self, "components") and self.components else None
-        ohunerin_info = (
-          getattr(ohunerin_comp, "_get_server_info", lambda h, p: None)(
-            self.settings.ohunerin_host, self.settings.ohunerin_port
-          )
-          if ohunerin_comp
-          else None
-        )
-        ohunerin_sounds = ohunerin_info.sounds if (ohunerin_info and hasattr(ohunerin_info, "sounds")) else None
+        ohunerin_comp: OhunerinComponent = self.components.get("ohunerin")  # type: ignore
+        ohunerin_sounds = ohunerin_comp.get_supported_sounds()
 
         self.ha_device.publish_discovery_configs(
           input_devices=input_devices,
@@ -599,6 +593,7 @@ class DeviceApplication:
     # Load and configure components
     self.components = {}
     self.component_configs = {}
+
     component_config_inputs = {
       "ohunerin": {"threshold": self.settings.ohunerin_threshold},
       "andika": {"model": self.settings.andika_model, "samplerate": self.settings.andika_samplerate},

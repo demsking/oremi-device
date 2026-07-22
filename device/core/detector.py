@@ -16,7 +16,6 @@ import asyncio
 import json
 import logging
 from collections.abc import Callable
-from datetime import datetime
 from typing import Any
 
 from websockets.exceptions import ConnectionClosedError
@@ -87,15 +86,10 @@ class SoundDetector:
         other_active = any(t == data["type"] for t, _ in self.published_sound_sentinel.values())
 
         if not other_active:
-          self.send_clearing_message(data["type"])
+          self.send_clearing_message(data)
 
-  def send_clearing_message(self, sound_type: DetectedSoundType) -> None:
-    data: DetectedSound = {
-      "type": sound_type,
-      "sound": "...",
-      "score": 1.0,
-      "date": datetime.now().isoformat(),
-    }
+  def send_clearing_message(self, data: DetectedSound) -> None:
+    data["sound"] = "..."
     message = json.dumps(data)
     self._publish_event(DETECTION_EVENT_TOPIC, message, retain=True)
 

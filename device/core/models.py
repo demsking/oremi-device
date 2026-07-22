@@ -41,7 +41,7 @@ class DetectedSound(TypedDict):
   type: DetectedSoundType
   sound: str
   score: float
-  date: str
+  datetime: str
 
 
 OhunerinConfigFeature = Literal["wakeword-detection", "sound-detection"]
