@@ -52,8 +52,12 @@ class CommandExecutor:
 
   async def execute_response(self, response: ProcessingResponse) -> None:
     response_started_playback = False
+    commands = response.resolved_commands()
 
-    for command in response.resolved_commands():
+    logger.info(f"Executing {len(commands)} processing command(s)")
+    logger.debug(f"Processing response details (service={response.service}, commands={commands})")
+
+    for command in commands:
       if self.speech_task is not None:
         await self.speech_task
         self.speech_task = None

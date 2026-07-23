@@ -1210,37 +1210,6 @@ mute and volume, and speech synthesis voice. Mount the data directory or set
 The transcription sensor follows the node's `transcription/result` topic and
 extracts its state from the final JSON payload's `text` field.
 
-### Media Player
-
-Home Assistant does not provide a native MQTT media-player platform. To expose
-Oremi as a real `media_player` with the `speaker` device class, install the
-bundled integration by copying `custom_components/oremi_device` into the Home
-Assistant configuration directory and restart Home Assistant:
-
-1. **Download the archive**: Download the latest pre-packaged integration from
-   [here](https://demsking.gitlab.io/oremi-device/oremi-device-homeassistant.zip).
-
-2. Extract the archive and copy the `oremi_device` folder to your Home Assistant
-   configuration directory under `custom_components/oremi_device` (ensure the
-   target folder uses an underscore, not a hyphen).
-
-   Alternatively, you can copy it manually from the cloned repository:
-
-   ```bash
-   cp -r integrations/home-assistant/oremi_device /path/to/your/homeassistant/config/custom_components/oremi_device
-   ```
-
-3. Restart Home Assistant.
-
-With the default `oremi/device` MQTT topic, the integration discovers each
-running node and Home Assistant offers it for setup. For a custom base topic,
-add **Oremi Device Player** from **Settings > Devices & services**, then enter
-the node ID and MQTT base topic.
-
-The resulting `media_player` supports Home Assistant TTS and audio media-source
-URLs, stop, mute, and volume controls. Playback requires `ffmpeg`; it is included
-in the Docker image and must be installed separately when running from source.
-
 ## Model Context Protocol (MCP)
 
 Oremi Device implements the [Model Context Protocol (MCP)](https://modelcontextprotocol.io/), allowing LLM-based agents and assistants to inspect the device's status, configure settings, and manage audio devices directly.

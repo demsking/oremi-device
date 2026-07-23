@@ -29,12 +29,6 @@ pages:
     # page
     - mv pages public
 
-    # home assistant component
-    - mkdir -p /tmp/oremi_device
-    - cp -r integrations/home-assistant/oremi_device/* /tmp/oremi_device/
-    - cd /tmp && zip -r oremi-device-homeassistant.zip oremi_device && cd -
-    - cp /tmp/oremi-device-homeassistant.zip public/
-
     # checking
     - ls -lah public/
     - echo "The documentation site will be deployed to $CI_PAGES_URL"

@@ -92,7 +92,7 @@ services:
     ports:
       - 45046:5046
     volumes:
-      - ~/.local/share/oremi-kansa-agent:/oremi/data
+      - ~/.local/share/oremi-kansa:/oremi/data
 
   whisper-model:
     image: ghcr.io/ggml-org/whisper.cpp:main
