@@ -24,7 +24,6 @@ from paho.mqtt.enums import CallbackAPIVersion
 from device.core.cues import ConversationState
 from device.core.models import DetectedSoundType
 from device.core.package import APP_VERSION
-from device.utils.string import sluggify
 
 logger = logging.getLogger(__name__)
 
@@ -99,8 +98,7 @@ class HomeAssistantDevice:
   # ── Helpers for building HA entity payloads outside this class ──────────────
 
   def get_node_id(self) -> str:
-    """Return the slugified node identifier used in HA discovery topics."""
-    return sluggify(f"oremi-device-{self.node_id}")
+    return f"oremi-device-{self.node_id}"
 
   def get_device_descriptor(self) -> dict:
     """Return the HA device descriptor dict shared across all entities.
@@ -320,11 +318,12 @@ class HomeAssistantDevice:
       sound_payload["device_class"] = "enum"
       sound_payload["options"] = ohunerin_sounds + ["💤"]
       mapper_items = []
+
       for sound in ohunerin_sounds:
-        slug = sluggify(sound)
-        escaped_slug = slug.replace("'", "\\'")
         escaped_sound = sound.replace("'", "\\'")
-        mapper_items.append(f"'{escaped_slug}': '{escaped_sound}'")
+
+        mapper_items.append(f"'{escaped_sound}': '{escaped_sound}'")
+
       mapper_str = ", ".join(mapper_items)
       sound_payload["value_template"] = (
         f"{{% if value_json.type != 'sound' or value_json.sound == '...' %}}💤"
@@ -332,6 +331,7 @@ class HomeAssistantDevice:
         f"{{{{ mapper.get(value_json.sound, value_json.sound) }}}}"
         f"{{% endif %}}"
       )
+
     sound_topic = f"{self.discovery_prefix}/sensor/{node_id}/sound/config"
     self.client.publish(sound_topic, json.dumps(sound_payload), retain=True)
 

@@ -684,7 +684,7 @@ Detected sounds from the environment, including both wake words and ambient soun
 interface SoundEvent {
   /** Event discriminator: 'sound' or 'wakeword' */
   type: 'sound' | 'wakeword';
-  /** Detected ambient sound or wake-word name, converted to lowercase slug */
+  /** Detected ambient sound or wake-word name */
   sound: string;
   /** Detection confidence score (0.0 to 1.0) */
   score: number;

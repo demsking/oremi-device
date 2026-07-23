@@ -175,7 +175,7 @@ async def test_detector_wakeword_no_cooldown() -> None:
 
   # First occurrence
   await detector.process_detected_sound(wakeword)
-  assert "hey-assistant" in detector.published_sound_sentinel
+  assert "hey assistant" in detector.published_sound_sentinel
   assert mock_mqtt.publish_event.call_count == 1
   assert mock_mqtt.publish_event.call_args.args[0] == "event"
   assert wakeword_event.is_set()

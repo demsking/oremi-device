@@ -23,7 +23,6 @@ from websockets.exceptions import ConnectionClosedError
 from device.core.audio import Audio
 from device.core.models import DetectedSound
 from device.core.models import DetectedSoundType
-from device.utils.string import sluggify
 
 logger = logging.getLogger(__name__)
 
@@ -112,7 +111,6 @@ class SoundDetector:
       self.terminate()
 
   async def process_detected_sound(self, data: DetectedSound) -> None:
-    data["sound"] = sluggify(data["sound"])
     current_sound = data["sound"]
     payload = json.dumps(data)
 

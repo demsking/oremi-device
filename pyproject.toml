@@ -51,10 +51,7 @@ dev = [
   "pytest>=9.1.1",
   "pytest-asyncio>=1.4.0",
   "pytest-cov>=7.1.0",
-  "python-dotenv>=1.1.0",
-  "python-slugify>=8.0.4",
   "reorder-python-imports>=3.14.0",
-  "miniaudio>=1.60",
   "twine>=6.2.0",
 ]
 
