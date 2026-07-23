@@ -13,12 +13,15 @@
 # limitations under the License.
 # ==============================================================================
 import asyncio
+import logging
 import sys
 
 from device import start
 from device.core.args import parse_arguments
 from device.core.package import APP_NAME
 from device.core.settings import SettingsError
+
+logger = logging.getLogger(__name__)
 
 
 def main() -> int:
@@ -35,6 +38,12 @@ def main() -> int:
     return 2
   except KeyboardInterrupt:
     return 130
+  except Exception as exception:
+    if logger.isEnabledFor(logging.DEBUG):
+      logger.exception(exception)
+
+    logger.error(f"Oremi Device failed to start: {exception}")
+    return 1
 
   return 0
 
