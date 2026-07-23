@@ -49,7 +49,7 @@ class SoundDetector:
       self._publisher: Any = on_detection
     else:
       self.websocket = websocket
-      self._publisher: Any = websocket_or_publisher or on_detection
+      self._publisher = websocket_or_publisher or on_detection
 
     self.audio_stream: Audio | None = audio_stream
     self.delay: int = delay

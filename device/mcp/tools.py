@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import asyncio
 from typing import Any
+from typing import cast
 from typing import Literal
 
 from mcp.server.fastmcp import FastMCP
@@ -109,7 +110,7 @@ def register_mcp_tools(mcp: FastMCP, device: McpDevice) -> None:
     speaker_volume: float | None = None,
     tts_voice: str | None = None,
   ) -> DeviceStatus:
-    updates: SettingsUpdates = {}
+    updates_dict: dict[str, Any] = {}
 
     for key, val in [
       ("language", language),
@@ -130,7 +131,9 @@ def register_mcp_tools(mcp: FastMCP, device: McpDevice) -> None:
       ("tts_voice", tts_voice),
     ]:
       if val is not None:
-        updates[key] = val
+        updates_dict[key] = val
+
+    updates: SettingsUpdates = cast(SettingsUpdates, updates_dict)
 
     if not updates:
       raise ToolError("No settings were provided to update")

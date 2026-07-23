@@ -37,8 +37,7 @@ def format_settings_group(values: dict[str, Any]) -> str:
 
 def log_startup_settings(settings: Settings) -> None:
   context = build_device_context(settings)
-
-  transcription_settings: dict = {"backend": settings.transcription_backend}
+  transcription_settings: dict[str, Any] = {"backend": settings.transcription_backend}
 
   if settings.transcription_backend == "andika":
     transcription_settings.update(
@@ -52,7 +51,7 @@ def log_startup_settings(settings: Settings) -> None:
   else:
     transcription_settings["url"] = settings.whisper_url
 
-  speech_settings = {"backend": settings.tts_backend, "voice": settings.tts_voice}
+  speech_settings: dict[str, Any] = {"backend": settings.tts_backend, "voice": settings.tts_voice}
   if settings.tts_backend == "edge-tts":
     speech_settings.update(
       {
@@ -70,7 +69,7 @@ def log_startup_settings(settings: Settings) -> None:
   logger.info(f"Application setting path: {settings.path}")
 
   # Log groupings
-  groups = {
+  groups: dict[str, dict[str, Any]] = {
     "runtime": {
       "log_level": logging.getLevelName(logger.getEffectiveLevel()),
       "node_id": settings.node_id,

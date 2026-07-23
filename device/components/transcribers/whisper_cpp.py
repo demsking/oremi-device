@@ -44,14 +44,14 @@ class WhisperCppListener(BaseTranscriber):
     self,
     settings: Settings,
     publisher: Any,
-    audio_stream: Audio,
+    audio_stream: Audio | None,
     transcription_complete_event: asyncio.Event,
     conversation_event_handler: Callable[[ConversationEvent], Awaitable[None]] | None = None,
     final_transcription_handler: Callable[[str], Awaitable[None]] | None = None,
   ) -> None:
     super().__init__(settings)
     self.publisher = publisher
-    self.audio_stream = audio_stream
+    self.audio_stream: Audio | None = audio_stream
     self.transcription_complete_event = transcription_complete_event
     self.conversation_event_handler = conversation_event_handler
     self.final_transcription_handler = final_transcription_handler
@@ -101,6 +101,9 @@ class WhisperCppListener(BaseTranscriber):
       self.publisher(topic, message, qos=qos, retain=retain, props=props)
 
   async def _capture(self) -> bytes:
+    if self.audio_stream is None:
+      return b""
+
     audio = bytearray()
     speech_started = False
     silence_duration = 0.0
@@ -141,6 +144,10 @@ class WhisperCppListener(BaseTranscriber):
     await self.listening()
 
   async def listening(self) -> None:
+    if self.audio_stream is None:
+      logger.warning("Audio stream is not initialized for whisper.cpp listener.")
+      return
+
     logger.info(f"Listening from {self.audio_stream.device_name} device for whisper.cpp...")
 
     try:

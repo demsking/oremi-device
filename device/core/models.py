@@ -47,13 +47,17 @@ class DetectedSound(TypedDict):
 OhunerinConfigFeature = Literal["wakeword-detection", "sound-detection"]
 
 
+def _default_ohunerin_features() -> list[OhunerinConfigFeature]:
+  return ["wakeword-detection", "sound-detection"]
+
+
 class OhunerinConfig(BaseModel):
   """
   The configuration schema for the Ohunerin component.
   """
 
   features: list[OhunerinConfigFeature] = Field(
-    default_factory=lambda: ["wakeword-detection", "sound-detection"],
+    default_factory=_default_ohunerin_features,
     description=("The list of detection features to enable."),
   )
 

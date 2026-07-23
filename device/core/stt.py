@@ -165,7 +165,7 @@ class Speech2Text(AudioStreamComponent[AndikaConfig]):
             self._final_transcription_handler,
           )
       elif self.audio_listener and isinstance(self.audio_listener, WhisperCppListener):
-        self.audio_listener.audio_stream = new_stream  # pyright: ignore
+        self.audio_listener.audio_stream = new_stream
     elif new_stream and self.audio_listener and isinstance(self.audio_listener, AudioListener):
       self.audio_listener.audio_stream = new_stream
 

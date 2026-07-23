@@ -13,6 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 import asyncio
+import logging
 from unittest.mock import AsyncMock
 from unittest.mock import patch
 
@@ -86,6 +87,30 @@ async def test_akorin_client_posts_agent_request() -> None:
     },
   )
   assert result.resolved_commands() == [SpeakCommand(type="speak", text="Bonjour")]
+
+
+@pytest.mark.asyncio
+async def test_akorin_client_logs_info_and_debug(caplog: pytest.LogCaptureFixture) -> None:
+  client = AkorinClient("http://akorin:5020")
+  response = httpx.Response(
+    status_code=200,
+    json={"service": "weather", "confidence": 0.95, "message": "Weather is fine"},
+    request=httpx.Request("POST", "http://akorin:5020/api/agent/"),
+  )
+
+  with caplog.at_level(logging.DEBUG):
+    with patch("httpx.AsyncClient.post", AsyncMock(return_value=response)):
+      await client.process(
+        "quelle météo ?",
+        language="fr",
+        context={},
+        tags=["device_id:test-node"],
+        timeout=5.0,
+      )
+
+  assert "Processing request: 'quelle météo ?'" in caplog.text
+  assert "Processing completed (service=weather)" in caplog.text
+  assert "Sending processing request to http://akorin:5020/api/agent/" in caplog.text
 
 
 @pytest.mark.asyncio

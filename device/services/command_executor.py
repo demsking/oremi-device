@@ -18,6 +18,7 @@ from datetime import datetime
 from datetime import timezone
 
 from device.core.cues import get_sound_cue_path
+from device.core.cues import SoundCue
 from device.core.models import AlarmCommand
 from device.core.models import AnnounceCommand
 from device.core.models import CancelScheduledCommand
@@ -177,7 +178,7 @@ class CommandExecutor:
     if self.audio.speaker is not None:
       self.audio.speaker.set_muted(command.muted)
 
-      cue = "mute_on" if command.muted else "mute_off"
+      cue: SoundCue = "mute_on" if command.muted else "mute_off"
 
       self.loop.create_task(
         asyncio.to_thread(self.audio.speaker.play_file, get_sound_cue_path(cue)),

@@ -18,6 +18,7 @@ import logging
 import signal
 import sys
 from typing import Any
+from typing import cast
 
 from mcp.server.fastmcp import FastMCP
 from pydantic import ValidationError
@@ -59,7 +60,7 @@ logger = logging.getLogger(__name__)
 
 
 class DeviceApplication:
-  def __init__(self):
+  def __init__(self) -> None:
     self.settings = get_settings()
     self.shutdown_event = asyncio.Event()
     self.loop = asyncio.get_event_loop()
@@ -74,9 +75,9 @@ class DeviceApplication:
 
     self._setup_queues()
 
-  def _setup_queues(self):
+  def _setup_queues(self) -> None:
     """Initialize all event queues required by the application."""
-    self.queues = {
+    self.queues: dict[str, asyncio.Queue[Any]] = {
       "device_change": asyncio.Queue(),
       "microphone_mute": asyncio.Queue(),
       "speaker_change": asyncio.Queue(),
@@ -91,12 +92,12 @@ class DeviceApplication:
       "transcription": asyncio.Queue(),
     }
 
-  def _setup_signals(self):
+  def _setup_signals(self) -> None:
     """Bind OS signals to the shutdown event."""
     for sig in (signal.SIGINT, signal.SIGTERM):
       self.loop.add_signal_handler(sig, self._request_shutdown)
 
-  def _request_shutdown(self):
+  def _request_shutdown(self) -> None:
     if not self.shutdown_event.is_set():
       logger.info("Shutdown signal received. Stopping application...")
       self.shutdown_event.set()
@@ -117,7 +118,7 @@ class DeviceApplication:
     except Exception as error:
       logger.exception(f"Unhandled error in task {task.get_name() or task}: {error}")
 
-  def _publish_discovery(self):
+  def _publish_discovery(self) -> None:
     if self.ha_device.discovery_prefix:
       try:
         from device.core.audio import Audio
@@ -134,9 +135,9 @@ class DeviceApplication:
           current_device=curr_stream_name or "",
           microphone_muted=self.settings.microphone_muted,
           output_devices=output_devices,
-          current_output=self.audio.speaker_state.get("device", ""),
-          speaker_muted=self.audio.speaker_state.get("muted", False),
-          speaker_volume=self.audio.speaker_state.get("volume", 1.0),
+          current_output=str(self.audio.speaker_state.get("device", "") or ""),
+          speaker_muted=bool(self.audio.speaker_state.get("muted", False)),
+          speaker_volume=cast(float, self.audio.speaker_state.get("volume", 1.0)),
           current_language=self.settings.language,
           device_context=self.device_context,
           microphone_enabled=self.settings.microphone_enabled,
@@ -148,7 +149,7 @@ class DeviceApplication:
       except Exception as error:
         logger.error(f"Failed to publish discovery: {error}")
 
-  def _setup_mqtt_callbacks(self):
+  def _setup_mqtt_callbacks(self) -> None:
     """Bind MQTT network events to internal asyncio queues."""
 
     @self.ha_device.client.connect_callback()
@@ -245,7 +246,7 @@ class DeviceApplication:
         except ValidationError:
           logger.warning("Ignoring invalid NLP processing response")
 
-  async def _event_loop_processor(self):
+  async def _event_loop_processor(self) -> None:
     """Unified queue processor handling all application events."""
     while not self.shutdown_event.is_set():
       # Create a task map to identify which queue triggered
@@ -273,7 +274,7 @@ class DeviceApplication:
         except Exception as e:
           logger.error(f"Error processing {event_type} event: {e}")
 
-  async def _handle_event(self, event_type: str, data: Any):
+  async def _handle_event(self, event_type: str, data: Any) -> None:
     """Route mapped events to their respective service handlers."""
     if event_type == "device_change":
       await self.apply_settings_updates({"microphone_device": data})
@@ -307,7 +308,7 @@ class DeviceApplication:
 
     elif event_type == "device_context_change":
       field, value = data
-      await self.apply_settings_updates({field: value})
+      await self.apply_settings_updates(cast(SettingsUpdates, {field: value}))
 
     elif event_type == "processing":
       await self.executor.execute_response(data)
@@ -358,12 +359,13 @@ class DeviceApplication:
       device_name = updates["speaker_device"]
       self.settings.speaker_device = device_name
 
-      if hasattr(self, "audio") and self.audio and self.audio.speaker:
-        self.audio.speaker.select_device(device_name)
+      if device_name is not None:
+        if hasattr(self, "audio") and self.audio and self.audio.speaker:
+          self.audio.speaker.select_device(device_name)
 
-      if hasattr(self, "ha_device") and self.ha_device:
-        self.ha_device.set_speaker_state(device_name)
-        self._publish_discovery()
+        if hasattr(self, "ha_device") and self.ha_device:
+          self.ha_device.set_speaker_state(device_name)
+          self._publish_discovery()
 
     if "speaker_muted" in updates:
       muted = updates["speaker_muted"]
@@ -430,30 +432,32 @@ class DeviceApplication:
       "first_day_of_week",
     }
 
-    updated_context_fields = context_fields.intersection(updates.keys())
+    updates_dict: dict[str, Any] = cast(dict[str, Any], updates)
+    updated_context_fields = context_fields.intersection(updates_dict.keys())
 
     if updated_context_fields:
       for field in updated_context_fields:
-        setattr(self.settings, field, updates[field])  # type: ignore[literal-required]
+        setattr(self.settings, field, updates_dict[field])
 
       self.device_context = await asyncio.to_thread(build_device_context, self.settings)
 
       if hasattr(self, "ha_device") and self.ha_device:
         for field in updated_context_fields:
-          self.ha_device.publish_device_context_value(field, updates[field])
+          self.ha_device.publish_device_context_value(field, updates_dict[field])
 
         self.ha_device.publish_device_context(self.device_context)
 
     if "tts_voice" in updates:
       tts_voice = updates["tts_voice"]
 
-      if hasattr(self, "tts") and self.tts:
-        self.tts.current_voice = tts_voice
+      if tts_voice is not None:
+        if hasattr(self, "tts") and self.tts:
+          self.tts.current_voice = tts_voice
 
-      if hasattr(self, "ha_device") and self.ha_device:
-        self.ha_device.publish_voice_state(tts_voice)
+        if hasattr(self, "ha_device") and self.ha_device:
+          self.ha_device.publish_voice_state(tts_voice)
 
-      self._publish_discovery()
+        self._publish_discovery()
 
     await asyncio.to_thread(update_runtime_settings_cache, self.settings, **updates)
     apply_runtime_settings_cache(self.settings, read_runtime_settings_cache(self.settings))
@@ -484,7 +488,7 @@ class DeviceApplication:
         except Exception as error:
           logger.error(f"Error during geocode retry: {error}")
 
-  async def run(self):
+  async def run(self) -> None:
     configure_logging(self.settings.log_level, self.settings.log_file)
     log_startup_settings(self.settings)
     self._setup_signals()
@@ -628,7 +632,7 @@ class DeviceApplication:
     if self.audio.speaker:
       active_speaker = self.audio.speaker
 
-      async def play_ready():
+      async def play_ready() -> None:
         try:
           await asyncio.to_thread(active_speaker.play_file, get_sound_cue_path("ready"))
         except Exception as exception:

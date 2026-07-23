@@ -103,12 +103,13 @@ class AkorinClient:
     tags: list[str],
     timeout: float,
   ) -> ProcessingResponse:
+    logger.info(f"Processing request: {message!r}")
     logger.debug(
       f"Sending processing request to {self.endpoint} "
       f"(message={message!r}, "
       f"language={language or 'auto'}, "
       f"device_context={context}, "
-      f"tags={tags}"
+      f"tags={tags})"
     )
 
     async with httpx.AsyncClient(verify=self.verify, timeout=timeout) as client:
@@ -126,6 +127,7 @@ class AkorinClient:
       data = response.json()
       result = ProcessingResponse.model_validate(data)
 
+      logger.info(f"Processing completed (service={result.service})")
       logger.debug(
         f"Processing completed (service={result.service}, confidence={result.confidence:.2f}, message={result.message!r}, data={result.data})"
       )
@@ -141,7 +143,7 @@ class AkorinComponent(HttpComponent[AkorinConfig]):
 
     self._task: asyncio.Task | None = None
     self._request_task: asyncio.Task | None = None
-    self._handle_task_done = None
+    self._handle_task_done: Callable[[asyncio.Task[Any]], None] | None = None
     self._cancel_active_processing: Callable[[], Awaitable[None]] | None = None
     self._play_sound_cue: Callable[[SoundCue], Awaitable[None]] | None = None
 
