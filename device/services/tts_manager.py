@@ -44,14 +44,13 @@ class TTSManager:
       self.client = OpenAIEdgeTTSClient(
         str(self.settings.edge_tts_url),
         api_key=self.settings.edge_tts_api_key,
-        ca_file=self.settings.cert_file,
         locale=edge_tts_locale,
         model=self.settings.edge_tts_model,
         response_format=self.settings.edge_tts_response_format,
         speed=self.settings.edge_tts_speed,
       )
     elif self.settings.izwi_url:
-      self.client = IzwiClient(str(self.settings.izwi_url), ca_file=self.settings.cert_file)
+      self.client = IzwiClient(str(self.settings.izwi_url))
     else:
       self.client = None
       logger.info("No TTS backend properly configured (URLs missing or disabled).")

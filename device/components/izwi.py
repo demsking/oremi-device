@@ -25,12 +25,11 @@ from device.core.tts import TTSVoice
 class IzwiClient(BaseTTSClient):
   MAX_GET_URL_LENGTH = 2000
 
-  def __init__(self, url: str, *, ca_file: str | None = None) -> None:
+  def __init__(self, url: str) -> None:
     self.base_url = url.rstrip("/")
-    self.ca_file = ca_file
 
   async def get_voices(self) -> list[TTSVoice]:
-    async with httpx.AsyncClient(verify=self.ca_file or True) as client:
+    async with httpx.AsyncClient() as client:
       response = await client.get(f"{self.base_url}/api/voices")
       response.raise_for_status()
       return [TTSVoice.model_validate(voice) for voice in response.json()]

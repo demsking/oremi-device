@@ -292,7 +292,6 @@ class McpDevice:
       return OpenAIEdgeTTSClient(
         str(self.settings.edge_tts_url),
         api_key=self.settings.edge_tts_api_key,
-        ca_file=self.settings.cert_file,
         locale=edge_tts_locale,
         model=self.settings.edge_tts_model,
         response_format=self.settings.edge_tts_response_format,
@@ -301,6 +300,6 @@ class McpDevice:
     elif self.settings.izwi_url:
       from device.components.izwi import IzwiClient  # pylint: disable=import-outside-toplevel
 
-      return IzwiClient(str(self.settings.izwi_url), ca_file=self.settings.cert_file)
+      return IzwiClient(str(self.settings.izwi_url))
 
     return None

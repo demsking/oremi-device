@@ -97,7 +97,7 @@ class Speech2Text(AudioStreamComponent[AndikaConfig]):
       }
     )
 
-    if self.settings.cert_file:
+    if self.settings.andika_cert_file:
       return f"wss://{self.settings.andika_host}:{self.settings.andika_port}/ws?{query_string}"
 
     return f"ws://{self.settings.andika_host}:{self.settings.andika_port}/ws?{query_string}"
@@ -407,9 +407,9 @@ class Speech2Text(AudioStreamComponent[AndikaConfig]):
 
     logger.info(f"Andika Connection URI: {andika_uri}")
 
-    if self.settings.cert_file:
+    if self.settings.andika_cert_file:
       ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
-      ssl_context.load_verify_locations(self.settings.cert_file)
+      ssl_context.load_verify_locations(self.settings.andika_cert_file)
     else:
       ssl_context = None
 

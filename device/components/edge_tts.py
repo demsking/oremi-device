@@ -27,7 +27,6 @@ class OpenAIEdgeTTSClient(BaseTTSClient):
     url: str,
     *,
     api_key: str,
-    ca_file: str | None = None,
     locale: str | None = None,
     model: str = "tts-1",
     response_format: str = "mp3",
@@ -35,7 +34,6 @@ class OpenAIEdgeTTSClient(BaseTTSClient):
   ) -> None:
     self.base_url = url.rstrip("/")
     self.api_key = api_key
-    self.ca_file = ca_file
     self.locale = locale
     self.model = model
     self.response_format = response_format
@@ -48,7 +46,7 @@ class OpenAIEdgeTTSClient(BaseTTSClient):
   async def get_voices(self) -> list[TTSVoice]:
     params = {"language": self.locale} if self.locale else None
 
-    async with httpx.AsyncClient(verify=self.ca_file or True) as client:
+    async with httpx.AsyncClient() as client:
       response = await client.get(f"{self.base_url}/v1/voices", params=params, headers=self._headers)
       response.raise_for_status()
       payload = response.json()

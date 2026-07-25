@@ -57,14 +57,6 @@ EdgeTTSResponseFormatSetting = Literal["mp3", "opus", "aac", "flac", "wav", "pcm
 LogLevelSetting = Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
 
 
-class SettingsError(Exception):
-  """User-facing configuration validation failure."""
-
-  def __init__(self, issues: list[str]) -> None:
-    super().__init__("Invalid application configuration")
-    self.issues = issues
-
-
 def format_settings_errors(error: ValidationError) -> list[str]:
   """Convert Pydantic details into concise environment-variable errors."""
   issues = []
@@ -148,10 +140,12 @@ class Settings(BaseSettings):
   ohunerin_host: str
   ohunerin_port: int = Field(default=5023, gt=0, le=65535)
   ohunerin_threshold: float = Field(default=0.25, gt=0)
+  ohunerin_cert_file: str | None = None
 
   transcription_backend: TranscriptionBackendSetting = "andika"
   andika_host: str | None = None
   andika_port: int = Field(default=5315, gt=0, le=65535)
+  andika_cert_file: str | None = None
   andika_model: AndikaModel = "vosk-model-small-fr-0.22"
   andika_samplerate: int = Field(default=16000, gt=0)
   whisper_url: HttpUrl | None = None
@@ -168,7 +162,6 @@ class Settings(BaseSettings):
   edge_tts_speed: float = Field(default=1.0, ge=0.25, le=4.0)
   tts_voice: str | None = None
 
-  cert_file: str | None = None
   node_id: str
   data_path: Path = Field(default=None)  # type: ignore
 
@@ -218,7 +211,7 @@ class Settings(BaseSettings):
     return f"{APP_NAME}/{APP_VERSION}/{self.node_id}"
 
   @cached_property
-  def path(self) -> Path:
+  def setting_path(self) -> Path:
     return self.data_path / f"{self.node_id}.json"
 
   @field_validator("data_path", mode="before")
@@ -319,20 +312,20 @@ class RuntimeSettingsCache(BaseModel):
 
 
 def read_runtime_settings_cache(settings: Settings) -> RuntimeSettingsCache:
-  if not settings.path.exists():
+  if not settings.setting_path.exists():
     return RuntimeSettingsCache()
 
   try:
-    content = json.loads(settings.path.read_text(encoding="utf-8"))
+    content = json.loads(settings.setting_path.read_text(encoding="utf-8"))
   except (OSError, json.JSONDecodeError) as error:
-    logger.warning(f"Ignoring unreadable runtime settings cache {settings.path}: {error}")
+    logger.warning(f"Ignoring unreadable runtime settings cache {settings.setting_path}: {error}")
 
     return RuntimeSettingsCache()
 
   try:
     return RuntimeSettingsCache.model_validate(content)
   except ValidationError as error:
-    logger.warning(f"Ignoring invalid runtime settings cache {settings.path}: {error}")
+    logger.warning(f"Ignoring invalid runtime settings cache {settings.setting_path}: {error}")
 
     return RuntimeSettingsCache()
 
@@ -359,13 +352,13 @@ def update_runtime_settings_cache(settings: Settings, **updates: Any) -> None:
     return
 
   try:
-    settings.path.parent.mkdir(parents=True, exist_ok=True)
-    settings.path.write_text(
+    settings.setting_path.parent.mkdir(parents=True, exist_ok=True)
+    settings.setting_path.write_text(
       json.dumps(updated_cache.model_dump(exclude_none=True), sort_keys=True, indent=2) + "\n",
       encoding="utf-8",
     )
   except OSError as error:
-    logger.warning(f"Failed to write runtime settings cache {settings.path}: {error}")
+    logger.warning(f"Failed to write runtime settings cache {settings.setting_path}: {error}")
 
 
 @lru_cache
@@ -373,3 +366,36 @@ def get_settings() -> Settings:
   settings = Settings()  # type: ignore
 
   return apply_runtime_settings_cache(settings, read_runtime_settings_cache(settings))
+
+
+def _format(value: Any) -> str:
+  if value is None:
+    return "None"
+
+  if isinstance(value, Path):
+    return str(value)
+
+  if isinstance(value, list):
+    return ",".join(str(item) for item in value)
+
+  return str(value)
+
+
+def _password(value: str | None) -> str:
+  return "<set>" if value else "<unset>"
+
+
+def log_group(settings: Settings, name: str, *fields: str) -> None:
+  values: list[str] = []
+
+  for field in fields:
+    value = getattr(settings, field)
+
+    if field in ("mqtt_password", "edge_tts_api_key"):
+      value = _password(value)
+    else:
+      value = _format(value)
+
+    values.append(f"{field}={value}")
+
+  logger.info("Settings [%s]: %s", name, " ".join(values))

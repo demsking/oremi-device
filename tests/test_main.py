@@ -19,32 +19,8 @@ from unittest.mock import patch
 
 import pytest
 
-from device.__main__ import main
 from device.core.app import parse_device_context_command_field
 from device.core.app import validate_device_context_value
-from device.core.settings import SettingsError
-
-
-def test_main_prints_clean_configuration_errors(capsys) -> None:
-  error = SettingsError(
-    [
-      "OREMI_DEVICE_OHUNERIN_HOST is required",
-      "OREMI_DEVICE_MQTT_PORT must be at most 65535",
-    ]
-  )
-
-  with patch("device.__main__.parse_arguments"), patch("device.__main__.start", side_effect=error):
-    result = main()
-
-  captured = capsys.readouterr()
-  assert result == 2
-  assert captured.out == ""
-  assert captured.err == (
-    "oremi-device: configuration error\n"
-    "  - OREMI_DEVICE_OHUNERIN_HOST is required\n"
-    "  - OREMI_DEVICE_MQTT_PORT must be at most 65535\n"
-  )
-  assert "Traceback" not in captured.err
 
 
 def test_parse_device_context_command_field_without_leading_slash() -> None:
@@ -94,7 +70,8 @@ async def test_ready_and_shutdown_sounds_played() -> None:
     ohunerin_port=5023,
     andika_host="localhost",
     andika_port=5315,
-    cert_file=None,
+    andika_cert_file=None,
+    ohunerin_cert_file=None,
     ohunerin_threshold=0.65,
     andika_model="vosk-model-small-fr-0.22",
     andika_samplerate=16000,
@@ -176,7 +153,8 @@ async def test_geocode_background_retry(monkeypatch: pytest.MonkeyPatch) -> None
     ohunerin_port=5023,
     andika_host="localhost",
     andika_port=5315,
-    cert_file=None,
+    andika_cert_file=None,
+    ohunerin_cert_file=None,
     ohunerin_threshold=0.65,
     andika_model="vosk-model-small-fr-0.22",
     andika_samplerate=16000,
@@ -275,7 +253,8 @@ async def test_handle_event_calls_apply_settings_updates() -> None:
     ohunerin_port=5023,
     andika_host="localhost",
     andika_port=5315,
-    cert_file=None,
+    andika_cert_file=None,
+    ohunerin_cert_file=None,
     ohunerin_threshold=0.65,
     andika_model="vosk-model-small-fr-0.22",
     andika_samplerate=16000,

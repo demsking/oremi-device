@@ -63,23 +63,10 @@ class OhunerinComponent(AudioStreamComponent[OhunerinConfig]):
   def name(self) -> str:
     return "ohunerin"
 
-  def _get_server_info(self, host: str, port: int) -> OhunerinServerInfo | None:
-    endpoint = f"https://{host}:{port}/health" if self.settings.cert_file else f"http://{host}:{port}/health"
-
-    try:
-      response = httpx.get(endpoint)
-      response.raise_for_status()
-
-      return OhunerinServerInfo.model_validate_json(response.text)
-    except httpx.HTTPStatusError as exc:
-      logger.error(f"Error response {exc.response.status_code} while requesting {exc.request.url!r}.")
-
-    return None
-
   def get_supported_sounds(self) -> list[str]:
     path = "/api/sounds"
 
-    if self.settings.cert_file:
+    if self.settings.ohunerin_cert_file:
       endpoint = f"https://{self.settings.ohunerin_host}:{self.settings.ohunerin_port}{path}"
     else:
       endpoint = f"http://{self.settings.ohunerin_host}:{self.settings.ohunerin_port}{path}"
@@ -113,7 +100,7 @@ class OhunerinComponent(AudioStreamComponent[OhunerinConfig]):
       }
     )
 
-    if self.settings.cert_file:
+    if self.settings.ohunerin_cert_file:
       return f"wss://{self.settings.ohunerin_host}:{self.settings.ohunerin_port}/ws?{query_string}"
 
     return f"ws://{self.settings.ohunerin_host}:{self.settings.ohunerin_port}/ws?{query_string}"
@@ -214,9 +201,9 @@ class OhunerinComponent(AudioStreamComponent[OhunerinConfig]):
     logger.info(f"Ohunerin Connection URI: {ohunerin_uri}")
     logger.info(f"Ohunerin Configuration Delay: {self.settings.delay}s")
 
-    if self.settings.cert_file:
+    if self.settings.ohunerin_cert_file:
       ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
-      ssl_context.load_verify_locations(self.settings.cert_file)
+      ssl_context.load_verify_locations(self.settings.ohunerin_cert_file)
     else:
       ssl_context = None
 

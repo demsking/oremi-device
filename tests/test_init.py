@@ -38,7 +38,8 @@ def _make_settings(**kwargs) -> Settings:
     "ohunerin_port": 5023,
     "andika_host": "localhost",
     "andika_port": 5315,
-    "cert_file": None,
+    "andika_cert_file": None,
+    "ohunerin_cert_file": None,
     "mqtt_broker": "mqtt",
   }
   defaults.update(kwargs)
@@ -64,7 +65,7 @@ def test_build_connection_uri_secure() -> None:
     language="en",
     ohunerin_host="127.0.0.1",
     ohunerin_port=8000,
-    cert_file="cert.pem",
+    ohunerin_cert_file="cert.pem",
   )
   component = OhunerinComponent(settings)
   uri = component.build_connection_uri()
@@ -123,11 +124,13 @@ def test_ohunerin_ha_entities_use_event_topics_and_node_availability() -> None:
   client.publish_discovery_configs(input_devices=[], current_device="")
 
   wakeword_calls = [
-    call for call in mock_client_instance.publish.call_args_list
+    call
+    for call in mock_client_instance.publish.call_args_list
     if call[0][0].endswith("sensor/oremi-device-test-node/wakeword/config")
   ]
   sound_calls = [
-    call for call in mock_client_instance.publish.call_args_list
+    call
+    for call in mock_client_instance.publish.call_args_list
     if call[0][0].endswith("sensor/oremi-device-test-node/sound/config")
   ]
 
@@ -158,7 +161,7 @@ def test_build_andika_connection_uri_default() -> None:
 
 
 def test_build_andika_connection_uri_with_config() -> None:
-  settings = _make_settings(andika_host="127.0.0.1", andika_port=8080, cert_file="cert.pem")
+  settings = _make_settings(andika_host="127.0.0.1", andika_port=8080, andika_cert_file="cert.pem")
   component = AndikaComponent(settings)
   config = AndikaConfig.model_validate(
     {
@@ -177,7 +180,6 @@ def test_build_andika_connection_uri_with_config() -> None:
   assert params["max-alternatives"] == ["0"]
   assert params["language"] == ["fr"]
   assert "temperature-unit" not in params
-
 
 
 @pytest.mark.asyncio

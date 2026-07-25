@@ -16,7 +16,6 @@ import asyncio
 import inspect
 import logging
 import signal
-import sys
 from typing import Any
 from typing import cast
 
@@ -38,8 +37,11 @@ from device.core.mqtt import DEVICE_CONTEXT_OPTIONS
 from device.core.mqtt import DEVICE_CONTEXT_TEXT_FIELDS
 from device.core.mqtt import HomeAssistantDevice
 from device.core.package import APP_DOCUMENTATION_URL
+from device.core.package import APP_NAME
+from device.core.package import APP_VERSION
 from device.core.settings import apply_runtime_settings_cache
 from device.core.settings import get_settings
+from device.core.settings import log_group
 from device.core.settings import read_runtime_settings_cache
 from device.core.settings import SettingsUpdates
 from device.core.settings import update_runtime_settings_cache
@@ -53,7 +55,6 @@ from device.utils.context import build_device_context
 from device.utils.context import parse_device_context_command_field
 from device.utils.context import validate_device_context_value
 from device.utils.logger import configure_logging
-from device.utils.startup_logger import log_startup_settings
 
 
 logger = logging.getLogger(__name__)
@@ -490,7 +491,78 @@ class DeviceApplication:
 
   async def run(self) -> None:
     configure_logging(self.settings.log_level, self.settings.log_file)
-    log_startup_settings(self.settings)
+
+    logger.info(f"{APP_NAME} v{APP_VERSION}")
+    log_group(self.settings, "Server", "server_host", "server_port")
+    log_group(self.settings, "Logging", "log_level", "log_file")
+    log_group(self.settings, "Runtime", "node_id", "setting_path", "delay", "conversation_timeout")
+
+    log_group(
+      self.settings,
+      "Preferences",
+      "language",
+      "location",
+      "timezone",
+      "temperature_unit",
+      "preferred_currency",
+      "measurement_system",
+      "distance_unit",
+      "time_format",
+      "date_format",
+      "first_day_of_week",
+    )
+
+    log_group(
+      self.settings, "Microphone", "microphone_enabled", "microphone_device", "microphone_device_index", "microphone_muted"
+    )
+
+    log_group(self.settings, "Speaker", "speaker_enabled", "speaker_device", "speaker_muted", "speaker_volume")
+
+    log_group(
+      self.settings,
+      "Wake Word & Sounds Detection",
+      "ohunerin_threshold",
+      "ohunerin_host",
+      "ohunerin_port",
+      "ohunerin_cert_file",
+    )
+
+    transcription_fields = (
+      ("andika_model", "andika_samplerate", "andika_host", "andika_port", "andika_cert_file")
+      if self.settings.transcription_backend == "andika"
+      else ("whisper_url", "whisper_silence_threshold", "whisper_silence_duration")
+    )
+
+    log_group(self.settings, "Transcription", "transcription_backend", *transcription_fields)
+
+    speech_fields = (
+      ("izwi_url",)
+      if self.settings.tts_backend == "izwi"
+      else (
+        "edge_tts_url",
+        "edge_tts_api_key",
+        "edge_tts_locale",
+        "edge_tts_model",
+        "edge_tts_response_format",
+        "edge_tts_speed",
+      )
+    )
+
+    log_group(self.settings, "Speech", "tts_backend", "tts_voice", *speech_fields)
+    log_group(self.settings, "Orchestrator", "akorin_url")
+
+    log_group(
+      self.settings,
+      "Connectivity",
+      "mqtt_broker",
+      "mqtt_port",
+      "mqtt_username",
+      "mqtt_password",
+      "mqtt_topic",
+      "mqtt_discovery",
+      "mqtt_discovery_prefix",
+    )
+
     self._setup_signals()
 
     self.audio = AudioService(self.settings)
@@ -499,7 +571,6 @@ class DeviceApplication:
       self.audio.initialize_hardware()
     except AudioDeviceError as error:
       logger.error(str(error))
-      sys.exit(1)
 
     self.ha_device = HomeAssistantDevice(
       broker=self.settings.mqtt_broker,

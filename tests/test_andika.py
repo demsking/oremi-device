@@ -60,9 +60,10 @@ def _make_settings(**kwargs) -> Settings:
     "conversation_timeout": 15,
     "ohunerin_host": "localhost",
     "ohunerin_port": 5023,
+    "ohunerin_cert_file": None,
     "andika_host": "andika",
     "andika_port": 5315,
-    "cert_file": None,
+    "andika_cert_file": None,
     "mqtt_broker": "mqtt",
   }
   defaults.update(kwargs)
@@ -174,7 +175,8 @@ def test_andika_discovery_uses_final_result_topic() -> None:
   client.publish_discovery_configs(input_devices=[], current_device="")
 
   transcription_calls = [
-    call for call in mock_client_instance.publish.call_args_list
+    call
+    for call in mock_client_instance.publish.call_args_list
     if call[0][0].endswith("sensor/oremi-device-test-node/transcription/config")
   ]
   assert len(transcription_calls) == 1
@@ -458,7 +460,7 @@ def test_andika_get_supported_models() -> None:
 
 
 def test_andika_get_supported_models_secure_endpoint() -> None:
-  component = AndikaComponent(_make_settings(andika_host="127.0.0.1", andika_port=9443, cert_file="cert.pem"))
+  component = AndikaComponent(_make_settings(andika_host="127.0.0.1", andika_port=9443, andika_cert_file="cert.pem"))
   response = MagicMock()
   response.json.return_value = []
 

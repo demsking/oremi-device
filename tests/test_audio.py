@@ -17,7 +17,6 @@ from unittest.mock import patch
 
 import pytest
 
-from device import start
 from device.core.audio import Audio
 from device.core.audio import AudioDeviceError
 from device.core.detector import SoundDetector
@@ -62,56 +61,6 @@ def test_audio_validates_named_input_device_before_opening_stream() -> None:
 
     assert audio.device_name == "eMeet Luna: USB Audio"
     mock_stream.assert_called_once()
-
-
-@pytest.mark.asyncio
-async def test_main_audio_device_error() -> None:
-  from device.core.settings import Settings
-
-  fake_settings = Settings(
-    _env_file=None,
-    node_id="test-node",
-    language="fr",
-    delay=3,
-    conversation_timeout=15,
-    ohunerin_host="localhost",
-    ohunerin_port=5023,
-    andika_host="localhost",
-    andika_port=5315,
-    cert_file=None,
-    ohunerin_threshold=0.65,
-    andika_model="vosk-model-small-fr-0.22",
-    andika_samplerate=16000,
-    microphone_device_index=None,
-    microphone_device=None,
-    mqtt_broker="localhost",
-    mqtt_port=1883,
-    mqtt_topic="oremi/test",
-    mqtt_username=None,
-    mqtt_password=None,
-    mqtt_discovery_prefix="homeassistant",
-    mqtt_discovery=False,
-    microphone_enabled=True,
-    speaker_enabled=True,
-  )
-
-  with (
-    patch("device.core.app.get_settings", return_value=fake_settings),
-    patch("device.services.audio_service.Audio", side_effect=AudioDeviceError("No device")),
-    patch("sys.exit", side_effect=SystemExit(1)) as mock_exit,
-    patch("device.core.app.HomeAssistantDevice") as mock_mqtt_cls,
-  ):
-    mock_mqtt_cls.return_value.connect = MagicMock()
-    mock_mqtt_cls.return_value.set_availability = MagicMock()
-    mock_mqtt_cls.return_value.client.connect_callback = MagicMock(return_value=lambda f: f)
-    mock_mqtt_cls.return_value.client.disconnect_callback = MagicMock(return_value=lambda f: f)
-    mock_mqtt_cls.return_value.client.message_callback = MagicMock(return_value=lambda f: f)
-
-    with pytest.raises(SystemExit) as exc_info:
-      await start()
-
-    assert exc_info.value.code == 1
-    mock_exit.assert_called_once_with(1)
 
 
 def test_get_compatible_input_devices() -> None:

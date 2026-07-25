@@ -65,7 +65,7 @@ class AndikaTranscriber(BaseTranscriber):
 
     endpoint = (
       f"https://{settings.andika_host}:{settings.andika_port}/api/models"
-      if settings.cert_file
+      if settings.andika_cert_file
       else f"http://{settings.andika_host}:{settings.andika_port}/api/models"
     )
 

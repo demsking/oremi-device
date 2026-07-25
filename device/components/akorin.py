@@ -86,9 +86,8 @@ def format_conversation_history(history: list[ConversationMessage]) -> str:
 
 
 class AkorinClient:
-  def __init__(self, base_url: str, *, ca_file: str | None = None) -> None:
+  def __init__(self, base_url: str) -> None:
     self.base_url = base_url.rstrip("/")
-    self.verify: str | bool = ca_file if ca_file else True
 
   @property
   def endpoint(self) -> str:
@@ -112,7 +111,7 @@ class AkorinClient:
       f"tags={tags})"
     )
 
-    async with httpx.AsyncClient(verify=self.verify, timeout=timeout) as client:
+    async with httpx.AsyncClient(timeout=timeout) as client:
       response = await client.post(
         url=self.endpoint,
         json={
@@ -198,7 +197,7 @@ class AkorinComponent(HttpComponent[AkorinConfig]):
     language_state = shared_resources["language_state"]
     device_context = shared_resources["device_context"]
 
-    client = AkorinClient(str(self.settings.akorin_url), ca_file=self.settings.cert_file)
+    client = AkorinClient(str(self.settings.akorin_url))
     queue_task = asyncio.create_task(transcription_queue.get(), name="Akorin Transcription Queue Task")
     processing_task: asyncio.Task | None = None
 

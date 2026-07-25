@@ -82,6 +82,7 @@ repos:
           - paho-mqtt
           - pydantic
           - timezonefinder
+          - pathspec
 
   - repo: https://github.com/PyCQA/bandit
     rev: 1.9.4

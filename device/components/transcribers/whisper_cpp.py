@@ -162,9 +162,8 @@ class WhisperCppListener(BaseTranscriber):
         await self.conversation_event_handler("processing")
 
       endpoint = f"{str(self.settings.whisper_url).rstrip('/')}/inference"
-      verify = self.settings.cert_file if self.settings.cert_file else True
 
-      async with httpx.AsyncClient(verify=verify, timeout=self.settings.conversation_timeout) as client:
+      async with httpx.AsyncClient(timeout=self.settings.conversation_timeout) as client:
         response = await client.post(
           endpoint,
           files={"file": ("utterance.wav", self._wav(audio, self.audio_stream.samplerate), "audio/wav")},

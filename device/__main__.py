@@ -18,35 +18,24 @@ import sys
 
 from device import start
 from device.core.args import parse_arguments
-from device.core.package import APP_NAME
-from device.core.settings import SettingsError
 
 logger = logging.getLogger(__name__)
 
 
-def main() -> int:
+def main() -> None:
   parse_arguments()
 
   try:
     asyncio.run(start())
-  except SettingsError as error:
-    print(f"{APP_NAME}: configuration error", file=sys.stderr)
-
-    for issue in error.issues:
-      print(f"  - {issue}", file=sys.stderr)
-
-    return 2
   except KeyboardInterrupt:
-    return 130
+    pass
   except Exception as exception:
     if logger.isEnabledFor(logging.DEBUG):
       logger.exception(exception)
 
     logger.error(f"Oremi Device failed to start: {exception}")
-    return 1
-
-  return 0
+    sys.exit(1)
 
 
 if __name__ == "__main__":
-  raise SystemExit(main())
+  main()
