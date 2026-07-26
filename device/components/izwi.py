@@ -13,7 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 import json
-import urllib.parse
 
 import httpx
 
@@ -23,24 +22,39 @@ from device.core.tts import TTSVoice
 
 
 class IzwiClient(BaseTTSClient):
-  MAX_GET_URL_LENGTH = 2000
-
   def __init__(self, url: str) -> None:
     self.base_url = url.rstrip("/")
 
   async def get_voices(self) -> list[TTSVoice]:
     async with httpx.AsyncClient() as client:
-      response = await client.get(f"{self.base_url}/api/voices")
+      response = await client.get(f"{self.base_url}/api/tts/voices")
       response.raise_for_status()
-      return [TTSVoice.model_validate(voice) for voice in response.json()]
+      payload = response.json()
 
-  def synthesize_request(self, text: str, voice: str) -> TTSSynthesisRequest:
-    query = urllib.parse.urlencode({"voice": voice, "input": text})
-    endpoint = f"{self.base_url}/api/synthesize/stream"
-    url = f"{endpoint}?{query}"
+    return [
+      TTSVoice(
+        id=item["id"],
+        name=item["id"],
+        description=f"{item['name']} ({item['gender']}): {item['description']}",
+        primary_language="multilingual",
+        gender=item["gender"],
+        sample_rate=item["sample_rate"],
+      )
+      for item in payload["voices"]
+    ]
 
-    if len(url) <= self.MAX_GET_URL_LENGTH:
-      return TTSSynthesisRequest(url=url, method="GET")
+  def synthesize_request(self, text: str, voice: str, language: str | None = None) -> TTSSynthesisRequest:
+    endpoint = f"{self.base_url}/api/tts/stream"
+    payload: dict[str, object] = {
+      "text": text,
+      "voice": voice,
+      "audio_format": "wav",
+    }
 
-    body = json.dumps({"voice": voice, "input": text})
-    return TTSSynthesisRequest(url=endpoint, method="POST", body=body)
+    if language:
+      payload["language"] = language
+
+    body = json.dumps(payload)
+    headers = {"Content-Type": "application/json"}
+
+    return TTSSynthesisRequest(url=endpoint, method="POST", body=body, headers=headers)

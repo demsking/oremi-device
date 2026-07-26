@@ -133,7 +133,18 @@ async def test_list_voices_edge_tts(mock_get, mcp_server, temp_settings) -> None
 
   _, structured = await mcp_server.call_tool("list_voices", {"language": "fr"})
 
-  assert structured == {"result": [{"name": "fr-FR-DeniseNeural", "description": "Denise", "primary_language": "fr-FR"}]}
+  assert structured == {
+    "result": [
+      {
+        "name": "fr-FR-DeniseNeural",
+        "description": "Denise",
+        "primary_language": "fr-FR",
+        "id": None,
+        "gender": None,
+        "sample_rate": None,
+      }
+    ]
+  }
 
 
 async def test_update_device_settings_tool(mcp_server, temp_settings, tmp_path) -> None:

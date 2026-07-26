@@ -36,6 +36,7 @@ services:
     depends_on:
       - isinmi
       - ojo
+      - izwi
       - mosquitto
       - rediyo
       - kansa
@@ -49,6 +50,15 @@ services:
       OREMI_AKORIN_MQTT_BROKER: mosquitto
     ports:
       - 45020:5020
+
+  izwi:
+    image: demsking/oremi-izwi
+    ports:
+      - 45031:5031
+    environment:
+      OREMI_IZWI_TTS_DEFAULT_SPEED: 1.25
+    volumes:
+      - ~/.cache/oremi-izwi:/oremi/data
 
   ohunerin:
     image: demsking/oremi-ohunerin

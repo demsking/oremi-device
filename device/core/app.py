@@ -187,6 +187,7 @@ class DeviceApplication:
     def mqtt_on_message(client, userdata, message) -> None:
       topic = message.topic
       payload_str = ""
+
       try:
         payload_str = message.payload.decode("utf-8").strip()
       except UnicodeDecodeError:
@@ -269,6 +270,7 @@ class DeviceApplication:
       # Process completed events
       for task in done:
         event_type = task_map[task]
+
         try:
           result = task.result()
           await self._handle_event(event_type, result)

@@ -23,6 +23,9 @@ class TTSVoice(BaseModel):
   name: str
   description: str
   primary_language: str
+  id: str | None = None
+  gender: str | None = None
+  sample_rate: int | None = None
 
 
 @dataclass(frozen=True)
@@ -41,7 +44,7 @@ class BaseTTSClient(abc.ABC):
     """Fetch available voices from the backend."""
 
   @abc.abstractmethod
-  def synthesize_request(self, text: str, voice: str) -> TTSSynthesisRequest:
+  def synthesize_request(self, text: str, voice: str, language: str | None = None) -> TTSSynthesisRequest:
     """Build a synthesis request for the given text and voice."""
 
 
@@ -49,10 +52,12 @@ def voices_for_language(voices: list[TTSVoice], language: str) -> list[TTSVoice]
   language_names = {"en": "english", "fr": "french"}
   expected = language_names.get(language, language).lower()
   language_prefix = f"{language.lower()}-"
+  multilingual_tokens = ("auto", "multilingual", "all", "*")
 
   return [
     voice
     for voice in voices
-    if voice.primary_language.strip().lower().startswith((expected, language.lower(), language_prefix))
+    if voice.primary_language.strip().lower() in multilingual_tokens
+    or voice.primary_language.strip().lower().startswith((expected, language.lower(), language_prefix))
     or voice.name.strip().lower().startswith(language_prefix)
   ]

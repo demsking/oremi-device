@@ -65,15 +65,3 @@ packages = ["device"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
-
-[tool.ruff]
-line-length = 120
-target-version = "py312"
-indent-width = 2
-
-[tool.ruff.format]
-indent-style = "space"
-
-[tool.ruff.lint]
-select = ["E", "F", "I", "UP", "B"]
-ignore = ["B008", "I001"]

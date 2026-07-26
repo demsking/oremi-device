@@ -27,6 +27,29 @@ class AudioDeviceError(Exception):
   """Exception raised when an audio device cannot be found or initialized."""
 
 
+_GENERIC_TERMS_TO_IGNORE: set[str] = {
+  "audio",
+  "usb",
+  "mono",
+  "stereo",
+  "analog",
+  "digital",
+  "fallback",
+  "hw",
+  "hda",
+  "built-in",
+  "pch",
+  "intel",
+  "nvidia",
+  "card",
+  "device",
+  "sink",
+  "source",
+  "input",
+  "output",
+}
+
+
 def match_device_name(requested: str, candidate: str) -> bool:
   """Check if the requested device name matches the candidate device name."""
   req_lower = requested.lower()
@@ -35,6 +58,7 @@ def match_device_name(requested: str, candidate: str) -> bool:
   # 1. Exact or direct substring match
   if req_lower == cand_lower:
     return True
+
   if req_lower in cand_lower or cand_lower in req_lower:
     return True
 
@@ -47,34 +71,14 @@ def match_device_name(requested: str, candidate: str) -> bool:
   cand_words = set(cand_clean.split())
 
   # Filter out generic terms, numbers, and short tokens
-  generic = {
-    "audio",
-    "usb",
-    "mono",
-    "stereo",
-    "analog",
-    "digital",
-    "fallback",
-    "hw",
-    "hda",
-    "built-in",
-    "pch",
-    "intel",
-    "nvidia",
-    "card",
-    "device",
-    "sink",
-    "source",
-    "input",
-    "output",
-  }
-  req_specific = {w for w in req_words if w not in generic and not w.isdigit() and len(w) > 2}
-  cand_specific = {w for w in cand_words if w not in generic and not w.isdigit() and len(w) > 2}
+  req_specific = {w for w in req_words if w not in _GENERIC_TERMS_TO_IGNORE and not w.isdigit() and len(w) > 2}
+  cand_specific = {w for w in cand_words if w not in _GENERIC_TERMS_TO_IGNORE and not w.isdigit() and len(w) > 2}
 
   # If we have specific words to compare
   if req_specific and cand_specific:
     if req_specific.issubset(cand_specific) or cand_specific.issubset(req_specific):
       return True
+
     if req_specific & cand_specific:
       return True
 
@@ -185,9 +189,11 @@ class Audio:
 
   def _capture_generator(self):
     data = yield
+
     while True:
       if data:
         self.loop.call_soon_threadsafe(self._publish_audio_data, bytes(data))
+
       data = yield
 
   def start_stream(self) -> None:
@@ -195,12 +201,14 @@ class Audio:
       try:
         gen = self._capture_generator()
         next(gen)
+
         self._capture_device = miniaudio.CaptureDevice(
           input_format=self.sample_format,
           nchannels=1,
           sample_rate=self.samplerate,
           device_id=self._device_id,
         )
+
         self._capture_device.start(gen)
         self._is_active = True
       except Exception as error:
@@ -262,6 +270,7 @@ class Audio:
     # First pass: try to find a physical, compatible device
     for idx, device in enumerate(devices):
       name = device["name"]
+
       if Audio.is_physical_microphone(name):
         return {"index": idx, "name": name, "id": device.get("id")}
 

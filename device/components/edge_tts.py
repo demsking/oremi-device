@@ -58,7 +58,7 @@ class OpenAIEdgeTTSClient(BaseTTSClient):
 
     return [voice for item in raw_voices if (voice := self._parse_voice(item)) is not None]
 
-  def synthesize_request(self, text: str, voice: str) -> TTSSynthesisRequest:
+  def synthesize_request(self, text: str, voice: str, language: str | None = None) -> TTSSynthesisRequest:
     body = json.dumps(
       {
         "model": self.model,

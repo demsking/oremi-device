@@ -12,8 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-import urllib.parse
+import json
+from unittest.mock import MagicMock
+from unittest.mock import patch
 
+import httpx
 import pytest
 from pydantic import ValidationError
 
@@ -117,26 +120,50 @@ def test_set_volume_rejects_out_of_range_values(volume: int) -> None:
     ProcessingResponse.model_validate({"commands": [{"type": "set_volume", "volume": volume}]})
 
 
-def test_izwi_short_synthesis_uses_streaming_get() -> None:
-  client = IzwiClient("http://izwi:5215/")
-  request = client.synthesize_request("quelle heure est-il ?", "ff_siwis")
-  url = urllib.parse.urlparse(request.url)
+@pytest.mark.asyncio
+async def test_izwi_get_voices_parses_supertonic_voices() -> None:
+  client = IzwiClient("http://izwi:5031")
+  mock_response = MagicMock(spec=httpx.Response)
+  mock_response.raise_for_status.return_value = None
+  mock_response.json.return_value = {
+    "voices": [
+      {
+        "id": "F1",
+        "name": "Sophia",
+        "gender": "Female",
+        "description": "Expressive female voice",
+        "sample_rate": 44100,
+      }
+    ],
+    "total": 1,
+  }
 
-  assert request.method == "GET"
-  assert request.body is None
-  assert f"{url.scheme}://{url.netloc}{url.path}" == "http://izwi:5215/api/synthesize/stream"
-  assert urllib.parse.parse_qs(url.query) == {"voice": ["ff_siwis"], "input": ["quelle heure est-il ?"]}
+  with patch("httpx.AsyncClient.get", return_value=mock_response):
+    voices = await client.get_voices()
+
+  assert len(voices) == 1
+  assert voices[0].id == "F1"
+  assert voices[0].name == "F1"
+  assert voices[0].primary_language == "multilingual"
+  assert voices[0].gender == "Female"
+  assert voices[0].sample_rate == 44100
 
 
-def test_izwi_long_synthesis_uses_streaming_post() -> None:
-  client = IzwiClient("https://izwi.example")
-  request = client.synthesize_request("long text " * 300, "af_heart")
+def test_izwi_synthesis_uses_streaming_post() -> None:
+  client = IzwiClient("http://izwi:5031/")
+  request = client.synthesize_request("quelle heure est-il ?", "F1", language="fr")
 
   assert request.method == "POST"
-  assert request.url == "https://izwi.example/api/synthesize/stream"
+  assert request.url == "http://izwi:5031/api/tts/stream"
+  assert request.headers == {"Content-Type": "application/json"}
   assert request.body is not None
-  assert '"voice": "af_heart"' in request.body
-  assert '"input": "long text ' in request.body
+  body = json.loads(request.body)
+  assert body == {
+    "text": "quelle heure est-il ?",
+    "audio_format": "wav",
+    "voice": "F1",
+    "language": "fr",
+  }
 
 
 def test_voices_are_filtered_by_device_language() -> None:
@@ -144,10 +171,11 @@ def test_voices_are_filtered_by_device_language() -> None:
     TTSVoice(name="af_heart", description="Warm", primary_language="English"),
     TTSVoice(name="ff_siwis", description="French", primary_language="French (France)"),
     TTSVoice(name="fr-FR-DeniseNeural", description="French", primary_language="fr-FR"),
+    TTSVoice(name="F1", description="Supertonic", primary_language="multilingual"),
   ]
 
-  assert [voice.name for voice in voices_for_language(voices, "fr")] == ["ff_siwis", "fr-FR-DeniseNeural"]
-  assert [voice.name for voice in voices_for_language(voices, "en")] == ["af_heart"]
+  assert [voice.name for voice in voices_for_language(voices, "fr")] == ["ff_siwis", "fr-FR-DeniseNeural", "F1"]
+  assert [voice.name for voice in voices_for_language(voices, "en")] == ["af_heart", "F1"]
 
 
 def test_edge_tts_synthesis_uses_openai_speech_endpoint() -> None:

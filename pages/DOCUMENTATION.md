@@ -2,7 +2,8 @@ Oremi Device captures microphone audio and connects it to Oremi services:
 
 - **Ohunerin** detects wake words and environmental sounds.
 - **Andika** transcribes speech after Ohunerin detects a wake word.
-- **Akorin** processes final transcriptions and returns device commands.
+- **Izwi** synthesizes speech for responses, announcements, alarms, and reminders.
+- **Akọrin** processes final transcriptions and returns device commands.
 - **MQTT** exposes events, device controls, availability, and Home Assistant
   discovery entities.
 
@@ -52,6 +53,8 @@ $ export OREMI_DEVICE_LOCATION="Douala, Cameroon"
 $ export OREMI_DEVICE_PREFERRED_CURRENCY=XAF
 $ export OREMI_DEVICE_OHUNERIN_HOST=localhost
 $ export OREMI_DEVICE_ANDIKA_HOST=localhost
+$ export OREMI_DEVICE_TTS_BACKEND=izwi
+$ export OREMI_DEVICE_IZWI_URL=http://localhost:5031
 $ export OREMI_DEVICE_AKORIN_URL=http://localhost:5020
 $ export OREMI_DEVICE_MQTT_BROKER=localhost
 
@@ -101,9 +104,9 @@ allow_anonymous true
 EOF
 ```
 
-#### Option A: Compose With Andika
+#### Option A: Native Oremi Stack (All Oremi Components)
 
-Use this stack configuration when streaming transcription workloads are assigned over websockets to the native Oremi Andika server instance.
+Use this stack configuration to deploy a fully integrated, self-hosted voice assistant ecosystem using exclusively native Oremi services: Ohunerin for wake word detection, Andika for speech-to-text, Izwi for text-to-speech synthesis, and Akọrin for NLP orchestration.
 
 ```yaml
 services:
@@ -136,6 +139,8 @@ services:
       OREMI_DEVICE_ANDIKA_PORT: 5315
       OREMI_DEVICE_ANDIKA_MODEL: vosk-model-small-fr-0.22
       OREMI_DEVICE_ANDIKA_SAMPLERATE: 16000
+      OREMI_DEVICE_TTS_BACKEND: izwi
+      OREMI_DEVICE_IZWI_URL: http://izwi:5031
       OREMI_DEVICE_MQTT_BROKER: mosquitto
       OREMI_DEVICE_MQTT_PORT: 1883
       OREMI_DEVICE_MQTT_TOPIC: oremi/device
@@ -143,6 +148,7 @@ services:
     depends_on:
       - ohunerin
       - andika
+      - izwi
       - akorin
       - mosquitto
       - ollama
@@ -176,6 +182,12 @@ services:
     restart: unless-stopped
     volumes:
       - oremi-andika-data:/oremi/data/models
+
+  izwi:
+    image: demsking/oremi-izwi
+    restart: unless-stopped
+    volumes:
+      - oremi-izwi-data:/oremi/data
 
   isinmi:
     image: demsking/oremi-isinmi
@@ -214,7 +226,7 @@ services:
     image: eclipse-mosquitto:2.0.18
     restart: unless-stopped
     volumes:
-      - ./config/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - ./compose/mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
 
 volumes:
   oremi-device-data:
@@ -222,17 +234,18 @@ volumes:
   oremi-rediyo-data:
   oremi-kansa-data:
   oremi-andika-data:
+  oremi-izwi-data:
 ```
 
-Save as `docker-compose.andika.yaml`, then run:
+Save as `docker-compose.yaml` (or `docker-compose.oremi.yaml`), then run:
 
 ```sh
-docker compose -f docker-compose.andika.yaml up -d
+docker compose up -d
 ```
 
-#### Option B: Compose With whisper.cpp
+#### Option B: Compose with whisper.cpp (External STT)
 
-Use this stack configuration to parse post-wake phrase captures against an optimized native `whisper.cpp` HTTP server installation.
+Use this stack configuration when substituting Oremi Andika with an external `whisper.cpp` server for speech-to-text processing while retaining Oremi Izwi for text-to-speech synthesis.
 
 ```yaml
 services:
@@ -249,6 +262,7 @@ services:
       OREMI_DEVICE_OLLAMA_BASE_URL: http://ollama:11434
       OREMI_DEVICE_LANGUAGE: fr
       OREMI_DEVICE_LOCATION: Douala, Cameroon
+      OREMI_DEVICE_TIMEZONE: Africa/Douala
       OREMI_DEVICE_TEMPERATURE_UNIT: celsius
       OREMI_DEVICE_PREFERRED_CURRENCY: XAF
       OREMI_DEVICE_MEASUREMENT_SYSTEM: metric
@@ -263,6 +277,8 @@ services:
       OREMI_DEVICE_WHISPER_URL: http://whisper:8080
       OREMI_DEVICE_WHISPER_SILENCE_THRESHOLD: 500
       OREMI_DEVICE_WHISPER_SILENCE_DURATION: 1.0
+      OREMI_DEVICE_TTS_BACKEND: izwi
+      OREMI_DEVICE_IZWI_URL: http://izwi:5031
       OREMI_DEVICE_MQTT_BROKER: mosquitto
       OREMI_DEVICE_MQTT_PORT: 1883
       OREMI_DEVICE_MQTT_TOPIC: oremi/device
@@ -270,6 +286,7 @@ services:
     depends_on:
       - ohunerin
       - whisper
+      - izwi
       - akorin
       - mosquitto
       - ollama
@@ -297,6 +314,12 @@ services:
   ohunerin:
     image: demsking/oremi-ohunerin
     restart: unless-stopped
+
+  izwi:
+    image: demsking/oremi-izwi
+    restart: unless-stopped
+    volumes:
+      - oremi-izwi-data:/oremi/data
 
   isinmi:
     image: demsking/oremi-isinmi
@@ -360,7 +383,7 @@ volumes:
   oremi-isinmi-data:
   oremi-rediyo-data:
   oremi-kansa-data:
-  oremi-andika-data:
+  oremi-izwi-data:
   whisper-models:
 ```
 
@@ -370,9 +393,9 @@ Save as `docker-compose.whisper.yaml`, then run:
 docker compose -f docker-compose.whisper.yaml up -d
 ```
 
-#### Option C: Compose With Edge-TTS and Andika
+#### Option C: Compose with Edge-TTS (External TTS)
 
-Use this stack configuration when utilizing an OpenAI-compatible cloud/edge speech synthesis system instance for voice responses.
+Use this stack configuration when substituting Oremi Izwi with an external OpenAI-compatible Edge-TTS service for cloud/edge speech synthesis while retaining Oremi Andika for speech-to-text.
 
 ```yaml
 services:
@@ -384,10 +407,12 @@ services:
     volumes:
       - oremi-device-data:/oremi/data
     environment:
+      LOG_LEVEL: info
       OREMI_DEVICE_NODE_ID: living-room
       OREMI_DEVICE_OLLAMA_BASE_URL: http://ollama:11434
       OREMI_DEVICE_LANGUAGE: fr
       OREMI_DEVICE_LOCATION: Douala, Cameroon
+      OREMI_DEVICE_TIMEZONE: Africa/Douala
       OREMI_DEVICE_TEMPERATURE_UNIT: celsius
       OREMI_DEVICE_PREFERRED_CURRENCY: XAF
       OREMI_DEVICE_MEASUREMENT_SYSTEM: metric
@@ -647,20 +672,6 @@ oremi-device: configuration error
   - OREMI_DEVICE_NODE_ID is required
   - OREMI_DEVICE_MQTT_BROKER is required
 ```
-
-## Model Context Protocol
-
-Oremi Device implements the Model Context Protocol (MCP) using a strongly-typed
-server. It exposes its core functionality as a set of tools, resources and
-prompts that LLM agents can call directly.
-
-The MCP server uses the **Streamable HTTP transport** protocol and is mounted at:
-
-```txt
-/mcp
-```
-
-### Available MCP Tools
 
 ## MQTT
 
