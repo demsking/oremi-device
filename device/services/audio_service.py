@@ -46,7 +46,7 @@ class AudioService:
           device_name=self.settings.microphone_device,
         )
 
-        logger.info(f"Active Microphone Device: {self.audio_stream.device_name}")
+        logger.info(f"Active Microphone Device: {self.audio_stream.device_name} ({self.audio_stream.info})")
       except AudioDeviceError as error:
         logger.error(str(error))
         raise
@@ -59,7 +59,7 @@ class AudioService:
         self.speaker.verify_device()
         self.speaker_state["device"] = self.speaker.device_name
 
-        logger.info(f"Active Speaker Device: {self.speaker.device_name}")
+        logger.info(f"Active Speaker Device: {self.speaker.device_name} ({self.speaker.info})")
       except SpeakerDeviceError as error:
         logger.warning(f"Speaker initialization failed, running without speaker support: {error}")
         self.speaker = None

@@ -12,9 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
+import array
 import asyncio
 import logging
+import math
 import re
+import time
+from typing import Any
 from typing import ClassVar
 
 import miniaudio
@@ -52,41 +56,103 @@ _GENERIC_TERMS_TO_IGNORE: set[str] = {
 
 def match_device_name(requested: str, candidate: str) -> bool:
   """Check if the requested device name matches the candidate device name."""
-  req_lower = requested.lower()
-  cand_lower = candidate.lower()
+  req_lower = requested.lower().strip()
+  cand_lower = candidate.lower().strip()
 
-  # 1. Exact or direct substring match
+  # 1. Exact match
   if req_lower == cand_lower:
     return True
 
+  # 2. Direct substring match
   if req_lower in cand_lower or cand_lower in req_lower:
     return True
 
-  # 2. Token-based matching
-  # Replace non-alphanumeric characters with spaces
+  # 3. Token-based matching
   req_clean = re.sub(r"[^a-z0-9\s]", " ", req_lower)
   cand_clean = re.sub(r"[^a-z0-9\s]", " ", cand_lower)
 
   req_words = set(req_clean.split())
   cand_words = set(cand_clean.split())
 
-  # Filter out generic terms, numbers, and short tokens
   req_specific = {w for w in req_words if w not in _GENERIC_TERMS_TO_IGNORE and not w.isdigit() and len(w) > 2}
   cand_specific = {w for w in cand_words if w not in _GENERIC_TERMS_TO_IGNORE and not w.isdigit() and len(w) > 2}
 
-  # If we have specific words to compare
-  if req_specific and cand_specific:
-    if req_specific.issubset(cand_specific) or cand_specific.issubset(req_specific):
+  t1 = req_specific if req_specific and cand_specific else req_words
+  t2 = cand_specific if req_specific and cand_specific else cand_words
+
+  if t1 and t2:
+    if t1.issubset(t2) or t2.issubset(t1):
       return True
 
-    if req_specific & cand_specific:
+    common = t1 & t2
+    if len(common) >= 2 or (len(common) / min(len(t1), len(t2)) >= 0.5):
       return True
 
   return False
 
 
+def find_device_by_name(requested_name: str, devices: list[dict], *, filter_physical: bool = False) -> dict | None:
+  """Find the best matching device from a list of miniaudio device dicts."""
+  req = requested_name.strip()
+  if not req:
+    return None
+
+  req_lower = req.lower()
+
+  # Pass 1: Exact match (case-insensitive)
+  for dev in devices:
+    if dev["name"].strip().lower() == req_lower:
+      return dev
+
+  search_lists = []
+  if filter_physical:
+    physical_devs = [d for d in devices if Audio.is_physical_microphone(d["name"])]
+    if physical_devs:
+      search_lists.append(physical_devs)
+
+  search_lists.append(devices)
+
+  # Pass 2: Substring match (pick match with smallest length difference)
+  for dev_list in search_lists:
+    matches = [d for d in dev_list if req_lower in d["name"].lower() or d["name"].lower() in req_lower]
+    if matches:
+      return min(matches, key=lambda d: abs(len(d["name"].strip()) - len(req)))
+
+  # Pass 3: Token similarity score
+  best_dev = None
+  best_score = 0.0
+  req_clean = re.sub(r"[^a-z0-9\s]", " ", req_lower)
+  req_tokens = set(req_clean.split())
+  req_specific = {w for w in req_tokens if w not in _GENERIC_TERMS_TO_IGNORE and not w.isdigit() and len(w) > 2}
+
+  for dev_list in search_lists:
+    for dev in dev_list:
+      cand_clean = re.sub(r"[^a-z0-9\s]", " ", dev["name"].lower())
+      cand_tokens = set(cand_clean.split())
+      cand_specific = {w for w in cand_tokens if w not in _GENERIC_TERMS_TO_IGNORE and not w.isdigit() and len(w) > 2}
+
+      t1 = req_specific if req_specific and cand_specific else req_tokens
+      t2 = cand_specific if req_specific and cand_specific else cand_tokens
+
+      if t1 and t2:
+        intersection = t1 & t2
+        union = t1 | t2
+        score = len(intersection) / len(union) if union else 0.0
+        if score > best_score:
+          best_score = score
+          best_dev = dev
+
+  return best_dev if best_score > 0 else None
+
+
 class Audio:
   """Audio class for handling audio input devices using miniaudio."""
+
+  FORMAT_MAP: ClassVar[dict[str, miniaudio.SampleFormat]] = {
+    "int16": miniaudio.SampleFormat.SIGNED16,
+    "float32": miniaudio.SampleFormat.FLOAT32,
+    "int32": miniaudio.SampleFormat.SIGNED32,
+  }
 
   BLACKLISTED_KEYWORDS: ClassVar[list[str]] = [
     "default",
@@ -149,22 +215,7 @@ class Audio:
         if 0 <= idx < len(devices):
           selected_dev = devices[idx]
       except ValueError:
-        for dev in devices:
-          if Audio.is_physical_microphone(dev["name"]) and match_device_name(device_name, dev["name"]):
-            selected_dev = dev
-            break
-
-        if selected_dev is None:
-          for dev in devices:
-            if match_device_name(device_name, dev["name"]):
-              selected_dev = dev
-              break
-
-        if selected_dev is None:
-          for dev in devices:
-            if device_name.lower() in dev["name"].lower():
-              selected_dev = dev
-              break
+        selected_dev = find_device_by_name(device_name, devices, filter_physical=True)
     else:
       comp = Audio.find_compatible_device()
 
@@ -180,12 +231,24 @@ class Audio:
     self._device_name = selected_dev["name"]
     self._device_id = selected_dev.get("id")
 
-    format_map = {
-      "int16": miniaudio.SampleFormat.SIGNED16,
-      "float32": miniaudio.SampleFormat.FLOAT32,
-      "int32": miniaudio.SampleFormat.SIGNED32,
-    }
-    self.sample_format = format_map.get(dtype, miniaudio.SampleFormat.SIGNED16)
+    self._native_formats = selected_dev.get("formats", [])
+    self._native_samplerate = None
+    self._native_channels = None
+    self._native_format = None
+
+    if self._native_formats and isinstance(self._native_formats, list) and len(self._native_formats) > 0:
+      first_fmt = self._native_formats[0]
+      self._native_samplerate = first_fmt.get("samplerate")
+      self._native_channels = first_fmt.get("channels")
+      self._native_format = first_fmt.get("format")
+
+    self.sample_format = Audio.FORMAT_MAP.get(dtype, miniaudio.SampleFormat.SIGNED16)
+
+    self._bytes_captured = 0
+    self._chunks_captured = 0
+    self._last_stats_log_time = 0.0
+
+    logger.info(f"Selected audio input device: {self._device_name} {self.info}")
 
   def _capture_generator(self):
     data = yield
@@ -201,6 +264,14 @@ class Audio:
       try:
         gen = self._capture_generator()
         next(gen)
+
+        logger.info(
+          "Starting audio stream for '%s' (requested_rate: %d Hz, format: %s, channels: 1, native_rate: %s)",
+          self._device_name,
+          self.samplerate,
+          self.dtype,
+          self._native_samplerate or "unknown",
+        )
 
         self._capture_device = miniaudio.CaptureDevice(
           input_format=self.sample_format,
@@ -238,14 +309,24 @@ class Audio:
     return self._device_name
 
   @property
-  def info(self):
-    return {
+  def info(self) -> dict[str, Any]:
+    info_dict: dict[str, Any] = {
       "samplerate": self.samplerate,
       "dtype": self.dtype,
       "channels": 1,
       "blocksize": self.blocksize,
-      "device": self._device_name,
     }
+
+    if self._native_samplerate is not None:
+      info_dict["native_samplerate"] = self._native_samplerate
+
+    if self._native_channels is not None:
+      info_dict["native_channels"] = self._native_channels
+
+    if self._native_format is not None:
+      info_dict["native_format"] = self._native_format
+
+    return info_dict
 
   def is_active(self) -> bool:
     return self._is_active
@@ -292,6 +373,38 @@ class Audio:
         logger.error(f"Failed to restart audio capture device: {error}")
 
   def _publish_audio_data(self, data: bytes) -> None:
+    self._bytes_captured += len(data)
+    self._chunks_captured += 1
+    now = time.time()
+
+    if self._last_stats_log_time == 0.0:
+      self._last_stats_log_time = now
+
+    elapsed = now - self._last_stats_log_time
+    if elapsed >= 5.0:
+      bytes_per_sec = self._bytes_captured / elapsed
+      samples_per_sec = bytes_per_sec / 2.0
+
+      try:
+        samples = array.array("h", data)
+        rms = math.sqrt(sum(s * s for s in samples) / len(samples)) if samples else 0.0
+      except Exception:
+        rms = 0.0
+
+      logger.debug(
+        "Audio stream '%s' diagnostics (last %.1fs): %.1f B/s (~%.0f Hz mono PCM), %d chunks, RMS level: %.1f",
+        self._device_name,
+        elapsed,
+        bytes_per_sec,
+        samples_per_sec,
+        self._chunks_captured,
+        rms,
+      )
+
+      self._bytes_captured = 0
+      self._chunks_captured = 0
+      self._last_stats_log_time = now
+
     if self._subscribers:
       for queue in tuple(self._subscribers):
         try:

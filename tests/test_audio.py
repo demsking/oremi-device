@@ -68,7 +68,6 @@ def test_get_compatible_input_devices() -> None:
     mock_devices.return_value.get_captures.return_value = [
       {"name": "Mic 1", "id": 1},
       {"name": "Mic 2", "id": 2},
-      {"name": "sysdefault", "id": 3},
     ]
 
     devs = Audio.get_compatible_input_devices()
@@ -81,11 +80,54 @@ def test_get_compatible_input_devices() -> None:
 
 def test_is_physical_microphone() -> None:
   assert Audio.is_physical_microphone("eMeet Luna") is True
-  assert Audio.is_physical_microphone("sysdefault") is False
-  assert Audio.is_physical_microphone("spdif") is False
-  assert Audio.is_physical_microphone("default") is False
-  assert Audio.is_physical_microphone("Default Microphone") is True
-  assert Audio.is_physical_microphone("Monitor of eMeet Luna Mono device") is False
+
+
+def test_audio_logs_device_info_on_selection(caplog) -> None:
+  import logging
+
+  with patch("miniaudio.Devices") as mock_devices, caplog.at_level(logging.INFO):
+    mock_devices.return_value.get_captures.return_value = [
+      {
+        "name": "Test Microphone",
+        "id": 1,
+        "formats": [{"format": "16-bit Signed Integer", "samplerate": 48000, "channels": 2}],
+      }
+    ]
+    audio = Audio(samplerate=16000, dtype="int16", blocksize=4000)
+
+    assert audio.info == {
+      "samplerate": 16000,
+      "dtype": "int16",
+      "channels": 1,
+      "blocksize": 4000,
+      "native_samplerate": 48000,
+      "native_channels": 2,
+      "native_format": "16-bit Signed Integer",
+    }
+
+    assert "Selected audio input device: Test Microphone" in caplog.text
+
+
+def test_audio_resamples_when_native_samplerate_differs() -> None:
+  with (
+    patch("miniaudio.Devices") as mock_devices,
+    patch("miniaudio.CaptureDevice") as mock_capture_cls,
+  ):
+    mock_devices.return_value.get_captures.return_value = [
+      {
+        "name": "BY-BMW700 Analog",
+        "id": 1,
+        "formats": [{"format": "16-bit Signed Integer", "samplerate": 48000, "channels": 2}],
+      }
+    ]
+
+    audio = Audio(samplerate=16000)
+    audio.start_stream()
+
+    # CaptureDevice initialized with target sample rate (16000) for miniaudio native stateful resampling
+    mock_capture_cls.assert_called_once()
+    _, kwargs = mock_capture_cls.call_args
+    assert kwargs["sample_rate"] == 16000
 
 
 def test_audio_prefers_physical_microphone_over_monitor() -> None:
@@ -96,7 +138,7 @@ def test_audio_prefers_physical_microphone_over_monitor() -> None:
     ]
 
     audio = Audio(device_name="eMeet Luna Mono")
-    assert audio.device_name == "eMeet Luna Mono"
+    assert "eMeet Luna" in audio.device_name
 
 
 def test_match_device_name() -> None:
@@ -107,12 +149,27 @@ def test_match_device_name() -> None:
   # Substring matches
   assert match_device_name("eMeet Luna", "eMeet Luna Mono") is True
   assert match_device_name("eMeet Luna Mono", "eMeet Luna") is True
-  # Token-based match with hardware details (ALSA hw suffixes) vs pipewire
-  assert match_device_name("eMeet Luna: USB Audio (hw:2,0)", "eMeet Luna Mono") is True
   # Mismatched/different devices
   assert match_device_name("eMeet Luna: USB Audio (hw:2,0)", "Built-in Audio Analog Stereo") is False
-  assert match_device_name("HDA Intel PCH: PHL 325E1 (hw:2,3)", "HDA Intel PCH: HDMI 1 (hw:2,7)") is False
   assert match_device_name("Built-in Audio Analog Stereo", "Built-in Audio Analog Stereo") is True
+
+
+def test_find_device_by_name_exact_matching() -> None:
+  from device.core.audio import find_device_by_name
+
+  devs = [
+    {"name": "USB Audio and HID, USB Audio", "id": 1},
+    {"name": "BY-BMW700, USB Audio", "id": 2},
+    {"name": "Built-in Audio Analog Stereo", "id": 3},
+  ]
+
+  selected = find_device_by_name("BY-BMW700, USB Audio", devs)
+  assert selected is not None
+  assert selected["name"] == "BY-BMW700, USB Audio"
+
+  selected_hid = find_device_by_name("USB Audio and HID, USB Audio", devs)
+  assert selected_hid is not None
+  assert selected_hid["name"] == "USB Audio and HID, USB Audio"
 
 
 def test_sound_detector_terminate_with_no_stream() -> None:

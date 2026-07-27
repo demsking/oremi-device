@@ -18,10 +18,11 @@ import signal
 import subprocess  # nosec B404
 import threading
 from pathlib import Path
+from typing import Any
 
 import miniaudio
 
-from device.core.audio import match_device_name
+from device.core.audio import find_device_by_name
 from device.core.playback import PlaybackState
 
 
@@ -70,6 +71,8 @@ class Speaker:
       self._device_id = default_dev.get("id")
       self._output_channels = 2
 
+      logger.info(f"Selected speaker output device: {self._device_name} {self.info}")
+
   def verify_device(self) -> None:
     """Verify that the speaker output device is ready and working."""
     try:
@@ -86,6 +89,16 @@ class Speaker:
   @property
   def device_name(self) -> str:
     return self._device_name
+
+  @property
+  def info(self) -> dict[str, Any]:
+    return {
+      "samplerate": 48000,
+      "channels": self._output_channels,
+      "volume": self._volume,
+      "muted": self._muted,
+      "device": self._device_name,
+    }
 
   @property
   def volume(self) -> float:
@@ -136,17 +149,7 @@ class Speaker:
     except Exception as error:
       raise SpeakerDeviceError(f"Failed to query speaker output devices: {error}") from error
 
-    matched_dev = None
-    for dev in playbacks:
-      if match_device_name(device_name, dev["name"]):
-        matched_dev = dev
-        break
-
-    if matched_dev is None:
-      for dev in playbacks:
-        if requested in dev["name"].lower():
-          matched_dev = dev
-          break
+    matched_dev = find_device_by_name(device_name, playbacks)
 
     if matched_dev is None:
       raise SpeakerDeviceError(f"Speaker output device not found: {device_name}")
@@ -154,6 +157,8 @@ class Speaker:
     self._device_name = matched_dev["name"]
     self._device_id = matched_dev.get("id")
     self._output_channels = 2
+
+    logger.info(f"Selected speaker output device: {self._device_name} {self.info}")
 
     return self._device_name
 

@@ -94,6 +94,23 @@ def test_select_output(mock_devices) -> None:
   assert speaker.device_name == "USB Speaker"
 
 
+def test_speaker_info_and_logging(caplog) -> None:
+  import logging
+
+  with patch("miniaudio.Devices") as mock_devices, caplog.at_level(logging.INFO):
+    mock_devices.return_value.get_playbacks.return_value = [{"name": "Test Speaker", "id": 1}]
+    speaker = Speaker(volume=0.8, muted=False)
+
+    assert speaker.info == {
+      "samplerate": 48000,
+      "channels": 2,
+      "volume": 0.8,
+      "muted": False,
+      "device": "Test Speaker",
+    }
+    assert "Selected speaker output device: Test Speaker" in caplog.text
+
+
 @patch("miniaudio.Devices")
 def test_output_required(mock_devices) -> None:
   mock_devices.return_value.get_playbacks.return_value = []
