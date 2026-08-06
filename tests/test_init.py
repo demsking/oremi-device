@@ -154,7 +154,7 @@ def test_build_andika_connection_uri_default() -> None:
 
   parsed = urllib.parse.urlparse(uri)
   params = urllib.parse.parse_qs(parsed.query)
-  assert params["model"] == ["vosk-model-small-fr-0.22"]
+  assert params["model"] == ["zhifeixie/Mega-ASR"]
   assert params["samplerate"] == ["16000"]
   assert params["language"] == ["fr"]
   assert "timezone" not in params

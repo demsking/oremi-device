@@ -146,7 +146,7 @@ class Settings(BaseSettings):
   andika_host: str | None = None
   andika_port: int = Field(default=5315, gt=0, le=65535)
   andika_cert_file: str | None = None
-  andika_model: AndikaModel = "vosk-model-small-fr-0.22"
+  andika_model: AndikaModel = "zhifeixie/Mega-ASR"
   andika_samplerate: int = Field(default=16000, gt=0)
   whisper_url: HttpUrl | None = None
   whisper_silence_threshold: int = Field(default=500, ge=0)

@@ -72,6 +72,7 @@ class OhunerinConfig(BaseModel):
 
 
 AndikaModel = Literal[
+  "zhifeixie/Mega-ASR",
   "vosk-model-small-en-us-0.15",
   "vosk-model-small-en-in-0.4",
   "vosk-model-small-cn-0.22",
@@ -110,7 +111,7 @@ class AndikaConfig(BaseModel):
   The configuration schema for the Andika speech-recognition component.
   """
 
-  model: AndikaModel = Field(default="vosk-model-small-fr-0.22", description="The Andika speech-to-text model identifier.")
+  model: AndikaModel = Field(default="zhifeixie/Mega-ASR", description="The Andika speech-to-text model identifier.")
   samplerate: int = Field(default=16000, description="The audio sample rate in Hz.")
 
 

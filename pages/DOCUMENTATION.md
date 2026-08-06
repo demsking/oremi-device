@@ -137,7 +137,7 @@ services:
       OREMI_DEVICE_TRANSCRIPTION_BACKEND: andika
       OREMI_DEVICE_ANDIKA_HOST: andika
       OREMI_DEVICE_ANDIKA_PORT: 5315
-      OREMI_DEVICE_ANDIKA_MODEL: vosk-model-small-fr-0.22
+      OREMI_DEVICE_ANDIKA_MODEL: zhifeixie/Mega-ASR
       OREMI_DEVICE_ANDIKA_SAMPLERATE: 16000
       OREMI_DEVICE_TTS_BACKEND: izwi
       OREMI_DEVICE_IZWI_URL: http://izwi:5031
@@ -426,7 +426,7 @@ services:
       OREMI_DEVICE_TRANSCRIPTION_BACKEND: andika
       OREMI_DEVICE_ANDIKA_HOST: andika
       OREMI_DEVICE_ANDIKA_PORT: 5315
-      OREMI_DEVICE_ANDIKA_MODEL: vosk-model-small-fr-0.22
+      OREMI_DEVICE_ANDIKA_MODEL: zhifeixie/Mega-ASR
       OREMI_DEVICE_ANDIKA_SAMPLERATE: 16000
       OREMI_DEVICE_TTS_BACKEND: edge-tts
       OREMI_DEVICE_EDGE_TTS_URL: http://edge-tts:5050
@@ -595,7 +595,7 @@ Depending on your configured `OREMI_DEVICE_TRANSCRIPTION_BACKEND`, one additiona
 ### Andika Engine
 
 - **`OREMI_DEVICE_ANDIKA_PORT`** – Dedicated connection port routing Andika streams. Default: `5315`.
-- **`OREMI_DEVICE_ANDIKA_MODEL`** – Core system tracking string designating targeted local Vosk profiles. Default: `vosk-model-small-fr-0.22`.
+- **`OREMI_DEVICE_ANDIKA_MODEL`** – Core system tracking string designating targeted local model profiles. Default: `zhifeixie/Mega-ASR`.
 - **`OREMI_DEVICE_ANDIKA_SAMPLERATE`** – Audio capture configuration sampling frequency. Default: `16000`.
 
 ### Whisper Engine

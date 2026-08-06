@@ -70,7 +70,7 @@ def test_settings_defaults() -> None:
   assert settings.speaker_volume == 1.0
   assert settings.akorin_url is None
   assert settings.ohunerin_threshold == 0.25
-  assert settings.andika_model == "vosk-model-small-fr-0.22"
+  assert settings.andika_model == "zhifeixie/Mega-ASR"
   assert settings.andika_samplerate == 16000
   assert settings.transcription_backend == "andika"
   assert settings.whisper_url is None
