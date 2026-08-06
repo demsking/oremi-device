@@ -12,10 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-import array
 import asyncio
 import logging
-import math
 import re
 import time
 from typing import Any
@@ -385,20 +383,13 @@ class Audio:
       bytes_per_sec = self._bytes_captured / elapsed
       samples_per_sec = bytes_per_sec / 2.0
 
-      try:
-        samples = array.array("h", data)
-        rms = math.sqrt(sum(s * s for s in samples) / len(samples)) if samples else 0.0
-      except Exception:
-        rms = 0.0
-
       logger.debug(
-        "Audio stream '%s' diagnostics (last %.1fs): %.1f B/s (~%.0f Hz mono PCM), %d chunks, RMS level: %.1f",
+        "Audio stream '%s' diagnostics (last %.1fs): %.1f B/s (~%.0f Hz mono PCM), %d chunks",
         self._device_name,
         elapsed,
         bytes_per_sec,
         samples_per_sec,
         self._chunks_captured,
-        rms,
       )
 
       self._bytes_captured = 0
