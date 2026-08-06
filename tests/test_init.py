@@ -37,7 +37,7 @@ def _make_settings(**kwargs) -> Settings:
     "ohunerin_host": "localhost",
     "ohunerin_port": 5023,
     "andika_host": "localhost",
-    "andika_port": 5315,
+    "andika_port": 5022,
     "andika_cert_file": None,
     "ohunerin_cert_file": None,
     "mqtt_broker": "mqtt",
@@ -147,10 +147,10 @@ def test_ohunerin_ha_entities_use_event_topics_and_node_availability() -> None:
 
 
 def test_build_andika_connection_uri_default() -> None:
-  settings = _make_settings(andika_host="andika", andika_port=5315)
+  settings = _make_settings(andika_host="andika", andika_port=5022)
   component = AndikaComponent(settings)
   uri = component.build_connection_uri()
-  assert uri.startswith("ws://andika:5315/ws?")
+  assert uri.startswith("ws://andika:5022/ws?")
 
   parsed = urllib.parse.urlparse(uri)
   params = urllib.parse.parse_qs(parsed.query)

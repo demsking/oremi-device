@@ -136,7 +136,7 @@ services:
       OREMI_DEVICE_AKORIN_URL: http://akorin:5020
       OREMI_DEVICE_TRANSCRIPTION_BACKEND: andika
       OREMI_DEVICE_ANDIKA_HOST: andika
-      OREMI_DEVICE_ANDIKA_PORT: 5315
+      OREMI_DEVICE_ANDIKA_PORT: 5022
       OREMI_DEVICE_ANDIKA_MODEL: zhifeixie/Mega-ASR
       OREMI_DEVICE_ANDIKA_SAMPLERATE: 16000
       OREMI_DEVICE_TTS_BACKEND: izwi
@@ -180,8 +180,28 @@ services:
   andika:
     image: demsking/oremi-andika
     restart: unless-stopped
+    environment:
+      OREMI_ANDIKA_MODEL_NAME: zhifeixie/Mega-ASR
+      OREMI_ANDIKA_ENABLE_GPU: true
+      OREMI_ANDIKA_USE_VLLM: true
+      OREMI_ANDIKA_VLLM_GPU_MEMORY_UTILIZATION: 0.8
+      OREMI_ANDIKA_VLLM_MAX_NEW_TOKENS: 64
+      OREMI_ANDIKA_AUDIO_ROUTING: true
+      OREMI_ANDIKA_QUALITY_THRESHOLD: 0.5
     volumes:
-      - oremi-andika-data:/oremi/data/models
+      - oremi-andika-data:/oremi/data
+    deploy:
+      resources:
+        limits:
+          cpus: '4.0'
+          memory: 16gb
+        reservations:
+          cpus: '2.0'
+          memory: 8gb
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
 
   izwi:
     image: demsking/oremi-izwi
@@ -425,7 +445,7 @@ services:
       OREMI_DEVICE_AKORIN_URL: http://akorin:5020
       OREMI_DEVICE_TRANSCRIPTION_BACKEND: andika
       OREMI_DEVICE_ANDIKA_HOST: andika
-      OREMI_DEVICE_ANDIKA_PORT: 5315
+      OREMI_DEVICE_ANDIKA_PORT: 5022
       OREMI_DEVICE_ANDIKA_MODEL: zhifeixie/Mega-ASR
       OREMI_DEVICE_ANDIKA_SAMPLERATE: 16000
       OREMI_DEVICE_TTS_BACKEND: edge-tts
@@ -471,8 +491,28 @@ services:
   andika:
     image: demsking/oremi-andika
     restart: unless-stopped
+    environment:
+      OREMI_ANDIKA_MODEL_NAME: zhifeixie/Mega-ASR
+      OREMI_ANDIKA_ENABLE_GPU: true
+      OREMI_ANDIKA_USE_VLLM: true
+      OREMI_ANDIKA_VLLM_GPU_MEMORY_UTILIZATION: 0.8
+      OREMI_ANDIKA_VLLM_MAX_NEW_TOKENS: 64
+      OREMI_ANDIKA_AUDIO_ROUTING: true
+      OREMI_ANDIKA_QUALITY_THRESHOLD: 0.5
     volumes:
-      - oremi-andika-data:/oremi/data/models
+      - oremi-andika-data:/oremi/data
+    deploy:
+      resources:
+        limits:
+          cpus: '4.0'
+          memory: 16gb
+        reservations:
+          cpus: '2.0'
+          memory: 8gb
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
 
   isinmi:
     image: demsking/oremi-isinmi
@@ -594,7 +634,7 @@ Depending on your configured `OREMI_DEVICE_TRANSCRIPTION_BACKEND`, one additiona
 
 ### Andika Engine
 
-- **`OREMI_DEVICE_ANDIKA_PORT`** – Dedicated connection port routing Andika streams. Default: `5315`.
+- **`OREMI_DEVICE_ANDIKA_PORT`** – Dedicated connection port routing Andika streams. Default: `5022`.
 - **`OREMI_DEVICE_ANDIKA_MODEL`** – Core system tracking string designating targeted local model profiles. Default: `zhifeixie/Mega-ASR`.
 - **`OREMI_DEVICE_ANDIKA_SAMPLERATE`** – Audio capture configuration sampling frequency. Default: `16000`.
 

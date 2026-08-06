@@ -62,7 +62,7 @@ def _make_settings(**kwargs) -> Settings:
     "ohunerin_port": 5023,
     "ohunerin_cert_file": None,
     "andika_host": "andika",
-    "andika_port": 5315,
+    "andika_port": 5022,
     "andika_cert_file": None,
     "mqtt_broker": "mqtt",
   }
@@ -453,7 +453,7 @@ def test_andika_get_supported_models() -> None:
   with patch("device.components.transcribers.andika_ws.httpx.get", return_value=response) as mock_get:
     models = component._get_supported_models()
 
-  mock_get.assert_called_once_with("http://andika:5315/api/models")
+  mock_get.assert_called_once_with("http://andika:5022/api/models")
   response.raise_for_status.assert_called_once()
   assert [model.id for model in models] == ["vosk-model-small-fr-0.22", "vosk-model-small-en-us-0.15"]
   assert models[0].language == "fr"

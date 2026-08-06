@@ -70,9 +70,29 @@ services:
   andika:
     image: demsking/oremi-andika
     ports:
-      - 45315:5315
+      - 45022:5022
+    environment:
+      OREMI_ANDIKA_MODEL_NAME: zhifeixie/Mega-ASR
+      OREMI_ANDIKA_ENABLE_GPU: true
+      OREMI_ANDIKA_USE_VLLM: true
+      OREMI_ANDIKA_VLLM_GPU_MEMORY_UTILIZATION: 0.8
+      OREMI_ANDIKA_VLLM_MAX_NEW_TOKENS: 64
+      OREMI_ANDIKA_AUDIO_ROUTING: true
+      OREMI_ANDIKA_QUALITY_THRESHOLD: 0.5
     volumes:
-      - ~/.local/share/oremi-andika:/oremi/data/models
+      - ~/.local/share/oremi-andika:/oremi/data
+    deploy:
+      resources:
+        limits:
+          cpus: '4.0'
+          memory: 16gb
+        reservations:
+          cpus: '2.0'
+          memory: 8gb
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
 
   isinmi:
     image: demsking/oremi-isinmi

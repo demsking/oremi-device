@@ -19,7 +19,7 @@
         "OREMI_DEVICE_IZWI_URL": "http://localhost:45031",
         "OREMI_DEVICE_AKORIN_URL": "http://localhost:45020",
         "OREMI_DEVICE_OHUNERIN_PORT": "45023",
-        "OREMI_DEVICE_ANDIKA_PORT": "45315"
+        "OREMI_DEVICE_ANDIKA_PORT": "45022"
       }
     },
     {
@@ -41,7 +41,7 @@
         "OREMI_DEVICE_EDGE_TTS_URL": "http://localhost:45050",
         "OREMI_DEVICE_AKORIN_URL": "http://localhost:45020",
         "OREMI_DEVICE_OHUNERIN_PORT": "45023",
-        "OREMI_DEVICE_ANDIKA_PORT": "45315"
+        "OREMI_DEVICE_ANDIKA_PORT": "45022"
       }
     },
     {

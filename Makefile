@@ -128,7 +128,7 @@ live: image-test
 		-e OREMI_DEVICE_OLLAMA_BASE_URL=http://localhost:41434 \
 		-e OREMI_DEVICE_EDGE_TTS_URL=http://localhost:45050 \
 		-e OREMI_DEVICE_OHUNERIN_PORT=45023 \
-		-e OREMI_DEVICE_ANDIKA_PORT=45315 \
+		-e OREMI_DEVICE_ANDIKA_PORT=45022 \
 		-v ./data:/oremi/data \
 		--network host \
 		--device /dev/snd:/dev/snd \

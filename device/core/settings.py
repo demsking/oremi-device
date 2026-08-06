@@ -144,7 +144,7 @@ class Settings(BaseSettings):
 
   transcription_backend: TranscriptionBackendSetting = "andika"
   andika_host: str | None = None
-  andika_port: int = Field(default=5315, gt=0, le=65535)
+  andika_port: int = Field(default=5022, gt=0, le=65535)
   andika_cert_file: str | None = None
   andika_model: AndikaModel = "zhifeixie/Mega-ASR"
   andika_samplerate: int = Field(default=16000, gt=0)
