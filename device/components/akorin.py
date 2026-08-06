@@ -34,8 +34,8 @@ from device.core.settings import Settings
 logger = logging.getLogger(__name__)
 
 ERROR_MESSAGE = {
-  "fr": "Je n'arrive pas a obtenir une reponse pour le moment.",
-  "en": "I cannot get a response right now.",
+  "fr": "Je n'arrive pas a obtenir une reponse pour le moment. Veuillez réessayer plus tard.",
+  "en": "I cannot get a response right now. Please try again later.",
 }
 
 STOP_WORDS = {
