@@ -143,6 +143,20 @@ async def test_andika_transcriber_trims_final_text() -> None:
 
 
 @pytest.mark.asyncio
+async def test_andika_transcriber_preserves_unicode_characters() -> None:
+  mqtt_client = MagicMock()
+  hindi_partial = "मामा से इस दिन रास्ते में बात कर रहे थे"
+  websocket = AsyncMessages([json.dumps({"partial": hindi_partial}, ensure_ascii=False)])
+
+  await AndikaTranscriber(_make_settings(), mqtt_client, websocket).transcribing()
+
+  published_payload = mqtt_client.publish_event.call_args.args[1]
+  assert hindi_partial in published_payload
+  assert "\\u092e" not in published_payload
+
+
+
+@pytest.mark.asyncio
 async def test_andika_transcriber_uses_fixed_topics() -> None:
   mqtt_client = MagicMock()
   websocket = AsyncMessages([json.dumps({"partial": "bon"}), json.dumps({"text": "bonjour"})])

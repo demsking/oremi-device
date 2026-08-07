@@ -180,7 +180,7 @@ class WhisperCppListener(BaseTranscriber):
         props.MessageExpiryInterval = self.settings.delay
 
         logger.debug(payload)
-        self._publish(FINAL_TRANSCRIPTION_TOPIC, json.dumps(payload), qos=1, retain=False, props=props)
+        self._publish(FINAL_TRANSCRIPTION_TOPIC, json.dumps(payload, ensure_ascii=False), qos=1, retain=False, props=props)
 
         if self.final_transcription_handler:
           await self.final_transcription_handler(transcription)

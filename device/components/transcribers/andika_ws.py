@@ -118,7 +118,7 @@ class AndikaTranscriber(BaseTranscriber):
       field, transcription = self.parse_transcription(payload)
 
       if field:
-        mqtt_message = json.dumps(payload)
+        mqtt_message = json.dumps(payload, ensure_ascii=False)
 
         if field == "partial":
           if transcription:
