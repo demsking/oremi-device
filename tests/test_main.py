@@ -322,3 +322,81 @@ async def test_handle_event_calls_apply_settings_updates() -> None:
 
     await app._handle_event("device_context_change", ("timezone", "Africa/Douala"))
     app.apply_settings_updates.assert_called_once_with({"timezone": "Africa/Douala"})
+
+
+@pytest.mark.asyncio
+async def test_publish_discovery_does_not_block_event_loop(tmp_path) -> None:
+  import threading
+  import time
+
+  from device.core.app import DeviceApplication
+  from device.core.settings import Settings
+
+  fake_settings = Settings(
+    _env_file=None,
+    node_id="test-node",
+    ohunerin_host="localhost",
+    andika_host="localhost",
+    mqtt_broker="localhost",
+    data_path=tmp_path,
+  )
+
+  with patch("device.core.app.get_settings", return_value=fake_settings):
+    app = DeviceApplication()
+
+  app.audio = MagicMock()
+  app.audio.needs_audio = True
+  app.audio.speaker_enabled = True
+  app.audio.audio_stream = None
+  app.audio.speaker_state = {}
+  app.tts = MagicMock()
+  app.tts.get_active_voice_names.return_value = []
+  app.tts.current_voice = ""
+  app.ha_device = MagicMock()
+  app.ha_device.discovery_prefix = "homeassistant"
+  app.device_context = {}
+
+  started = threading.Event()
+  ohunerin = MagicMock()
+
+  def blocking_sounds() -> list[str]:
+    started.set()
+    time.sleep(0.2)
+    return ["wake"]
+
+  def blocking_input(**kwargs) -> list[str]:
+    time.sleep(0.1)
+    return ["microphone"]
+
+  def blocking_output() -> list[str]:
+    time.sleep(0.1)
+    return ["speaker"]
+
+  ohunerin.get_supported_sounds.side_effect = blocking_sounds
+  app.components = {"ohunerin": ohunerin}
+
+  stop = asyncio.Event()
+  ticks = 0
+
+  async def heartbeat() -> None:
+    nonlocal ticks
+    while not stop.is_set():
+      await asyncio.sleep(0.005)
+      ticks += 1
+
+  hb = asyncio.create_task(heartbeat())
+
+  with (
+    patch("device.core.audio.Audio.get_compatible_input_devices", side_effect=blocking_input),
+    patch("device.core.speaker.Speaker.get_compatible_output_devices", side_effect=blocking_output),
+  ):
+    await app._publish_discovery()
+
+  stop.set()
+  await hb
+
+  # The blocking HTTP lookup and device enumeration run in a worker thread, so
+  # the event loop keeps ticking (~80 ticks in 400 ms) instead of stalling.
+  assert started.is_set()
+  assert ticks >= 5
+  app.ha_device.publish_discovery_configs.assert_called_once()

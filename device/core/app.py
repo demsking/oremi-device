@@ -119,17 +119,25 @@ class DeviceApplication:
     except Exception as error:
       logger.exception(f"Unhandled error in task {task.get_name() or task}: {error}")
 
-  def _publish_discovery(self) -> None:
+  async def _publish_discovery(self) -> None:
     if self.ha_device.discovery_prefix:
       try:
         from device.core.audio import Audio
         from device.core.speaker import Speaker
 
         curr_stream_name = self.audio.audio_stream.device_name if self.audio.audio_stream else None
-        input_devices = Audio.get_compatible_input_devices(current_device=curr_stream_name) if self.audio.needs_audio else []
-        output_devices = Speaker.get_compatible_output_devices() if self.audio.speaker_enabled else []
         ohunerin_comp: OhunerinComponent = self.components.get("ohunerin")  # type: ignore
-        ohunerin_sounds = ohunerin_comp.get_supported_sounds()
+
+        def collect_discovery_data() -> tuple[list[str], list[str], list[str]]:
+          input_devices = (
+            Audio.get_compatible_input_devices(current_device=curr_stream_name) if self.audio.needs_audio else []
+          )
+          output_devices = Speaker.get_compatible_output_devices() if self.audio.speaker_enabled else []
+          ohunerin_sounds = ohunerin_comp.get_supported_sounds()
+
+          return input_devices, output_devices, ohunerin_sounds
+
+        input_devices, output_devices, ohunerin_sounds = await asyncio.to_thread(collect_discovery_data)
 
         self.ha_device.publish_discovery_configs(
           input_devices=input_devices,
@@ -341,7 +349,7 @@ class DeviceApplication:
           if hasattr(self, "ha_device") and self.ha_device:
             self.ha_device.publish_node("microphone/state", "None", retain=True)
 
-        self._publish_discovery()
+        await self._publish_discovery()
 
     if "microphone_muted" in updates:
       muted = updates["microphone_muted"]
@@ -368,7 +376,7 @@ class DeviceApplication:
 
         if hasattr(self, "ha_device") and self.ha_device:
           self.ha_device.set_speaker_state(device_name)
-          self._publish_discovery()
+          await self._publish_discovery()
 
     if "speaker_muted" in updates:
       muted = updates["speaker_muted"]
@@ -380,7 +388,7 @@ class DeviceApplication:
 
       if hasattr(self, "ha_device") and self.ha_device:
         self.ha_device.set_speaker_mute_state(muted)
-        self._publish_discovery()
+        await self._publish_discovery()
 
     if "speaker_volume" in updates:
       volume = updates["speaker_volume"]
@@ -392,7 +400,7 @@ class DeviceApplication:
 
       if hasattr(self, "ha_device") and self.ha_device:
         self.ha_device.set_speaker_volume_state(volume)
-        self._publish_discovery()
+        await self._publish_discovery()
 
     if "language" in updates:
       language = updates["language"]
@@ -413,7 +421,7 @@ class DeviceApplication:
         if self.tts.current_voice and hasattr(self, "ha_device") and self.ha_device:
           self.ha_device.publish_voice_state(self.tts.current_voice)
 
-      self._publish_discovery()
+      await self._publish_discovery()
 
       if hasattr(self, "components") and "ohunerin" in self.components:
         await self.components["ohunerin"].stop()
@@ -460,7 +468,7 @@ class DeviceApplication:
         if hasattr(self, "ha_device") and self.ha_device:
           self.ha_device.publish_voice_state(tts_voice)
 
-        self._publish_discovery()
+        await self._publish_discovery()
 
     await asyncio.to_thread(update_runtime_settings_cache, self.settings, **updates)
     apply_runtime_settings_cache(self.settings, read_runtime_settings_cache(self.settings))
@@ -487,7 +495,7 @@ class DeviceApplication:
             logger.info(f"Geocoding succeeded for location: {location}")
             self.device_context = new_context
             self.ha_device.publish_device_context(self.device_context)
-            self._publish_discovery()
+            await self._publish_discovery()
         except Exception as error:
           logger.error(f"Error during geocode retry: {error}")
 
@@ -697,7 +705,7 @@ class DeviceApplication:
       if self.tts.current_voice:
         self.ha_device.publish_voice_state(self.tts.current_voice)
 
-    self._publish_discovery()
+    await self._publish_discovery()
 
     # 3. Start Background Workers
     if self.audio.needs_audio:

@@ -123,7 +123,11 @@ class Speech2Text(AudioStreamComponent[AndikaConfig]):
       logger.info(f"Andika Model: {config.model}")
       logger.info(f"Andika Samplerate: {config.samplerate}")
 
-    supported_models = self._get_supported_models() if self.settings.transcription_backend == "andika" else []
+    supported_models = (
+      await asyncio.to_thread(self._get_supported_models)
+      if self.settings.transcription_backend == "andika"
+      else []
+    )
 
     if supported_models:
       supported_model_ids = ", ".join(model.id for model in supported_models)

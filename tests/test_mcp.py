@@ -69,7 +69,7 @@ async def device_app(temp_settings) -> DeviceApplication:
     app.ha_device = MagicMock()
     app.tts = MagicMock()
     app.components = {}
-    app._publish_discovery = MagicMock()
+    app._publish_discovery = AsyncMock()
     return app
 
 
@@ -493,7 +493,7 @@ async def test_mcp_mutation_tools_apply_on_device_application(mcp_device) -> Non
   app.ha_device = MagicMock()
   app.tts = MagicMock()
   app.components = {}
-  app._publish_discovery = MagicMock()
+  app._publish_discovery = AsyncMock()
 
   server = MCPServer(name="App Mutation Test Server")
   register_mcp_tools(server, mcp_device)

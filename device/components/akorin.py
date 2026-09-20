@@ -86,12 +86,32 @@ def format_conversation_history(history: list[ConversationMessage]) -> str:
 
 
 class AkorinClient:
+  """HTTP client for the Akorin orchestration service.
+
+  The underlying httpx.AsyncClient is created once and reused for every
+  request, so client construction and TCP/TLS setup are not paid on each
+  conversational turn. The client is owned by the component and released by
+  aclose.
+  """
+
   def __init__(self, base_url: str) -> None:
     self.base_url = base_url.rstrip("/")
+    self._client: httpx.AsyncClient | None = None
 
   @property
   def endpoint(self) -> str:
     return f"{self.base_url}/api/agent/"
+
+  def _get_client(self) -> httpx.AsyncClient:
+    if self._client is None:
+      self._client = httpx.AsyncClient()
+
+    return self._client
+
+  async def aclose(self) -> None:
+    if self._client is not None:
+      await self._client.aclose()
+      self._client = None
 
   async def process(
     self,
@@ -111,27 +131,27 @@ class AkorinClient:
       f"tags={tags})"
     )
 
-    async with httpx.AsyncClient(timeout=timeout) as client:
-      response = await client.post(
-        url=self.endpoint,
-        json={
-          "message": message,
-          "context": {"preferences": context, "language": language},
-          "tags": tags,
-        },
-      )
+    response = await self._get_client().post(
+      url=self.endpoint,
+      json={
+        "message": message,
+        "context": {"preferences": context, "language": language},
+        "tags": tags,
+      },
+      timeout=timeout,
+    )
 
-      response.raise_for_status()
+    response.raise_for_status()
 
-      data = response.json()
-      result = ProcessingResponse.model_validate(data)
+    data = response.json()
+    result = ProcessingResponse.model_validate(data)
 
-      logger.info(f"Processing completed (service={result.service})")
-      logger.debug(
-        f"Processing completed (service={result.service}, confidence={result.confidence:.2f}, message={result.message!r}, data={result.data})"
-      )
+    logger.info(f"Processing completed (service={result.service})")
+    logger.debug(
+      f"Processing completed (service={result.service}, confidence={result.confidence:.2f}, message={result.message!r}, data={result.data})"
+    )
 
-      return result
+    return result
 
 
 class AkorinComponent(HttpComponent[AkorinConfig]):
@@ -246,6 +266,8 @@ class AkorinComponent(HttpComponent[AkorinConfig]):
       if processing_task is not None and not processing_task.done():
         processing_task.cancel()
         await asyncio.gather(processing_task, return_exceptions=True)
+
+      await client.aclose()
 
   async def _process_message(
     self,

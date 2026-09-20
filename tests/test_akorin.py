@@ -85,8 +85,10 @@ async def test_akorin_client_posts_agent_request() -> None:
       "context": {"preferences": {"preferences": {"timezone": "Europe/Paris"}}, "language": "fr"},
       "tags": ["device_id:test-node"],
     },
+    timeout=5.0,
   )
   assert result.resolved_commands() == [SpeakCommand(type="speak", text="Bonjour")]
+  await client.aclose()
 
 
 @pytest.mark.asyncio
@@ -111,6 +113,30 @@ async def test_akorin_client_logs_info_and_debug(caplog: pytest.LogCaptureFixtur
   assert "Processing request: 'quelle météo ?'" in caplog.text
   assert "Processing completed (service=weather)" in caplog.text
   assert "Sending processing request to http://akorin:5020/api/agent/" in caplog.text
+
+  await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_akorin_client_reuses_http_client() -> None:
+  client = AkorinClient("http://akorin:5020")
+  response = httpx.Response(
+    status_code=200,
+    json={"service": "test", "message": "hi"},
+    request=httpx.Request("POST", "http://akorin:5020/api/agent/"),
+  )
+
+  with patch("httpx.AsyncClient.post", AsyncMock(return_value=response)):
+    await client.process("one", language="fr", context={}, tags=[], timeout=5.0)
+    first_client = client._client
+
+    await client.process("two", language="fr", context={}, tags=[], timeout=5.0)
+
+  assert first_client is not None
+  assert client._client is first_client
+
+  await client.aclose()
+  assert client._client is None
 
 
 @pytest.mark.asyncio
