@@ -214,7 +214,7 @@ def test_timezone_is_inferred_from_coordinates(monkeypatch: pytest.MonkeyPatch) 
     calls.append({"lat": lat, "lng": lng})
     return "Europe/Paris"
 
-  monkeypatch.setattr("device.core.timezone._timezone_finder", SimpleNamespace(timezone_at=timezone_at))
+  monkeypatch.setattr("device.core.timezone._get_timezone_finder", lambda: SimpleNamespace(timezone_at=timezone_at))
 
   assert infer_timezone_from_coordinates(latitude=48.8566, longitude=2.3522) == "Europe/Paris"
   assert calls == [{"lat": 48.8566, "lng": 2.3522}]
@@ -223,8 +223,8 @@ def test_timezone_is_inferred_from_coordinates(monkeypatch: pytest.MonkeyPatch) 
 @pytest.mark.parametrize("timezone", [None, "Invalid/Timezone"])
 def test_invalid_timezone_coordinates_return_none(monkeypatch: pytest.MonkeyPatch, timezone: str | None) -> None:
   monkeypatch.setattr(
-    "device.core.timezone._timezone_finder",
-    SimpleNamespace(timezone_at=lambda *, lat, lng: timezone),
+    "device.core.timezone._get_timezone_finder",
+    lambda: SimpleNamespace(timezone_at=lambda *, lat, lng: timezone),
   )
 
   assert infer_timezone_from_coordinates(latitude=0.0, longitude=0.0) is None
