@@ -26,8 +26,8 @@ if TYPE_CHECKING:
 from device.core.playback import PlaybackState
 from device.core.speaker import Speaker
 
-READ_ONLY = ToolAnnotations(readOnlyHint=True, idempotentHint=True)
-MUTATION = ToolAnnotations(destructiveHint=False)
+READ_ONLY = ToolAnnotations(read_only_hint=True, idempotent_hint=True)
+MUTATION = ToolAnnotations(destructive_hint=False)
 
 
 class DeviceStatus(BaseModel):

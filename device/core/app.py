@@ -19,7 +19,7 @@ import signal
 from typing import Any
 from typing import cast
 
-from mcp.server.fastmcp import FastMCP
+from mcp.server.mcpserver import MCPServer
 from pydantic import ValidationError
 
 from device.components import COMPONENTS
@@ -585,18 +585,13 @@ class DeviceApplication:
     )
 
     # 2. Init MCP server
-    self.mcp = FastMCP(
+    self.mcp = MCPServer(
       name="Oremi Device",
       instructions=(
         "Retrieve and manage local device settings, audio devices, and speech synthesis voices. "
         "Use get_device_status or read device:///status to check current state. "
         "Call update_device_settings to update device configuration such as volume and language."
       ),
-      host=self.settings.server_host,
-      port=self.settings.server_port,
-      stateless_http=True,
-      json_response=True,
-      streamable_http_path="/mcp",
       website_url=APP_DOCUMENTATION_URL,
     )
 
@@ -606,8 +601,20 @@ class DeviceApplication:
     register_mcp_resources(self.mcp, mcp_device)
     register_mcp_prompts(self.mcp)
 
-    # Start MCP server in background
-    self.background_tasks.append(self.loop.create_task(self.mcp.run_streamable_http_async()))
+    # Start MCP server in background. The HTTP transport settings are runner
+    # arguments in MCP 2.x (they were FastMCP constructor arguments in MCP 1.x);
+    # the resulting endpoint and behavior are unchanged.
+    self.background_tasks.append(
+      self.loop.create_task(
+        self.mcp.run_streamable_http_async(
+          host=self.settings.server_host,
+          port=self.settings.server_port,
+          stateless_http=True,
+          json_response=True,
+          streamable_http_path="/mcp",
+        )
+      )
+    )
 
     # Assume a TTS stub exists or inject the client here based on your original imports
     self.tts = TTSManager(self.settings)

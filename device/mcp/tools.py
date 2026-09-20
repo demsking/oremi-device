@@ -19,8 +19,8 @@ from typing import Any
 from typing import cast
 from typing import Literal
 
-from mcp.server.fastmcp import FastMCP
-from mcp.server.fastmcp.exceptions import ToolError
+from mcp.server.mcpserver import MCPServer
+from mcp.server.mcpserver.exceptions import ToolError
 from mcp.types import ToolAnnotations
 
 from device.core.audio import Audio
@@ -47,11 +47,11 @@ from device.core.speaker import Speaker
 from device.core.tts import TTSVoice
 from device.core.tts import voices_for_language
 
-READ_ONLY = ToolAnnotations(readOnlyHint=True, idempotentHint=True)
-MUTATION = ToolAnnotations(destructiveHint=False)
+READ_ONLY = ToolAnnotations(read_only_hint=True, idempotent_hint=True)
+MUTATION = ToolAnnotations(destructive_hint=False)
 
 
-def register_mcp_tools(mcp: FastMCP, device: McpDevice) -> None:
+def register_mcp_tools(mcp: MCPServer, device: McpDevice) -> None:
   """Register MCP tools for managing and querying device settings and audio state."""
   app = device.app
   settings = app.settings

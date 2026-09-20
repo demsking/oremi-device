@@ -11,8 +11,8 @@
       "justMyCode": true,
       "env": {
         "OREMI_DEVICE_LOG_LEVEL": "DEBUG",
-        "OREMI_DEVICE_MQTT_BROKER": "ngaoundere",
-        "OREMI_DEVICE_MQTT_PORT": "51883",
+        "OREMI_DEVICE_MQTT_BROKER": "localhost",
+        "OREMI_DEVICE_MQTT_PORT": "41883",
         "OREMI_DEVICE_DATA_PATH": "data",
         "OREMI_DEVICE_TRANSCRIPTION_BACKEND": "andika",
         "OREMI_DEVICE_OLLAMA_BASE_URL": "http://localhost:41434",
@@ -20,6 +20,28 @@
         "OREMI_DEVICE_AKORIN_URL": "http://localhost:45020",
         "OREMI_DEVICE_OHUNERIN_PORT": "45023",
         "OREMI_DEVICE_ANDIKA_PORT": "45022"
+      }
+    },
+    {
+      "name": "Edge",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "device",
+      "cwd": "${workspaceFolder}",
+      "envFile": "${workspaceFolder}/.env.example",
+      "justMyCode": true,
+      "env": {
+        "OREMI_DEVICE_LOG_LEVEL": "DEBUG",
+        "OREMI_DEVICE_MQTT_BROKER": "ngaoundere",
+        "OREMI_DEVICE_MQTT_PORT": "51883",
+        "OREMI_DEVICE_DATA_PATH": "data",
+        "OREMI_DEVICE_TRANSCRIPTION_BACKEND": "andika",
+        "OREMI_DEVICE_OLLAMA_BASE_URL": "http://localhost:51434",
+        "OREMI_DEVICE_IZWI_URL": "http://localhost:55031",
+        "OREMI_DEVICE_AKORIN_URL": "http://localhost:55020",
+        "OREMI_DEVICE_OHUNERIN_PORT": "55023",
+        "OREMI_DEVICE_ANDIKA_HOST": "mali",
+        "OREMI_DEVICE_ANDIKA_PORT": "55022"
       }
     },
     {

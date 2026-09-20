@@ -92,7 +92,7 @@ async def test_ready_and_shutdown_sounds_played() -> None:
     patch("device.core.app.get_settings", return_value=fake_settings),
     patch("device.core.app.AudioService") as mock_audio_service_cls,
     patch("device.core.app.HomeAssistantDevice") as mock_mqtt_cls,
-    patch("device.core.app.FastMCP") as mock_mcp_cls,
+    patch("device.core.app.MCPServer") as mock_mcp_cls,
     patch("device.core.app.TTSManager"),
     patch("device.core.app.CommandExecutor") as mock_executor_cls,
   ):
@@ -131,6 +131,20 @@ async def test_ready_and_shutdown_sounds_played() -> None:
     shutdown_path = calls[1][0][0]
     assert ready_path.name == "ready.ogg"
     assert shutdown_path.name == "shutdown.ogg"
+
+    # MCP 2.x receives the HTTP transport settings through the runner, and the
+    # resulting endpoint/options are unchanged from the MCP 1.x configuration.
+    mock_mcp.run_streamable_http_async.assert_called_once_with(
+      host=fake_settings.server_host,
+      port=fake_settings.server_port,
+      stateless_http=True,
+      json_response=True,
+      streamable_http_path="/mcp",
+    )
+
+    # The MCP task is cleaned up with the application background tasks.
+    assert app.background_tasks
+    assert all(task.done() for task in app.background_tasks)
 
 
 @pytest.mark.asyncio
@@ -190,7 +204,7 @@ async def test_geocode_background_retry(monkeypatch: pytest.MonkeyPatch) -> None
     patch("device.core.app.get_settings", return_value=fake_settings),
     patch("device.core.app.AudioService") as mock_audio_service_cls,
     patch("device.core.app.HomeAssistantDevice") as mock_mqtt_cls,
-    patch("device.core.app.FastMCP") as mock_mcp_cls,
+    patch("device.core.app.MCPServer") as mock_mcp_cls,
     patch("device.core.app.TTSManager"),
     patch("device.core.app.CommandExecutor") as mock_executor_cls,
   ):
@@ -275,7 +289,7 @@ async def test_handle_event_calls_apply_settings_updates() -> None:
     patch("device.core.app.get_settings", return_value=fake_settings),
     patch("device.core.app.AudioService"),
     patch("device.core.app.HomeAssistantDevice"),
-    patch("device.core.app.FastMCP"),
+    patch("device.core.app.MCPServer"),
     patch("device.core.app.TTSManager"),
     patch("device.core.app.CommandExecutor"),
   ):

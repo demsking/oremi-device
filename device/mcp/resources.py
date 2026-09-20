@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-from mcp.server.fastmcp import FastMCP
+from mcp.server.mcpserver import MCPServer
 
 from device.core.mcp import DeviceCapabilities
 from device.core.mcp import DeviceStatus
@@ -23,7 +23,7 @@ from device.core.mcp import SpeakersResourceModel
 from device.core.mcp import VolumeStatus
 
 
-def register_mcp_resources(mcp: FastMCP, device: McpDevice) -> None:
+def register_mcp_resources(mcp: MCPServer, device: McpDevice) -> None:
   """Register MCP resources for accessing device state and configurations directly."""
 
   @mcp.resource(

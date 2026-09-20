@@ -11,5 +11,6 @@ __pycache__/
 *.tflite
 .direnv/
 .dsh-project-memory/
+.mypy_cache/
 build/
 data/
