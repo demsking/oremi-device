@@ -15,8 +15,9 @@
 import asyncio
 import logging
 
-import websockets.exceptions
-from websockets.asyncio.client import ClientConnection as WebSocket
+from websockets.asyncio.client import ClientConnection
+from websockets.exceptions import ConnectionClosedError
+from websockets.exceptions import ConnectionClosedOK
 
 from device.core.audio import Audio
 from device.core.audio import AudioDeviceError
@@ -30,11 +31,11 @@ class AudioListener:
   def __init__(
     self,
     audio_stream: Audio | None,
-    websocket: WebSocket,
+    websocket: ClientConnection,
     stop_message: str | bytes | None = None,
   ) -> None:
     self.audio_stream: Audio | None = audio_stream
-    self.websocket: WebSocket = websocket
+    self.websocket: ClientConnection = websocket
     self.stop_message: str | bytes | None = stop_message
 
   async def listening(self) -> None:
@@ -66,10 +67,10 @@ class AudioListener:
                 self.audio_stream.restart_stream()
               consecutive_timeouts = 0
             continue
-          except websockets.exceptions.ConnectionClosedOK:
+          except ConnectionClosedOK:
             logger.info("Connection closed")
             break
-          except websockets.exceptions.ConnectionClosedError as error:
+          except ConnectionClosedError as error:
             logger.error(error)
             break
           except (AudioDeviceError, Exception) as error:

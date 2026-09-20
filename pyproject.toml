@@ -20,7 +20,7 @@ classifiers = [
 ]
 
 dependencies = [
-  "websockets>=16.1",
+  "websockets==17.1",
   "miniaudio>=1.60",
   "paho-mqtt>=2.1.0,<3.0.0",
   "pydantic>=2.13.4",
