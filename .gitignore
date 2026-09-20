@@ -10,5 +10,6 @@ __pycache__/
 .coverage
 *.tflite
 .direnv/
+.dsh-project-memory/
 build/
 data/
