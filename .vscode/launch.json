@@ -43,48 +43,6 @@
         "OREMI_DEVICE_ANDIKA_HOST": "mali",
         "OREMI_DEVICE_ANDIKA_PORT": "55022"
       }
-    },
-    {
-      "name": "Debug (Edge-TTS)",
-      "type": "debugpy",
-      "request": "launch",
-      "module": "device",
-      "cwd": "${workspaceFolder}",
-      "envFile": "${workspaceFolder}/.env.example",
-      "justMyCode": true,
-      "env": {
-        "OREMI_DEVICE_LOG_LEVEL": "DEBUG",
-        "OREMI_DEVICE_MQTT_BROKER": "ngaoundere",
-        "OREMI_DEVICE_MQTT_PORT": "51883",
-        "OREMI_DEVICE_DATA_PATH": "data",
-        "OREMI_DEVICE_TRANSCRIPTION_BACKEND": "andika",
-        "OREMI_DEVICE_OLLAMA_BASE_URL": "http://localhost:41434",
-        "OREMI_DEVICE_TTS_BACKEND": "edge-tts",
-        "OREMI_DEVICE_EDGE_TTS_URL": "http://localhost:45050",
-        "OREMI_DEVICE_AKORIN_URL": "http://localhost:45020",
-        "OREMI_DEVICE_OHUNERIN_PORT": "45023",
-        "OREMI_DEVICE_ANDIKA_PORT": "45022"
-      }
-    },
-    {
-      "name": "Debug (whisper.cpp)",
-      "type": "debugpy",
-      "request": "launch",
-      "module": "device",
-      "cwd": "${workspaceFolder}",
-      "envFile": "${workspaceFolder}/.env.example",
-      "justMyCode": true,
-      "env": {
-        "OREMI_DEVICE_LOG_LEVEL": "DEBUG",
-        "OREMI_DEVICE_MQTT_BROKER": "ngaoundere",
-        "OREMI_DEVICE_MQTT_PORT": "51883",
-        "OREMI_DEVICE_DATA_PATH": "data",
-        "OREMI_DEVICE_TRANSCRIPTION_BACKEND": "whisper.cpp",
-        "OREMI_DEVICE_OLLAMA_BASE_URL": "http://localhost:41434",
-        "OREMI_DEVICE_IZWI_URL": "http://localhost:45031",
-        "OREMI_DEVICE_AKORIN_URL": "http://localhost:45020",
-        "OREMI_DEVICE_WHISPER_URL": "http://localhost:48080"
-      }
     }
   ]
 }
