@@ -12,6 +12,8 @@ IMAGE_PLATFORMS := linux/amd64,linux/arm64
 IMAGE_REVISION := $(shell git rev-parse HEAD)
 IMAGE_CREATED := $(shell date --utc --iso-8601=seconds)
 
+DOCKER_COMPOSE := docker --context default compose
+
 .PHONY: install tests clean package pypi image bump patch minor major alpha beta rc release publish check-clean
 
 shell:
@@ -21,25 +23,28 @@ stop:
 	tmux kill-session -t $(APP_NAME)
 
 up: pull
-	docker compose up -d --remove-orphans
-
-ps:
-	docker compose ps
-
-logs:
-	docker compose logs -f
-
-pull:
-	docker compose pull
+	$(DOCKER_COMPOSE) up -d --remove-orphans
 
 restart:
-	docker compose restart
+	$(DOCKER_COMPOSE) restart
+
+ps:
+	$(DOCKER_COMPOSE) ps
+
+logs:
+	$(DOCKER_COMPOSE) logs -f
+
+pull:
+	$(DOCKER_COMPOSE) pull
+
+restart:
+	$(DOCKER_COMPOSE) restart
 
 down:
-	docker compose down
+	$(DOCKER_COMPOSE) down
 
 stats:
-	docker compose stats
+	$(DOCKER_COMPOSE) stats
 
 install:
 	rm -rf .venv
