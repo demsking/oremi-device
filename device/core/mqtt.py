@@ -306,7 +306,11 @@ class HomeAssistantDevice:
       "device": device,
     }
     transcription_topic = f"{self.discovery_prefix}/sensor/{node_id}/transcription/config"
-    self._publish_discovery_config(transcription_topic, transcription_payload, enabled=microphone_enabled)
+    self._publish_discovery_config(
+      transcription_topic,
+      transcription_payload,
+      enabled=microphone_enabled and andika_enabled,
+    )
 
     event_topic = self.parse_node_topic("events/detection")
     wakeword_payload = {
@@ -327,7 +331,11 @@ class HomeAssistantDevice:
       "device": device,
     }
     wakeword_topic = f"{self.discovery_prefix}/sensor/{node_id}/wakeword/config"
-    self._publish_discovery_config(wakeword_topic, wakeword_payload, enabled=microphone_enabled)
+    self._publish_discovery_config(
+      wakeword_topic,
+      wakeword_payload,
+      enabled=microphone_enabled and ohunerin_enabled,
+    )
 
     sound_payload: dict = {
       "name": "Sound Detector",
@@ -366,7 +374,11 @@ class HomeAssistantDevice:
       )
 
     sound_topic = f"{self.discovery_prefix}/sensor/{node_id}/sound/config"
-    self._publish_discovery_config(sound_topic, sound_payload, enabled=microphone_enabled)
+    self._publish_discovery_config(
+      sound_topic,
+      sound_payload,
+      enabled=microphone_enabled and ohunerin_enabled,
+    )
 
     # ── Additional custom entities (if provided) ──────────────────────────────
     for ha_domain, entity_slug, payload in entities or []:
@@ -607,6 +619,13 @@ class HomeAssistantDevice:
         topic = f"{self.discovery_prefix}/switch/{node_id}/{service}_enabled/config"
         self.client.publish(topic, json.dumps(payload), retain=True)
         self.publish_service_enabled_state(service, enabled)
+    else:
+      for service in ("ohunerin", "andika"):
+        self.client.publish(f"{self.discovery_prefix}/switch/{node_id}/{service}_enabled/config", "", retain=True)
+        self.client.publish(f"{self.discovery_prefix}/sensor/{node_id}/{service}_status/config", "", retain=True)
+
+    if not speaker_enabled:
+      self.client.publish(f"{self.discovery_prefix}/sensor/{node_id}/tts_status/config", "", retain=True)
 
     visible_services = [
       service

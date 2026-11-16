@@ -288,6 +288,21 @@ def test_disabled_audio_discovery(mock_mqtt_class) -> None:
   }
   assert len(microphone_sensor_configs) == 3
   assert all(payload == "" for payload in microphone_sensor_configs.values())
+  service_config_payloads = {
+    call.args[0]: call.args[1]
+    for call in mock_client.publish.call_args_list
+    if call.args[0].endswith(
+      (
+        "/ohunerin_enabled/config",
+        "/andika_enabled/config",
+        "/ohunerin_status/config",
+        "/andika_status/config",
+        "/tts_status/config",
+      )
+    )
+  }
+  assert len(service_config_payloads) == 5
+  assert all(payload == "" for payload in service_config_payloads.values())
   mock_client.publish.assert_any_call(
     "oremi/device/nodes/test-node/player/discovery",
     "",
@@ -579,3 +594,33 @@ def test_publish_service_status_and_enabled_state(mock_mqtt_class) -> None:
     "version": APP_VERSION,
     "started_at": "2026-11-16T08:00:00+00:00",
   }
+
+
+@patch("paho.mqtt.client.Client")
+def test_disabled_services_hide_data_sensors(mock_mqtt_class) -> None:
+  client = MqttDevice(
+    broker="localhost",
+    port=1883,
+    topic="oremi/device",
+    node_id="kitchen",
+    discovery_prefix="homeassistant",
+  )
+  mock_client_instance = mock_mqtt_class.return_value
+
+  client.publish_discovery_configs(
+    input_devices=[],
+    current_device="",
+    microphone_enabled=True,
+    ohunerin_enabled=False,
+    andika_enabled=False,
+  )
+
+  published = {call.args[0]: call.args[1] for call in mock_client_instance.publish.call_args_list}
+
+  for entity in ("transcription", "wakeword", "sound"):
+    assert published[f"homeassistant/sensor/oremi-device-kitchen/{entity}/config"] == ""
+
+  assert published["oremi/device/nodes/kitchen/services/ohunerin/enabled/state"] == "OFF"
+  assert published["oremi/device/nodes/kitchen/services/andika/enabled/state"] == "OFF"
+  assert "homeassistant/switch/oremi-device-kitchen/ohunerin_enabled/config" in published
+  assert "homeassistant/sensor/oremi-device-kitchen/ohunerin_status/config" in published
