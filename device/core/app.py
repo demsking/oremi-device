@@ -651,13 +651,12 @@ class DeviceApplication:
 
       await self._publish_discovery()
 
-      if hasattr(self, "components") and "ohunerin" in self.components:
-        await self.components["ohunerin"].stop()
+      if hasattr(self, "shared_resources") and "language_state" in self.shared_resources:
+        self.shared_resources["language_state"]["language"] = language
 
-        if hasattr(self, "shared_resources") and "language_state" in self.shared_resources:
-          self.shared_resources["language_state"]["language"] = language
-
-        await self.components["ohunerin"].start(self.component_configs["ohunerin"], self.shared_resources)
+      if "ohunerin" in self.components:
+        await self._stop_component("ohunerin")
+        await self._start_component("ohunerin")
 
     context_fields = {
       "location",

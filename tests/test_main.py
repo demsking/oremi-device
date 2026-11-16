@@ -701,6 +701,38 @@ async def test_microphone_mute_stops_and_restarts_voice_services() -> None:
 
 
 @pytest.mark.asyncio
+async def test_language_change_updates_shared_language_state_while_muted(tmp_path) -> None:
+  from device.core.app import DeviceApplication
+  from device.core.settings import Settings
+
+  fake_settings = Settings(
+    _env_file=None,
+    node_id="test-node",
+    ohunerin_host="localhost",
+    andika_host="localhost",
+    mqtt_broker="localhost",
+    mqtt_discovery=False,
+    microphone_muted=True,
+    data_path=tmp_path,
+  )
+
+  with patch("device.core.app.get_settings", return_value=fake_settings):
+    app = DeviceApplication()
+
+  app.audio = MagicMock()
+  app.audio.needs_audio = True
+  app.ha_device = MagicMock()
+  app.tts = MagicMock()
+  app.components = {}
+  app.shared_resources = {"language_state": {"language": "fr"}}
+  app._publish_discovery = AsyncMock()
+
+  await app.apply_settings_updates({"language": "en"})
+
+  assert app.shared_resources["language_state"]["language"] == "en"
+
+
+@pytest.mark.asyncio
 async def test_service_toggle_is_persisted(tmp_path) -> None:
   from device.core.app import DeviceApplication
   from device.core.settings import read_runtime_settings_cache
