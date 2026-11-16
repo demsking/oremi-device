@@ -686,6 +686,7 @@ class DeviceApplication:
     log_group(
       self.settings,
       "Wake Word & Sounds Detection",
+      "ohunerin_enabled",
       "ohunerin_threshold",
       "ohunerin_host",
       "ohunerin_port",
@@ -693,9 +694,9 @@ class DeviceApplication:
     )
 
     transcription_fields = (
-      ("andika_model", "andika_samplerate", "andika_host", "andika_port", "andika_cert_file")
+      ("andika_enabled", "andika_model", "andika_samplerate", "andika_host", "andika_port", "andika_cert_file")
       if self.settings.transcription_backend == "andika"
-      else ("whisper_url", "whisper_silence_threshold", "whisper_silence_duration")
+      else ("andika_enabled", "whisper_url", "whisper_silence_threshold", "whisper_silence_duration")
     )
 
     log_group(self.settings, "Transcription", "transcription_backend", *transcription_fields)
