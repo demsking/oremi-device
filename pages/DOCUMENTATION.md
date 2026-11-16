@@ -1286,7 +1286,12 @@ retained discovery configurations below `homeassistant` for:
   "Device" status sensors
 
 The entities share one device identifier derived from
-`OREMI_DEVICE_NODE_ID`. Available microphones and speakers are included as
+`OREMI_DEVICE_NODE_ID`. Home Assistant groups them on the device page:
+interactive controls (switches, selects, and the volume slider) are published
+with `entity_category: config` and appear under **Configuration**; service and
+device status sensors use `entity_category: diagnostic` and appear under
+**Diagnostics**; wake-word, ambient-sound, and transcription data sensors stay
+in the main sensor section. Available microphones and speakers are included as
 select options. When microphone or speaker support is disabled, the
 corresponding retained discovery configs are cleared. The ambient-sound
 sensor is cleared when ambient sound detection is disabled; the wake-word
