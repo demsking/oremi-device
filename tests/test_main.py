@@ -701,6 +701,41 @@ async def test_microphone_mute_stops_and_restarts_voice_services() -> None:
 
 
 @pytest.mark.asyncio
+async def test_auto_select_sentinel_is_not_persisted_as_microphone(tmp_path) -> None:
+  from device.core.app import DeviceApplication
+  from device.core.settings import read_runtime_settings_cache
+  from device.core.settings import Settings
+
+  fake_settings = Settings(
+    _env_file=None,
+    node_id="test-node",
+    ohunerin_host="localhost",
+    andika_host="localhost",
+    mqtt_broker="localhost",
+    mqtt_discovery=False,
+    microphone_device="eMeet Luna Mono",
+    data_path=tmp_path,
+  )
+
+  with patch("device.core.app.get_settings", return_value=fake_settings):
+    app = DeviceApplication()
+
+  app.audio = MagicMock()
+  app.audio.needs_audio = True
+  app.audio.audio_stream = None
+  app.audio.change_audio_device = AsyncMock(return_value=True)
+  app.ha_device = MagicMock()
+  app.active_stream_container = {"stream": None}
+  app.components = {}
+  app._publish_discovery = AsyncMock()
+
+  await app.apply_settings_updates({"microphone_device": "__auto_select__"})
+
+  assert app.settings.microphone_device is None
+  assert read_runtime_settings_cache(fake_settings).microphone_device is None
+
+
+@pytest.mark.asyncio
 async def test_language_change_updates_shared_language_state_while_muted(tmp_path) -> None:
   from device.core.app import DeviceApplication
   from device.core.settings import Settings

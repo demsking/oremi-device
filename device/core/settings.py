@@ -348,6 +348,10 @@ def apply_runtime_settings_cache(settings: Settings, cache: RuntimeSettingsCache
   if cache.microphone_device is not None:
     settings.microphone_device_index = None
 
+  if settings.microphone_device == "__auto_select__":
+    settings.microphone_device = None
+    settings.microphone_device_index = None
+
   return settings
 
 

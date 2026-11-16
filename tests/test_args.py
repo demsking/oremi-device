@@ -402,6 +402,19 @@ def test_runtime_settings_cache_update_preserves_existing_values(tmp_path) -> No
   }
 
 
+def test_runtime_settings_cache_ignores_auto_select_sentinel(tmp_path) -> None:
+  settings = Settings(_env_file=None, **REQUIRED_SETTINGS, data_path=tmp_path)
+  cache_file = tmp_path / "test-node.json"
+  cache_file.write_text('{"microphone_device": "__auto_select__"}', encoding="utf-8")
+
+  cache = read_runtime_settings_cache(settings)
+  applied = apply_runtime_settings_cache(settings, cache)
+
+  assert cache.microphone_device == "__auto_select__"
+  assert applied.microphone_device is None
+  assert applied.microphone_device_index is None
+
+
 def test_invalid_runtime_settings_cache_is_ignored(tmp_path) -> None:
   settings = Settings(_env_file=None, **REQUIRED_SETTINGS, data_path=tmp_path)
   cache_file = tmp_path / "test-node.json"

@@ -577,6 +577,13 @@ class DeviceApplication:
     if "microphone_device" in updates:
       device_name = updates["microphone_device"]
 
+      if device_name == "__auto_select__":
+        self.settings.microphone_device = None
+        self.settings.microphone_device_index = None
+      else:
+        self.settings.microphone_device = device_name
+        self.settings.microphone_device_index = None
+
       if hasattr(self, "audio") and self.audio:
         components_list = list(self.components.values()) if hasattr(self, "components") and self.components else []
         await self.audio.change_audio_device(device_name, components_list)
@@ -702,7 +709,13 @@ class DeviceApplication:
 
         await self._publish_discovery()
 
-    await asyncio.to_thread(update_runtime_settings_cache, self.settings, **updates)
+    cache_updates: dict[str, Any] = dict(updates)
+
+    if cache_updates.get("microphone_device") == "__auto_select__":
+      # Never persist the auto-selection sentinel as if it were a device name.
+      cache_updates["microphone_device"] = None
+
+    await asyncio.to_thread(update_runtime_settings_cache, self.settings, **cache_updates)
     apply_runtime_settings_cache(self.settings, read_runtime_settings_cache(self.settings))
 
   async def _geocode_retry_loop(self) -> None:
