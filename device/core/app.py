@@ -493,9 +493,11 @@ class DeviceApplication:
     self.settings.sound_detection_enabled = enabled
     await self._stop_component("ohunerin")
 
+    ohunerin_state = self.service_states.get("ohunerin")
+
     if self.audio.needs_audio and not self.settings.microphone_muted:
       await self._start_component("ohunerin")
-    elif self.settings.microphone_muted and self.service_states["ohunerin"].enabled:
+    elif self.settings.microphone_muted and ohunerin_state and ohunerin_state.enabled:
       self._set_service_status("ohunerin", "muted")
 
     self.ha_device.publish_service_enabled_state("ambient-sound", enabled)
