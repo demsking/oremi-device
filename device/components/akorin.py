@@ -180,6 +180,7 @@ class AkorinComponent(HttpComponent[AkorinConfig]):
     shared_resources: SharedResources,
   ) -> None:
     if self.settings.akorin_url is None:
+      self.report_status("disabled")
       logger.warning("Akorin component disabled because OREMI_DEVICE_AKORIN_URL is not configured")
       return
 
@@ -218,6 +219,7 @@ class AkorinComponent(HttpComponent[AkorinConfig]):
     device_context = shared_resources["device_context"]
 
     client = AkorinClient(str(self.settings.akorin_url))
+    self.report_status("idle")
     queue_task = asyncio.create_task(transcription_queue.get(), name="Akorin Transcription Queue Task")
     processing_task: asyncio.Task | None = None
 
@@ -246,6 +248,7 @@ class AkorinComponent(HttpComponent[AkorinConfig]):
             logger.info("Akorin request skipped because the transcription is a cancellation command")
             continue
 
+          self.report_status("busy")
           processing_task = asyncio.create_task(
             self._process_message(client, config, message, language_state, device_context),
             name="Akorin Processing Task",
@@ -257,6 +260,9 @@ class AkorinComponent(HttpComponent[AkorinConfig]):
 
           if response is not None:
             await processing_queue.put(response)
+
+          if self.status != "error":
+            self.report_status("idle")
     finally:
       queue_task.cancel()
       tasks_to_cancel: list[asyncio.Task] = [queue_task]
@@ -302,9 +308,11 @@ class AkorinComponent(HttpComponent[AkorinConfig]):
       logger.warning("Akorin request was cancelled")
       raise error
     except (httpx.HTTPError, TimeoutError) as error:
+      self.report_status("error", str(error))
       logger.warning(f"Akorin request failed: {error}")
       return await self._handle_processing_error(language_state["language"])
     except (ValidationError, ValueError) as error:
+      self.report_status("error", str(error))
       logger.warning(f"Ignoring invalid Akorin response: {error}")
       return await self._handle_processing_error(language_state["language"])
     finally:

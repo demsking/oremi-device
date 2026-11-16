@@ -214,6 +214,7 @@ class OhunerinComponent(AudioStreamComponent[OhunerinConfig]):
         async with connect(ohunerin_uri, ssl=ssl_context, user_agent_header=self.settings.user_agent) as websocket:
           self._websocket = websocket
           retry_delay = 2.0  # reset backoff on successful connection
+          self.report_status("online")
           logger.info(f"Connected to Oremi Ohunerin server at {self.settings.ohunerin_host}:{self.settings.ohunerin_port}")
 
           self.sound_detector = SoundDetector(
@@ -249,6 +250,7 @@ class OhunerinComponent(AudioStreamComponent[OhunerinConfig]):
         logger.info("Ohunerin component cancelled")
         break
       except Exception as error:
+        self.report_status("error", str(error))
         logger.error(f"Ohunerin component error: {error}")
       finally:
         # Stop the listening task before the next reconnect attempt (or on exit)

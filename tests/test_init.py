@@ -46,6 +46,19 @@ def _make_settings(**kwargs) -> Settings:
   return Settings(_env_file=None, **defaults)
 
 
+def test_component_reports_status_to_reporter() -> None:
+  component = OhunerinComponent(_make_settings())
+  calls: list[tuple[str, str, str | None]] = []
+  component.bind_status_reporter(lambda name, status, detail: calls.append((name, status, detail)))
+
+  component.report_status("online")
+  component.report_status("error", "connection refused")
+
+  assert component.status == "error"
+  assert component.status_detail == "connection refused"
+  assert calls == [("ohunerin", "online", None), ("ohunerin", "error", "connection refused")]
+
+
 def test_build_connection_uri_default() -> None:
   settings = _make_settings(language="fr", ohunerin_host="localhost", ohunerin_port=5023)
   component = OhunerinComponent(settings)
@@ -180,6 +193,64 @@ def test_build_andika_connection_uri_with_config() -> None:
   assert params["max-alternatives"] == ["0"]
   assert params["language"] == ["fr"]
   assert "temperature-unit" not in params
+
+
+@pytest.mark.asyncio
+async def test_ohunerin_reports_online_when_connected() -> None:
+  entered = asyncio.Event()
+
+  class BlockingWebSocket:
+    def __aiter__(self):
+      return self
+
+    async def __anext__(self):
+      await asyncio.Event().wait()
+      raise StopAsyncIteration
+
+  class Connection:
+    async def __aenter__(self):
+      entered.set()
+      return BlockingWebSocket()
+
+    async def __aexit__(self, exc_type, exc, traceback):
+      return False
+
+  component = OhunerinComponent(_make_settings())
+  statuses: list[tuple[str, str, str | None]] = []
+  component.bind_status_reporter(lambda name, status, detail: statuses.append((name, status, detail)))
+  shared_resources = {
+    "handle_task_done": None,
+    "active_stream_container": {"stream": None},
+    "wakeword_event": asyncio.Event(),
+    "device_state": {"microphone_muted": True},
+  }
+
+  with patch("device.components.ohunerin.connect", return_value=Connection()):
+    await component.start(OhunerinConfig(), shared_resources)
+    await asyncio.wait_for(entered.wait(), timeout=1)
+    assert ("ohunerin", "online", None) in statuses
+    await component.stop()
+
+
+@pytest.mark.asyncio
+async def test_andika_reports_idle_when_started() -> None:
+  component = AndikaComponent(_make_settings())
+  statuses: list[tuple[str, str, str | None]] = []
+  component.bind_status_reporter(lambda name, status, detail: statuses.append((name, status, detail)))
+  shared_resources = {
+    "handle_task_done": None,
+    "active_stream_container": {"stream": None},
+    "wakeword_event": asyncio.Event(),
+    "device_state": {"microphone_muted": False},
+    "conversation_event_handler": None,
+    "final_transcription_handler": None,
+  }
+
+  with patch.object(component, "_get_supported_models", return_value=[]):
+    await component.start(AndikaConfig(), shared_resources)
+    await asyncio.sleep(0.05)
+    assert ("andika", "idle", None) in statuses
+    await component.stop()
 
 
 @pytest.mark.asyncio

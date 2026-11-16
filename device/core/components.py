@@ -37,8 +37,10 @@ import abc
 import asyncio
 from collections.abc import Awaitable
 from collections.abc import Callable
+from dataclasses import dataclass
 from typing import Any
 from typing import Generic
+from typing import Literal
 from typing import TypedDict
 from typing import TypeVar
 
@@ -54,6 +56,16 @@ from device.core.settings import Settings
 # e.g. ("sensor", "wakeword", {"name": "Wakeword", ...})
 HAEntity = tuple[str, str, dict]
 ComponentConfigModel = TypeVar("ComponentConfigModel", bound=BaseModel)
+ServiceStatus = Literal["disabled", "starting", "idle", "online", "busy", "error", "offline"]
+
+
+@dataclass
+class ServiceState:
+  """Runtime state of an Oremi service integration."""
+
+  enabled: bool
+  status: ServiceStatus
+  detail: str | None = None
 
 
 class ActiveStreamContainer(TypedDict, total=False):
@@ -96,6 +108,21 @@ class Component(Generic[ComponentConfigModel], abc.ABC):
 
   def __init__(self, settings: Settings) -> None:
     self.settings = settings
+    self.status: ServiceStatus = "starting"
+    self.status_detail: str | None = None
+    self._status_reporter: Callable[[str, ServiceStatus, str | None], None] | None = None
+
+  def bind_status_reporter(self, reporter: Callable[[str, ServiceStatus, str | None], None]) -> None:
+    """Bind the application callback used to publish service status changes."""
+    self._status_reporter = reporter
+
+  def report_status(self, status: ServiceStatus, detail: str | None = None) -> None:
+    """Update the component status and notify the application when bound."""
+    self.status = status
+    self.status_detail = detail
+
+    if self._status_reporter:
+      self._status_reporter(self.name, status, detail)
 
   @property
   @abc.abstractmethod

@@ -319,6 +319,7 @@ class Speech2Text(AudioStreamComponent[AndikaConfig]):
     while True:
       await self._wait_for_activation()
       await self._stop_listening()
+      self.report_status("busy")
       self._transcription_complete_event.clear()
       self._transcription_result_received = False
       self._transcription_active = True
@@ -342,6 +343,7 @@ class Speech2Text(AudioStreamComponent[AndikaConfig]):
             self._transcription_active = False
       elif andika_uri and stream is not None and not is_muted:
         transcribing_task: asyncio.Task | None = None
+        turn_failed = False
         try:
           async with connect(andika_uri, ssl=ssl_context, user_agent_header=self.settings.user_agent) as websocket:
             self._websocket = websocket
@@ -369,6 +371,8 @@ class Speech2Text(AudioStreamComponent[AndikaConfig]):
         except asyncio.CancelledError:
           raise
         except Exception as error:
+          turn_failed = True
+          self.report_status("error", str(error))
           logger.error(f"Andika connection error during transcription turn: {error}")
           if self._conversation_event_handler:
             await self._conversation_event_handler("cancelled")
@@ -385,6 +389,9 @@ class Speech2Text(AudioStreamComponent[AndikaConfig]):
           self._websocket = None
           self.audio_listener = None
           self._transcription_active = False
+
+          if not turn_failed:
+            self.report_status("idle")
       else:
         self._transcription_active = False
 
@@ -407,6 +414,7 @@ class Speech2Text(AudioStreamComponent[AndikaConfig]):
     self._wakeword_event = shared_resources.get("wakeword_event")
     self._conversation_event_handler = shared_resources.get("conversation_event_handler")
     self._final_transcription_handler = shared_resources.get("final_transcription_handler")
+    self.report_status("idle")
     andika_uri = self.build_connection_uri(config)
 
     logger.info(f"Andika Connection URI: {andika_uri}")
@@ -434,6 +442,7 @@ class Speech2Text(AudioStreamComponent[AndikaConfig]):
     self._conversation_event_handler = shared_resources.get("conversation_event_handler")
     self._final_transcription_handler = shared_resources.get("final_transcription_handler")
     self._handle_task_done = shared_resources.get("handle_task_done")
+    self.report_status("idle")
     audio_stream = active_stream_container.get("stream")
 
     if audio_stream is None:

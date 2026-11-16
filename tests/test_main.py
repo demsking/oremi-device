@@ -400,3 +400,187 @@ async def test_publish_discovery_does_not_block_event_loop(tmp_path) -> None:
   assert started.is_set()
   assert ticks >= 5
   app.ha_device.publish_discovery_configs.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_handle_event_service_enabled() -> None:
+  from device.core.app import DeviceApplication
+  from device.core.settings import Settings
+
+  fake_settings = Settings(
+    _env_file=None,
+    node_id="test-node",
+    ohunerin_host="localhost",
+    andika_host="localhost",
+    mqtt_broker="localhost",
+    mqtt_discovery=False,
+  )
+
+  with patch("device.core.app.get_settings", return_value=fake_settings):
+    app = DeviceApplication()
+
+  app.apply_settings_updates = AsyncMock()
+
+  await app._handle_event("service_enabled", ("ohunerin", False))
+
+  app.apply_settings_updates.assert_awaited_once_with({"ohunerin_enabled": False})
+
+
+@pytest.mark.asyncio
+async def test_load_components_skips_disabled_voice_services() -> None:
+  from device.core.app import DeviceApplication
+  from device.core.settings import Settings
+
+  fake_settings = Settings(
+    _env_file=None,
+    node_id="test-node",
+    ohunerin_host="localhost",
+    andika_host="localhost",
+    mqtt_broker="localhost",
+    mqtt_discovery=False,
+    speaker_enabled=False,
+    ohunerin_enabled=False,
+  )
+
+  with patch("device.core.app.get_settings", return_value=fake_settings):
+    app = DeviceApplication()
+
+  app.audio = MagicMock()
+  app.audio.needs_audio = True
+  app.tts = MagicMock()
+  app.tts.client = None
+  app._load_components()
+
+  assert "ohunerin" not in app.components
+  assert "andika" in app.components
+  assert app.service_states["ohunerin"].enabled is False
+  assert app.service_states["ohunerin"].status == "disabled"
+  assert app.service_states["andika"].enabled is True
+  assert app.service_states["andika"].status == "starting"
+  assert app.service_states["tts"].enabled is False
+
+
+@pytest.mark.asyncio
+async def test_set_component_enabled_starts_and_stops() -> None:
+  from device.core.app import DeviceApplication
+  from device.core.components import ServiceState
+  from device.core.settings import Settings
+
+  fake_settings = Settings(
+    _env_file=None,
+    node_id="test-node",
+    ohunerin_host="localhost",
+    andika_host="localhost",
+    mqtt_broker="localhost",
+    mqtt_discovery=False,
+  )
+
+  with patch("device.core.app.get_settings", return_value=fake_settings):
+    app = DeviceApplication()
+
+  app.audio = MagicMock()
+  app.audio.needs_audio = True
+  app.ha_device = MagicMock()
+  app.shared_resources = {}
+  app.service_states = {"ohunerin": ServiceState(enabled=False, status="disabled")}
+  app.components = {}
+  app.component_configs = {}
+  app._publish_discovery = AsyncMock()
+
+  component = MagicMock()
+  component.start = AsyncMock()
+  component.stop = AsyncMock()
+  config = MagicMock()
+  load_config = MagicMock()
+  load_config.model_validate.return_value = config
+  registry = {"ohunerin": (load_config, MagicMock(return_value=component))}
+
+  with patch.dict("device.core.app.COMPONENTS", registry, clear=True):
+    await app._set_component_enabled("ohunerin", True)
+
+  assert app.settings.ohunerin_enabled is True
+  assert app.service_states["ohunerin"].enabled is True
+  assert app.components["ohunerin"] is component
+  component.bind_status_reporter.assert_called_once_with(app._set_service_status)
+  component.start.assert_awaited_once_with(config, app.shared_resources)
+  app.ha_device.publish_service_enabled_state.assert_called_once_with("ohunerin", True)
+  app._publish_discovery.assert_awaited_once()
+
+  await app._set_component_enabled("ohunerin", False)
+
+  assert app.settings.ohunerin_enabled is False
+  assert app.service_states["ohunerin"].enabled is False
+  assert "ohunerin" not in app.components
+  component.stop.assert_awaited_once()
+  app.ha_device.publish_service_enabled_state.assert_called_with("ohunerin", False)
+  assert app._publish_discovery.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_service_toggle_is_persisted(tmp_path) -> None:
+  from device.core.app import DeviceApplication
+  from device.core.settings import read_runtime_settings_cache
+  from device.core.settings import Settings
+
+  fake_settings = Settings(
+    _env_file=None,
+    node_id="test-node",
+    ohunerin_host="localhost",
+    andika_host="localhost",
+    mqtt_broker="localhost",
+    mqtt_discovery=False,
+    data_path=tmp_path,
+  )
+
+  with patch("device.core.app.get_settings", return_value=fake_settings):
+    app = DeviceApplication()
+
+  app._set_component_enabled = AsyncMock()
+
+  await app.apply_settings_updates({"ohunerin_enabled": False})
+
+  app._set_component_enabled.assert_awaited_once_with("ohunerin", False)
+  assert read_runtime_settings_cache(fake_settings).ohunerin_enabled is False
+
+
+@pytest.mark.asyncio
+async def test_publish_service_statuses() -> None:
+  from datetime import datetime
+  from datetime import timezone
+  from device.core.app import DeviceApplication
+  from device.core.components import ServiceState
+  from device.core.settings import Settings
+
+  fake_settings = Settings(
+    _env_file=None,
+    node_id="test-node",
+    ohunerin_host="localhost",
+    andika_host="localhost",
+    mqtt_broker="localhost",
+    mqtt_discovery=False,
+  )
+
+  with patch("device.core.app.get_settings", return_value=fake_settings):
+    app = DeviceApplication()
+
+  app.audio = MagicMock()
+  app.audio.needs_audio = True
+  app.audio.speaker_enabled = True
+  app.ha_device = MagicMock()
+  app.started_at = datetime(2026, 11, 16, 8, 0, tzinfo=timezone.utc)
+  app.service_states = {
+    "ohunerin": ServiceState(enabled=True, status="online"),
+    "andika": ServiceState(enabled=True, status="idle"),
+    "akorin": ServiceState(enabled=True, status="idle"),
+    "tts": ServiceState(enabled=True, status="online"),
+  }
+
+  app._publish_service_statuses()
+
+  published = {call.args[0]: call.args[1:] for call in app.ha_device.publish_service_status.call_args_list}
+  assert published["ohunerin"] == ("online",)
+  assert app.ha_device.publish_service_status.call_count == 4
+  app.ha_device.publish_device_status.assert_called_once_with(
+    "running",
+    started_at="2026-11-16T08:00:00+00:00",
+  )
