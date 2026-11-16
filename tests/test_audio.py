@@ -336,9 +336,9 @@ async def test_monitor_devices_keeps_selected_microphone_when_device_list_change
   queue: asyncio.Queue[str] = asyncio.Queue()
   device_lists = [
     [{"name": "eMeet Luna Mono", "id": 1}],
-    [{"name": "Camera Mono", "id": 2}],
     [{"name": "eMeet Luna Mono", "id": 1}, {"name": "Camera Mono", "id": 2}],
-    [{"name": "Camera Mono", "id": 2}],
+    [{"name": "eMeet Luna Mono", "id": 1}],
+    [{"name": "Camera Mono", "id": 2}, {"name": "eMeet Luna Mono", "id": 1}],
   ]
   index = 0
 
@@ -410,3 +410,101 @@ async def test_monitor_devices_ignores_transient_device_query_failures(monkeypat
       await task
 
   assert queue.empty()
+
+
+def test_select_speaker_updates_state_and_verifies() -> None:
+  from device.core.settings import Settings
+  from device.services.audio_service import AudioService
+
+  settings = Settings(
+    _env_file=None,
+    node_id="test-node",
+    ohunerin_host="localhost",
+    andika_host="localhost",
+    mqtt_broker="localhost",
+    speaker_device="Built-in Audio",
+  )
+  service = AudioService(settings)
+  service.speaker = MagicMock()
+  service.speaker.device_name = "Built-in Audio"
+  service.speaker.select_device.return_value = "eMeet Luna Mono"
+  service.speaker_state = {"device": "Built-in Audio", "muted": False, "volume": 1.0}
+
+  assert service.select_speaker("eMeet Luna Mono") is True
+  service.speaker.select_device.assert_called_with("eMeet Luna Mono")
+  service.speaker.verify_device.assert_called_once()
+  assert service.speaker_state["device"] == "eMeet Luna Mono"
+
+
+def test_select_speaker_reverts_when_device_cannot_be_opened() -> None:
+  from device.core.settings import Settings
+  from device.core.speaker import SpeakerDeviceError
+  from device.services.audio_service import AudioService
+
+  settings = Settings(
+    _env_file=None,
+    node_id="test-node",
+    ohunerin_host="localhost",
+    andika_host="localhost",
+    mqtt_broker="localhost",
+    speaker_device="Built-in Audio",
+  )
+  service = AudioService(settings)
+  service.speaker = MagicMock()
+  service.speaker.device_name = "Built-in Audio"
+  service.speaker.select_device.side_effect = ["Broken Speaker", "Built-in Audio"]
+  service.speaker.verify_device.side_effect = SpeakerDeviceError("failed to init device")
+  service.speaker_state = {"device": "Built-in Audio", "muted": False, "volume": 1.0}
+
+  assert service.select_speaker("Broken Speaker") is False
+  assert service.speaker.select_device.call_args_list[0].args == ("Broken Speaker",)
+  assert service.speaker.select_device.call_args_list[1].args == ("Built-in Audio",)
+  assert service.speaker_state["device"] == "Built-in Audio"
+
+
+@pytest.mark.asyncio
+async def test_monitor_devices_reopens_selected_microphone_after_reappearing(monkeypatch) -> None:
+  from device.core.settings import Settings
+  from device.services.audio_service import AudioService
+
+  settings = Settings(
+    _env_file=None,
+    node_id="test-node",
+    ohunerin_host="localhost",
+    andika_host="localhost",
+    mqtt_broker="localhost",
+    microphone_device="eMeet Luna Mono",
+  )
+  service = AudioService(settings)
+  service.audio_stream = MagicMock()
+  queue: asyncio.Queue[str] = asyncio.Queue()
+  device_lists = [
+    [{"name": "eMeet Luna Mono", "id": 1}],
+    [{"name": "Camera Mono", "id": 2}],
+    [{"name": "eMeet Luna Mono", "id": 1}],
+  ]
+  index = 0
+
+  def get_captures():
+    nonlocal index
+    result = device_lists[min(index, len(device_lists) - 1)]
+    index += 1
+    return result
+
+  original_sleep = asyncio.sleep
+
+  async def fast_sleep(_: float) -> None:
+    await original_sleep(0.01)
+
+  monkeypatch.setattr("device.services.audio_service.asyncio.sleep", fast_sleep)
+
+  with patch("miniaudio.Devices") as mock_devices:
+    mock_devices.return_value.get_captures.side_effect = get_captures
+    task = asyncio.create_task(service.monitor_devices(queue))
+    await original_sleep(0.1)
+    task.cancel()
+
+    with pytest.raises(asyncio.CancelledError):
+      await task
+
+  assert queue.get_nowait() == "eMeet Luna Mono"

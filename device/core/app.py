@@ -568,6 +568,8 @@ class DeviceApplication:
     if not updates:
       return
 
+    speaker_update_failed = False
+
     if "sound_detection_enabled" in updates:
       await self._set_sound_detection_enabled(updates["sound_detection_enabled"])
 
@@ -608,11 +610,25 @@ class DeviceApplication:
 
     if "speaker_device" in updates:
       device_name = updates["speaker_device"]
-      self.settings.speaker_device = device_name
 
-      if device_name is not None:
-        if hasattr(self, "audio") and self.audio and self.audio.speaker:
-          self.audio.speaker.select_device(device_name)
+      if device_name is None:
+        self.settings.speaker_device = None
+      elif hasattr(self, "audio") and self.audio and self.audio.speaker:
+        selected = await asyncio.to_thread(self.audio.select_speaker, device_name)
+        current_device = str(self.audio.speaker_state.get("device") or "")
+
+        if selected:
+          self.settings.speaker_device = current_device
+        else:
+          speaker_update_failed = True
+          self.settings.speaker_device = current_device or None
+          logger.warning(f"Keeping the previous speaker output: {current_device or 'none'}")
+
+        if hasattr(self, "ha_device") and self.ha_device:
+          self.ha_device.set_speaker_state(current_device)
+          await self._publish_discovery()
+      else:
+        self.settings.speaker_device = device_name
 
         if hasattr(self, "ha_device") and self.ha_device:
           self.ha_device.set_speaker_state(device_name)
@@ -714,6 +730,9 @@ class DeviceApplication:
     if cache_updates.get("microphone_device") == "__auto_select__":
       # Never persist the auto-selection sentinel as if it were a device name.
       cache_updates["microphone_device"] = None
+
+    if speaker_update_failed:
+      cache_updates.pop("speaker_device", None)
 
     await asyncio.to_thread(update_runtime_settings_cache, self.settings, **cache_updates)
     apply_runtime_settings_cache(self.settings, read_runtime_settings_cache(self.settings))

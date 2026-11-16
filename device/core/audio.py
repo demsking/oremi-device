@@ -15,6 +15,7 @@
 import asyncio
 import logging
 import re
+import struct
 import time
 from typing import Any
 from typing import ClassVar
@@ -265,6 +266,7 @@ class Audio:
 
     self._bytes_captured = 0
     self._chunks_captured = 0
+    self._peak_since_log = 0
     self._last_stats_log_time = 0.0
 
     logger.info(f"Selected audio input device: {self._device_name} {self.info}")
@@ -402,22 +404,31 @@ class Audio:
     if self._last_stats_log_time == 0.0:
       self._last_stats_log_time = now
 
+    sample = data[:400]
+    sample = sample[: len(sample) - (len(sample) % 2)]
+
+    if sample:
+      chunk_peak = max(abs(value) for (value,) in struct.iter_unpack("<h", sample))
+      self._peak_since_log = max(self._peak_since_log, chunk_peak)
+
     elapsed = now - self._last_stats_log_time
     if elapsed >= 5.0:
       bytes_per_sec = self._bytes_captured / elapsed
       samples_per_sec = bytes_per_sec / 2.0
 
       logger.debug(
-        "Audio stream '%s' diagnostics (last %.1fs): %.1f B/s (~%.0f Hz mono PCM), %d chunks",
+        "Audio stream '%s' diagnostics (last %.1fs): %.1f B/s (~%.0f Hz mono PCM), %d chunks, peak=%d",
         self._device_name,
         elapsed,
         bytes_per_sec,
         samples_per_sec,
         self._chunks_captured,
+        self._peak_since_log,
       )
 
       self._bytes_captured = 0
       self._chunks_captured = 0
+      self._peak_since_log = 0
       self._last_stats_log_time = now
 
     if self._subscribers:

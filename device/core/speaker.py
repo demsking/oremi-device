@@ -83,6 +83,8 @@ class Speaker:
         device_id=self._device_id,
       ):
         pass
+
+      logger.debug(f"Speaker output device verified: {self._device_name}")
     except Exception as error:
       raise SpeakerDeviceError(f"Speaker output device is not working: {self._device_name}. Error: {error}") from error
 

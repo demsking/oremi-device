@@ -66,6 +66,36 @@ class AudioService:
         self.speaker = None
         self.speaker_enabled = False
 
+  def select_speaker(self, device_name: str) -> bool:
+    """Select a speaker output device, verifying it can be opened.
+
+    Returns ``False`` and restores the previous device when the requested
+    output cannot be initialized (for example a stale ALSA USB endpoint).
+    """
+    if self.speaker is None:
+      return False
+
+    previous_device = str(self.speaker_state.get("device") or "")
+
+    try:
+      canonical_name = self.speaker.select_device(device_name)
+      self.speaker.verify_device()
+    except SpeakerDeviceError as error:
+      logger.warning(f"Speaker selection failed for '{device_name}': {error}")
+
+      if previous_device:
+        try:
+          self.speaker.select_device(previous_device)
+          self.speaker.verify_device()
+        except SpeakerDeviceError as revert_error:
+          logger.warning(f"Failed to restore previous speaker '{previous_device}': {revert_error}")
+
+      return False
+
+    self.speaker_state["device"] = canonical_name
+
+    return True
+
   async def change_audio_device(self, target_device, components) -> bool:
     if self.audio_stream:
       try:
@@ -123,6 +153,10 @@ class AudioService:
         return None
 
     last_signatures = await asyncio.to_thread(get_input_signatures)
+    selected_device = self.settings.microphone_device
+    selected_present = bool(
+      selected_device and last_signatures and any(match_device_name(selected_device, name) for name in last_signatures)
+    )
 
     while True:
       await asyncio.sleep(3.0)
@@ -147,16 +181,17 @@ class AudioService:
         continue
 
       if selected_device:
-        # Never replace an explicit user selection. Only retry the selected
-        # device when it becomes available and no stream is open yet.
-        if self.audio_stream is None and any(
-          match_device_name(selected_device, name) for name in current_signatures
-        ):
-          logger.info(f"Selected microphone '{selected_device}' is available again; reconnecting")
+        # Never replace an explicit user selection. Only reopen the selected
+        # device when it reappears or when no stream is open yet.
+        now_present = any(match_device_name(selected_device, name) for name in current_signatures)
+
+        if now_present and (not selected_present or self.audio_stream is None):
+          logger.info(f"Selected microphone '{selected_device}' is available; reconnecting")
           await queue.put(selected_device)
         else:
           logger.debug(f"Audio device list changed; keeping selected microphone '{selected_device}'")
 
+        selected_present = now_present
         continue
 
       logger.info("Audio device change detected; auto-selecting microphone")

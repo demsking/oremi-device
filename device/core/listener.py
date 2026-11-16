@@ -14,6 +14,7 @@
 # ==============================================================================
 import asyncio
 import logging
+import time
 
 from websockets.asyncio.client import ClientConnection
 from websockets.exceptions import ConnectionClosedError
@@ -47,6 +48,8 @@ class AudioListener:
     audio_queue = self.audio_stream.subscribe()
 
     consecutive_timeouts = 0
+    sent_bytes = 0
+    last_stats_time = time.monotonic()
 
     try:
       async with self.audio_stream:
@@ -59,6 +62,18 @@ class AudioListener:
             data = await asyncio.wait_for(self.audio_stream.data(audio_queue), timeout=1.0)
             consecutive_timeouts = 0
             await asyncio.wait_for(self.websocket.send(data), timeout=2.0)
+            sent_bytes += len(data)
+
+            now = time.monotonic()
+            if now - last_stats_time >= 5.0:
+              logger.debug(
+                "Sent %d bytes from '%s' to the voice service in the last %.1fs",
+                sent_bytes,
+                self.audio_stream.device_name,
+                now - last_stats_time,
+              )
+              sent_bytes = 0
+              last_stats_time = now
           except TimeoutError:
             consecutive_timeouts += 1
             if consecutive_timeouts >= 3:

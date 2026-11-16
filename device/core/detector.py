@@ -99,6 +99,7 @@ class SoundDetector:
     try:
       async for message in self.websocket:
         data: DetectedSound = json.loads(message)
+        logger.debug(f"Ohunerin detection received: {data}")
 
         if data["score"] >= self.threshold:
           await self.process_detected_sound(data)

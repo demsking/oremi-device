@@ -490,6 +490,14 @@ async def test_mcp_mutation_tools_apply_on_device_application(mcp_device) -> Non
   app = mcp_device.app
   app.audio = MagicMock()
   app.audio.speaker = MagicMock()
+  app.audio.speaker_state = {"device": "", "muted": False, "volume": 1.0}
+
+  def select_speaker(name: str) -> bool:
+    app.audio.speaker.select_device(name)
+    app.audio.speaker_state["device"] = name
+    return True
+
+  app.audio.select_speaker = MagicMock(side_effect=select_speaker)
   app.ha_device = MagicMock()
   app.tts = MagicMock()
   app.components = {}

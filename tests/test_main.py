@@ -701,6 +701,79 @@ async def test_microphone_mute_stops_and_restarts_voice_services() -> None:
 
 
 @pytest.mark.asyncio
+async def test_speaker_change_updates_shared_speaker_state() -> None:
+  from device.core.app import DeviceApplication
+  from device.core.settings import Settings
+
+  fake_settings = Settings(
+    _env_file=None,
+    node_id="test-node",
+    ohunerin_host="localhost",
+    andika_host="localhost",
+    mqtt_broker="localhost",
+    mqtt_discovery=False,
+    speaker_device="Built-in Audio",
+  )
+
+  with patch("device.core.app.get_settings", return_value=fake_settings):
+    app = DeviceApplication()
+
+  app.audio = MagicMock()
+  app.audio.speaker = MagicMock()
+  app.audio.speaker.device_name = "Built-in Audio"
+  app.audio.speaker_state = {"device": "Built-in Audio", "muted": False, "volume": 1.0}
+
+  def select_speaker(name: str) -> bool:
+    app.audio.speaker_state["device"] = name
+    return True
+
+  app.audio.select_speaker = MagicMock(side_effect=select_speaker)
+  app.ha_device = MagicMock()
+  app._publish_discovery = AsyncMock()
+
+  await app.apply_settings_updates({"speaker_device": "eMeet Luna Mono"})
+
+  assert app.settings.speaker_device == "eMeet Luna Mono"
+  assert app.audio.speaker_state["device"] == "eMeet Luna Mono"
+  app.ha_device.set_speaker_state.assert_called_once_with("eMeet Luna Mono")
+  app._publish_discovery.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_failed_speaker_change_keeps_previous_device() -> None:
+  from device.core.app import DeviceApplication
+  from device.core.settings import Settings
+
+  fake_settings = Settings(
+    _env_file=None,
+    node_id="test-node",
+    ohunerin_host="localhost",
+    andika_host="localhost",
+    mqtt_broker="localhost",
+    mqtt_discovery=False,
+    speaker_device="Built-in Audio",
+  )
+
+  with patch("device.core.app.get_settings", return_value=fake_settings):
+    app = DeviceApplication()
+
+  app.audio = MagicMock()
+  app.audio.speaker = MagicMock()
+  app.audio.speaker.device_name = "Built-in Audio"
+  app.audio.speaker_state = {"device": "Built-in Audio", "muted": False, "volume": 1.0}
+  app.audio.select_speaker = MagicMock(return_value=False)
+  app.ha_device = MagicMock()
+  app._publish_discovery = AsyncMock()
+
+  await app.apply_settings_updates({"speaker_device": "Broken Speaker"})
+
+  assert app.settings.speaker_device == "Built-in Audio"
+  assert app.audio.speaker_state["device"] == "Built-in Audio"
+  app.ha_device.set_speaker_state.assert_called_once_with("Built-in Audio")
+  app._publish_discovery.assert_awaited_once()
+
+
+@pytest.mark.asyncio
 async def test_auto_select_sentinel_is_not_persisted_as_microphone(tmp_path) -> None:
   from device.core.app import DeviceApplication
   from device.core.settings import read_runtime_settings_cache
