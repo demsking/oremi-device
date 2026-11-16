@@ -89,7 +89,8 @@ is a JSON runtime-settings cache (see §7).
 - `self.queues` — a dict of `asyncio.Queue` keyed by event name:
   `device_change`, `microphone_mute`, `speaker_change`, `speaker_mute`,
   `speaker_volume`, `player_play`, `player_stop`, `language_change`,
-  `device_context_change`, `processing`, `voice_change`, `transcription`.
+  `device_context_change`, `processing`, `voice_change`, `transcription`,
+  `service_enabled`.
 - `self.audio` — an `AudioService` (`device/services/audio_service.py`).
 - `self.ha_device` — a `HomeAssistantDevice` MQTT client
   (`device/core/mqtt.py`).
@@ -546,10 +547,11 @@ sample_rate=48000, device_id=...)` (channels from `Speaker._output_channels`,
 - **Error handling (Observed):** `httpx.HTTPStatusError` from
   `/api/sounds` is logged and `[]` is returned; connection errors are logged
   and retried.
-- **Config:** `ohunerin_host` (required), `ohunerin_port`,
-  `ohunerin_threshold`, `ohunerin_cert_file`; per-component
-  `OhunerinConfig.features` (default both features) and `threshold`
-  (default 0.65).
+- **Config:** `ohunerin_host` (required while the microphone is enabled),
+  `ohunerin_port`, `ohunerin_threshold`, `ohunerin_cert_file`,
+  `sound_detection_enabled` (ambient sound detection; wake-word detection is
+  always active); per-component `OhunerinConfig.features` (default both
+  features) and `threshold` (default 0.65).
 
 ### 6.2 Oremi Andika (STT)
 
@@ -563,9 +565,10 @@ sample_rate=48000, device_id=...)` (channels from `Speaker._output_channels`,
   `MessageExpiryInterval = settings.delay` property at QoS 1.
 - **MQTT topics (Observed):** `transcription/partial` (partial only) and
   `transcription/result`.
-- **Error handling / timeouts (Observed):** connection errors during a turn are
-  logged and produce a `"cancelled"` conversation event; the STT turn is
-  bounded by `settings.conversation_timeout`.
+- **Error handling / timeouts (Observed):** connection or listening failures
+  during a turn produce a `"cancelled"` conversation event and trigger the
+  voice error handler (error cue plus a localized TTS announcement); the STT
+  turn is bounded by `settings.conversation_timeout`.
 - **Config:** `transcription_backend` (default `andika`), `andika_host`
   (required when backend is andika), `andika_port`, `andika_cert_file`,
   `andika_model`, `andika_samplerate`.
@@ -918,8 +921,9 @@ extra="forbid")` on `Command` so unknown fields are rejected (see §11).
   `speaker_enabled=False`.
 - **Ohunerin:** reconnect loop with backoff (2->60 s); HTTP sound-list failure
   returns `[]`.
-- **Andika/whisper:** per-turn errors are logged and the turn is cancelled;
-  whisper errors set the transcription-complete event in `finally`.
+- **Andika/whisper:** per-turn errors are logged, the turn is cancelled, and a
+  localized voice error is announced via TTS; whisper errors set the
+  transcription-complete event in `finally`.
 - **Akorin:** HTTP/timeout/validation errors produce the error cue and a
   localized announce response; the component keeps running.
 - **TTS:** `fetch_voices` catches `ValidationError/OSError/ValueError`
@@ -1001,14 +1005,16 @@ Speaker.output_channels`; the `PlaybackDevice` must match. Changing one
    are the single source of truth in `HomeAssistantDevice`. Discovery uses the
    same scheme. Changing a topic requires updating discovery, the app
    subscriptions, and tests.
-9. **Component lifecycle:** components are started once during `run()` with
-   `shared_resources` and stopped during teardown. `stop()` must cancel and
-   await its own tasks (see `OhunerinComponent.stop` / `Speech2Text.stop`).
+9. **Component lifecycle:** components are started during `run()` with
+   `shared_resources` and may be stopped and restarted at runtime by the
+   Home Assistant service switches or microphone mute. `stop()` must cancel and
+   await its own tasks and must be idempotent (see `OhunerinComponent.stop` /
+   `Speech2Text.stop`).
 10. **SharedResources contract:** keys in `SharedResources`
     (`active_stream_container`, `wakeword_event`, `device_state`,
     `transcription_queue`, `processing_queue`, `language_state`,
-    `device_context`, handlers, `mqtt_publisher`) are consumed by name with
-    `.get(...)`. New keys must be optional.
+    `device_context`, handlers, `voice_error_handler`, `mqtt_publisher`) are
+    consumed by name with `.get(...)`. New keys must be optional.
 11. **Pipeline ordering:** wake word -> listening cue -> Andika capture ->
     final transcription -> Akorin -> `processing` queue -> `CommandExecutor`.
     Do not make Andika listen before the wake word or reorder command
