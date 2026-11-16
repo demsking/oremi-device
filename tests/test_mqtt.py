@@ -84,8 +84,9 @@ def test_publish_discovery_configs_no_entities(mock_mqtt_class) -> None:
     speaker_volume=0.42,
   )
 
-  # 3 core entities + 7 device-level configs, their states, and player integration discovery.
-  assert mock_client_instance.publish.call_count == 17
+  # 3 core entities + 7 device-level configs, their states, player integration
+  # discovery, service controls/statuses, and device status.
+  assert mock_client_instance.publish.call_count == 26
 
   calls = mock_client_instance.publish.call_args_list
 
@@ -390,8 +391,10 @@ def test_publish_discovery_configs_with_entities(mock_mqtt_class) -> None:
   current = "Mic 1"
   client.publish_discovery_configs(input_devices=devices, current_device=current, entities=entities)
 
-  # 3 core entities + 2 custom entities + device-level configs (without continue_conversation), states, and player discovery.
-  assert mock_client_instance.publish.call_count == 19
+  # 3 core entities + 2 custom entities + device-level configs (without
+  # continue_conversation), states, player discovery, service controls/statuses,
+  # and device status.
+  assert mock_client_instance.publish.call_count == 28
 
   calls = mock_client_instance.publish.call_args_list
 
@@ -502,3 +505,77 @@ def test_conversation_state_topic_is_retained(mock_mqtt_class) -> None:
     "processing",
     retain=True,
   )
+
+
+@patch("paho.mqtt.client.Client")
+def test_service_control_and_status_discovery(mock_mqtt_class) -> None:
+  client = MqttDevice(
+    broker="localhost",
+    port=1883,
+    topic="oremi/device",
+    node_id="kitchen",
+    discovery_prefix="homeassistant",
+  )
+  mock_client_instance = mock_mqtt_class.return_value
+
+  client.publish_discovery_configs(
+    input_devices=[],
+    current_device="",
+    ohunerin_enabled=False,
+    andika_enabled=True,
+  )
+
+  published = {call.args[0]: call.args[1] for call in mock_client_instance.publish.call_args_list}
+
+  ohunerin_switch = json.loads(published["homeassistant/switch/oremi-device-kitchen/ohunerin_enabled/config"])
+  andika_switch = json.loads(published["homeassistant/switch/oremi-device-kitchen/andika_enabled/config"])
+  ohunerin_status = json.loads(published["homeassistant/sensor/oremi-device-kitchen/ohunerin_status/config"])
+  tts_status = json.loads(published["homeassistant/sensor/oremi-device-kitchen/tts_status/config"])
+  device_status = json.loads(published["homeassistant/sensor/oremi-device-kitchen/status/config"])
+
+  assert ohunerin_switch["command_topic"] == "oremi/device/nodes/kitchen/services/ohunerin/enabled/set"
+  assert ohunerin_switch["state_topic"] == "oremi/device/nodes/kitchen/services/ohunerin/enabled/state"
+  assert ohunerin_switch["payload_on"] == "ON"
+  assert ohunerin_switch["payload_off"] == "OFF"
+  assert andika_switch["command_topic"].endswith("/services/andika/enabled/set")
+  assert published["oremi/device/nodes/kitchen/services/ohunerin/enabled/state"] == "OFF"
+  assert published["oremi/device/nodes/kitchen/services/andika/enabled/state"] == "ON"
+
+  assert ohunerin_status["state_topic"] == "oremi/device/nodes/kitchen/services/ohunerin/status"
+  assert ohunerin_status["json_attributes_topic"] == ohunerin_status["state_topic"]
+  assert ohunerin_status["value_template"] == "{{ value_json.state }}"
+  assert ohunerin_status["entity_category"] == "diagnostic"
+  assert tts_status["state_topic"] == "oremi/device/nodes/kitchen/services/tts/status"
+  assert device_status["state_topic"] == "oremi/device/nodes/kitchen/device/status"
+  assert device_status["unique_id"] == "oremi-device-kitchen_status"
+
+
+@patch("paho.mqtt.client.Client")
+def test_publish_service_status_and_enabled_state(mock_mqtt_class) -> None:
+  client = MqttDevice(
+    broker="localhost",
+    port=1883,
+    topic="oremi/device",
+    node_id="kitchen",
+  )
+  mock_client_instance = mock_mqtt_class.return_value
+
+  client.publish_service_enabled_state("ohunerin", False)
+  client.publish_service_status("ohunerin", "error", enabled=False, detail="connection refused")
+  client.publish_device_status("running", started_at="2026-11-16T08:00:00+00:00")
+
+  calls = mock_client_instance.publish.call_args_list
+  assert calls[0].args == ("oremi/device/nodes/kitchen/services/ohunerin/enabled/state", "OFF")
+  assert calls[0].kwargs["retain"] is True
+  assert calls[1].args[0] == "oremi/device/nodes/kitchen/services/ohunerin/status"
+  assert json.loads(calls[1].args[1]) == {
+    "state": "error",
+    "enabled": False,
+    "detail": "connection refused",
+  }
+  assert json.loads(calls[2].args[1]) == {
+    "state": "running",
+    "node_id": "kitchen",
+    "version": APP_VERSION,
+    "started_at": "2026-11-16T08:00:00+00:00",
+  }

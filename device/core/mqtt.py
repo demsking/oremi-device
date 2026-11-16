@@ -44,6 +44,22 @@ DEVICE_CONTEXT_OPTIONS: dict[str, list[str]] = {
 
 DEVICE_CONTEXT_TEXT_FIELDS = ("location", "timezone", "preferred_currency")
 
+SERVICES = ("ohunerin", "andika", "akorin", "tts")
+
+SERVICE_LABELS = {
+  "ohunerin": "Ohunerin",
+  "andika": "Andika",
+  "akorin": "Akọrin",
+  "tts": "Speech synthesis",
+}
+
+SERVICE_ICONS = {
+  "ohunerin": "mdi:ear-hearing",
+  "andika": "mdi:microphone-message",
+  "akorin": "mdi:brain",
+  "tts": "mdi:account-voice",
+}
+
 DEVICE_CONTEXT_LABELS = {
   "language": "Language",
   "location": "Location",
@@ -227,6 +243,18 @@ class HomeAssistantDevice:
   def get_voice_state_topic(self) -> str:
     return self.parse_node_topic("voice/state")
 
+  def get_service_enabled_command_topic(self, service: str) -> str:
+    return self.parse_node_topic(f"services/{service}/enabled/set")
+
+  def get_service_enabled_state_topic(self, service: str) -> str:
+    return self.parse_node_topic(f"services/{service}/enabled/state")
+
+  def get_service_status_topic(self, service: str) -> str:
+    return self.parse_node_topic(f"services/{service}/status")
+
+  def get_device_status_topic(self) -> str:
+    return self.parse_node_topic("device/status")
+
   def connect(self) -> None:
     if self.username:
       self.client.username_pw_set(username=self.username, password=self.password)
@@ -255,6 +283,8 @@ class HomeAssistantDevice:
     voices: list[str] | None = None,
     current_voice: str = "",
     ohunerin_sounds: list[str] | None = None,
+    ohunerin_enabled: bool = True,
+    andika_enabled: bool = True,
   ) -> None:
     """Publish Home Assistant MQTT discovery configs."""
     if not self.discovery_prefix:
@@ -537,6 +567,87 @@ class HomeAssistantDevice:
     else:
       self.client.publish(self.get_player_discovery_topic(), "", retain=True)
 
+    self._publish_service_discovery(
+      node_id=node_id,
+      device=device,
+      microphone_enabled=microphone_enabled,
+      speaker_enabled=speaker_enabled,
+      ohunerin_enabled=ohunerin_enabled,
+      andika_enabled=andika_enabled,
+    )
+
+  def _publish_service_discovery(
+    self,
+    *,
+    node_id: str,
+    device: dict,
+    microphone_enabled: bool,
+    speaker_enabled: bool,
+    ohunerin_enabled: bool,
+    andika_enabled: bool,
+  ) -> None:
+    """Publish service enable switches and diagnostic status sensors."""
+    if microphone_enabled:
+      for service, enabled in (("ohunerin", ohunerin_enabled), ("andika", andika_enabled)):
+        payload = {
+          "name": f"{SERVICE_LABELS[service]} enabled",
+          "unique_id": f"{node_id}_{service}_enabled",
+          "state_topic": self.get_service_enabled_state_topic(service),
+          "command_topic": self.get_service_enabled_command_topic(service),
+          "payload_on": "ON",
+          "payload_off": "OFF",
+          "state_on": "ON",
+          "state_off": "OFF",
+          "availability_topic": self.parse_node_topic("available"),
+          "payload_available": "online",
+          "payload_not_available": "offline",
+          "icon": SERVICE_ICONS[service],
+          "device": device,
+        }
+        topic = f"{self.discovery_prefix}/switch/{node_id}/{service}_enabled/config"
+        self.client.publish(topic, json.dumps(payload), retain=True)
+        self.publish_service_enabled_state(service, enabled)
+
+    visible_services = [
+      service
+      for service in SERVICES
+      if (service not in ("ohunerin", "andika") or microphone_enabled)
+      and (service != "tts" or speaker_enabled)
+    ]
+
+    for service in visible_services:
+      payload = {
+        "name": f"{SERVICE_LABELS[service]} status",
+        "unique_id": f"{node_id}_{service}_status",
+        "state_topic": self.get_service_status_topic(service),
+        "value_template": "{{ value_json.state }}",
+        "json_attributes_topic": self.get_service_status_topic(service),
+        "availability_topic": self.parse_node_topic("available"),
+        "payload_available": "online",
+        "payload_not_available": "offline",
+        "entity_category": "diagnostic",
+        "icon": SERVICE_ICONS[service],
+        "device": device,
+      }
+      topic = f"{self.discovery_prefix}/sensor/{node_id}/{service}_status/config"
+      self.client.publish(topic, json.dumps(payload), retain=True)
+
+    device_payload = {
+      "name": "Device status",
+      "unique_id": f"{node_id}_status",
+      "state_topic": self.get_device_status_topic(),
+      "value_template": "{{ value_json.state }}",
+      "json_attributes_topic": self.get_device_status_topic(),
+      "availability_topic": self.parse_node_topic("available"),
+      "payload_available": "online",
+      "payload_not_available": "offline",
+      "entity_category": "diagnostic",
+      "icon": "mdi:server-network",
+      "device": device,
+    }
+    topic = f"{self.discovery_prefix}/sensor/{node_id}/status/config"
+    self.client.publish(topic, json.dumps(device_payload), retain=True)
+
   def publish_language_state(self, language: str) -> None:
     """Publish the current language state to the instance-scoped topic."""
     logger.debug(f"Publishing language state: {language}")
@@ -550,6 +661,39 @@ class HomeAssistantDevice:
 
   def publish_voice_state(self, voice: str) -> None:
     self.client.publish(self.get_voice_state_topic(), voice, retain=True)
+
+  def publish_service_enabled_state(self, service: str, enabled: bool) -> None:
+    """Publish the desired enabled state of a service switch."""
+    self.client.publish(self.get_service_enabled_state_topic(service), "ON" if enabled else "OFF", retain=True)
+
+  def publish_service_status(
+    self,
+    service: str,
+    status: str,
+    *,
+    enabled: bool,
+    detail: str | None = None,
+  ) -> None:
+    """Publish a service status payload for the diagnostic sensor."""
+    payload: dict[str, object] = {"state": status, "enabled": enabled}
+
+    if detail:
+      payload["detail"] = detail
+
+    self.client.publish(self.get_service_status_topic(service), json.dumps(payload), retain=True)
+
+  def publish_device_status(self, state: str, *, started_at: str | None = None) -> None:
+    """Publish the device lifecycle state and its diagnostic attributes."""
+    payload: dict[str, object] = {
+      "state": state,
+      "node_id": self.node_id,
+      "version": APP_VERSION,
+    }
+
+    if started_at:
+      payload["started_at"] = started_at
+
+    self.client.publish(self.get_device_status_topic(), json.dumps(payload), retain=True)
 
   def set_conversation_state(self, state: ConversationState) -> None:
     self.client.publish(self.get_conversation_state_topic(), state, retain=True)
