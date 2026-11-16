@@ -1,6 +1,6 @@
 [project]
 name = "oremi-device"
-version = "1.0.0b20"
+version = "1.0.0b21"
 description = "Audio capture device for Oremi smart home ecosystem with wake word detection, speech transcription, and MQTT integration."
 readme = "README.md"
 requires-python = ">=3.12"
