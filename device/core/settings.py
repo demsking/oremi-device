@@ -137,12 +137,14 @@ class Settings(BaseSettings):
 
   akorin_url: HttpUrl | None = None
 
+  ohunerin_enabled: bool = True
   ohunerin_host: str | None = None
   ohunerin_port: int = Field(default=5023, gt=0, le=65535)
   ohunerin_threshold: float = Field(default=0.25, gt=0)
   ohunerin_cert_file: str | None = None
 
   transcription_backend: TranscriptionBackendSetting = "andika"
+  andika_enabled: bool = True
   andika_host: str | None = None
   andika_port: int = Field(default=5022, gt=0, le=65535)
   andika_cert_file: str | None = None
@@ -241,13 +243,13 @@ class Settings(BaseSettings):
   def validate_backends(self) -> "Settings":
     # A speaker-only node does not load the capture pipeline, so it must not
     # require endpoints that only serve microphone components.
-    if self.microphone_enabled and not self.ohunerin_host:
-      raise ValueError("OREMI_DEVICE_OHUNERIN_HOST is required when the microphone is enabled")
+    if self.microphone_enabled and self.ohunerin_enabled and not self.ohunerin_host:
+      raise ValueError("OREMI_DEVICE_OHUNERIN_HOST is required when Ohunerin is enabled")
 
-    if self.microphone_enabled and self.transcription_backend == "andika" and not self.andika_host:
+    if self.microphone_enabled and self.andika_enabled and self.transcription_backend == "andika" and not self.andika_host:
       raise ValueError("OREMI_DEVICE_ANDIKA_HOST is required when using the Andika transcription backend")
 
-    if self.microphone_enabled and self.transcription_backend == "whisper.cpp" and not self.whisper_url:
+    if self.microphone_enabled and self.andika_enabled and self.transcription_backend == "whisper.cpp" and not self.whisper_url:
       raise ValueError("OREMI_DEVICE_WHISPER_URL is required when using the whisper.cpp transcription backend")
 
     if self.speaker_enabled and self.tts_backend == "edge-tts" and not self.edge_tts_url:
@@ -271,6 +273,8 @@ class SettingsUpdates(TypedDict, total=False):
   first_day_of_week: FirstDayOfWeekSetting
   microphone_device: str | None
   microphone_muted: bool
+  ohunerin_enabled: bool
+  andika_enabled: bool
   speaker_device: str | None
   speaker_muted: bool
   speaker_volume: float
@@ -292,6 +296,8 @@ class RuntimeSettingsCache(BaseModel):
   first_day_of_week: FirstDayOfWeekSetting | None = None
   microphone_device: str | None = None
   microphone_muted: bool | None = None
+  ohunerin_enabled: bool | None = None
+  andika_enabled: bool | None = None
   speaker_device: str | None = None
   speaker_muted: bool | None = None
   speaker_volume: float | None = Field(default=None, ge=0, le=1)

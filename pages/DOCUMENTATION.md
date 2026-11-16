@@ -585,10 +585,11 @@ values matching the structural block patterns declared with the designated
 ### Required Settings
 
 - **`OREMI_DEVICE_NODE_ID`** – Unique node identifier used in MQTT device topics.
-- **`OREMI_DEVICE_OHUNERIN_HOST`** – Ohunerin server host or IP address. Required only when `OREMI_DEVICE_MICROPHONE_ENABLED=true`.
 - **`OREMI_DEVICE_MQTT_BROKER`** – MQTT broker host or IP address.
+- **`OREMI_DEVICE_OHUNERIN_HOST`** – Ohunerin server host or IP address. Required only when `OREMI_DEVICE_MICROPHONE_ENABLED=true` and `OREMI_DEVICE_OHUNERIN_ENABLED=true`.
 
-When the microphone is enabled, the configured `OREMI_DEVICE_TRANSCRIPTION_BACKEND` requires one additional setting:
+When the microphone and the transcription service are enabled, the configured
+`OREMI_DEVICE_TRANSCRIPTION_BACKEND` requires one additional setting:
 
 - **`andika` engine backend**: `OREMI_DEVICE_ANDIKA_HOST` must point to an active Andika engine instance.
 - **`whisper.cpp` engine backend**: `OREMI_DEVICE_WHISPER_URL` must point to a target HTTP endpoint.
@@ -596,7 +597,10 @@ When the microphone is enabled, the configured `OREMI_DEVICE_TRANSCRIPTION_BACKE
 For a microphone-only node, set `OREMI_DEVICE_MICROPHONE_ENABLED=true` and
 `OREMI_DEVICE_SPEAKER_ENABLED=false`. For an output-only node, use the inverse
 values; it can then run without an Ohunerin or transcription service. Leave
-both enabled for the combined voice-assistant device.
+both enabled for the combined voice-assistant device. Ohunerin and Andika can
+also be disabled independently with `OREMI_DEVICE_OHUNERIN_ENABLED=false` and
+`OREMI_DEVICE_ANDIKA_ENABLED=false`, either at startup or at runtime from
+Home Assistant.
 
 ### Audio Hardware
 
@@ -635,14 +639,16 @@ both enabled for the combined voice-assistant device.
 
 ### Ohunerin Wake Word
 
-- **`OREMI_DEVICE_OHUNERIN_HOST`** – Ohunerin server host or IP address.
+- **`OREMI_DEVICE_OHUNERIN_ENABLED`** – Enables wake-word and sound detection. Set to `false` to start without Ohunerin. Default: `true`.
+- **`OREMI_DEVICE_OHUNERIN_HOST`** – Ohunerin server host or IP address. Required when Ohunerin is enabled.
 - **`OREMI_DEVICE_OHUNERIN_PORT`** – Connectivity port routing Ohunerin service sockets. Default: `5023`.
 - **`OREMI_DEVICE_OHUNERIN_THRESHOLD`** – Minimum operational score matching confidence boundaries. Default: `0.25`.
 - **`OREMI_DEVICE_OHUNERIN_CERT_FILE`** – CA certificate used for a secure Ohunerin connection. Default: `None`.
 
 ### Andika Engine
 
-- **`OREMI_DEVICE_ANDIKA_HOST`** – Andika server host or IP address when the Andika backend is selected.
+- **`OREMI_DEVICE_ANDIKA_ENABLED`** – Enables speech-to-text transcription (both `andika` and `whisper.cpp` backends). Set to `false` to start without transcription. Default: `true`.
+- **`OREMI_DEVICE_ANDIKA_HOST`** – Andika server host or IP address when the Andika backend is selected and enabled.
 - **`OREMI_DEVICE_ANDIKA_PORT`** – Dedicated connection port routing Andika streams. Default: `5022`.
 - **`OREMI_DEVICE_ANDIKA_MODEL`** – Core system tracking string designating targeted local model profiles. Default: `zhifeixie/Mega-ASR`.
 - **`OREMI_DEVICE_ANDIKA_SAMPLERATE`** – Audio capture configuration sampling frequency. Default: `16000`.
