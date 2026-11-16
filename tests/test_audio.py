@@ -508,3 +508,58 @@ async def test_monitor_devices_reopens_selected_microphone_after_reappearing(mon
       await task
 
   assert queue.get_nowait() == "eMeet Luna Mono"
+
+
+def test_speaker_initialization_falls_back_to_default_device() -> None:
+  from device.core.settings import Settings
+  from device.core.speaker import SpeakerDeviceError
+  from device.services.audio_service import AudioService
+
+  settings = Settings(
+    _env_file=None,
+    node_id="test-node",
+    mqtt_broker="localhost",
+    microphone_enabled=False,
+    speaker_enabled=True,
+    speaker_device="Broken Speaker",
+  )
+  service = AudioService(settings)
+  broken_speaker = MagicMock()
+  broken_speaker.verify_device.side_effect = SpeakerDeviceError("failed to init device")
+  default_speaker = MagicMock()
+  default_speaker.device_name = "Built-in Audio"
+  default_speaker.info = {"device": "Built-in Audio"}
+
+  with patch("device.services.audio_service.Speaker", side_effect=[broken_speaker, default_speaker]):
+    service.initialize_hardware()
+
+  assert service.speaker is default_speaker
+  assert service.speaker_enabled is True
+  assert service.speaker_state["device"] == "Built-in Audio"
+  assert settings.speaker_device == "Built-in Audio"
+
+
+def test_speaker_initialization_disables_speaker_when_default_fails() -> None:
+  from device.core.settings import Settings
+  from device.core.speaker import SpeakerDeviceError
+  from device.services.audio_service import AudioService
+
+  settings = Settings(
+    _env_file=None,
+    node_id="test-node",
+    mqtt_broker="localhost",
+    microphone_enabled=False,
+    speaker_enabled=True,
+    speaker_device="Broken Speaker",
+  )
+  service = AudioService(settings)
+  configured_speaker = MagicMock()
+  configured_speaker.verify_device.side_effect = SpeakerDeviceError("failed to init device")
+  default_speaker = MagicMock()
+  default_speaker.verify_device.side_effect = SpeakerDeviceError("default failed too")
+
+  with patch("device.services.audio_service.Speaker", side_effect=[configured_speaker, default_speaker]):
+    service.initialize_hardware()
+
+  assert service.speaker is None
+  assert service.speaker_enabled is False

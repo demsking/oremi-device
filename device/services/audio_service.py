@@ -53,18 +53,35 @@ class AudioService:
         raise
 
     if self.speaker_enabled:
+      configured_device = self.settings.speaker_device
+
       try:
         self.speaker = Speaker(
-          self.settings.speaker_device, volume=self.settings.speaker_volume, muted=self.settings.speaker_muted
+          configured_device, volume=self.settings.speaker_volume, muted=self.settings.speaker_muted
         )
         self.speaker.verify_device()
-        self.speaker_state["device"] = self.speaker.device_name
-
-        logger.info(f"Active Speaker Device: {self.speaker.device_name} ({self.speaker.info})")
       except SpeakerDeviceError as error:
-        logger.warning(f"Speaker initialization failed, running without speaker support: {error}")
+        logger.warning(f"Speaker initialization failed for '{configured_device}': {error}")
         self.speaker = None
+
+        if configured_device:
+          try:
+            self.speaker = Speaker(
+              None, volume=self.settings.speaker_volume, muted=self.settings.speaker_muted
+            )
+            self.speaker.verify_device()
+            self.settings.speaker_device = self.speaker.device_name
+            logger.warning(f"Falling back to the default speaker output: {self.speaker.device_name}")
+          except SpeakerDeviceError as fallback_error:
+            logger.warning(f"Default speaker initialization failed: {fallback_error}")
+            self.speaker = None
+
+      if self.speaker is None:
+        logger.warning("Running without speaker support")
         self.speaker_enabled = False
+      else:
+        self.speaker_state["device"] = self.speaker.device_name
+        logger.info(f"Active Speaker Device: {self.speaker.device_name} ({self.speaker.info})")
 
   def select_speaker(self, device_name: str) -> bool:
     """Select a speaker output device, verifying it can be opened.
