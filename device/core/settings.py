@@ -137,7 +137,7 @@ class Settings(BaseSettings):
 
   akorin_url: HttpUrl | None = None
 
-  ohunerin_host: str
+  ohunerin_host: str | None = None
   ohunerin_port: int = Field(default=5023, gt=0, le=65535)
   ohunerin_threshold: float = Field(default=0.25, gt=0)
   ohunerin_cert_file: str | None = None
@@ -239,13 +239,18 @@ class Settings(BaseSettings):
 
   @model_validator(mode="after")
   def validate_backends(self) -> "Settings":
-    if self.transcription_backend == "andika" and not self.andika_host:
+    # A speaker-only node does not load the capture pipeline, so it must not
+    # require endpoints that only serve microphone components.
+    if self.microphone_enabled and not self.ohunerin_host:
+      raise ValueError("OREMI_DEVICE_OHUNERIN_HOST is required when the microphone is enabled")
+
+    if self.microphone_enabled and self.transcription_backend == "andika" and not self.andika_host:
       raise ValueError("OREMI_DEVICE_ANDIKA_HOST is required when using the Andika transcription backend")
 
-    if self.transcription_backend == "whisper.cpp" and not self.whisper_url:
+    if self.microphone_enabled and self.transcription_backend == "whisper.cpp" and not self.whisper_url:
       raise ValueError("OREMI_DEVICE_WHISPER_URL is required when using the whisper.cpp transcription backend")
 
-    if self.tts_backend == "edge-tts" and not self.edge_tts_url:
+    if self.speaker_enabled and self.tts_backend == "edge-tts" and not self.edge_tts_url:
       raise ValueError("OREMI_DEVICE_EDGE_TTS_URL is required when using the Edge-TTS speech synthesis backend")
 
     return self

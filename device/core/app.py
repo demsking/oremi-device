@@ -119,6 +119,31 @@ class DeviceApplication:
     except Exception as error:
       logger.exception(f"Unhandled error in task {task.get_name() or task}: {error}")
 
+  def _get_supported_sounds(self) -> list[str]:
+    ohunerin_comp: OhunerinComponent | None = self.components.get("ohunerin")  # type: ignore
+    return ohunerin_comp.get_supported_sounds() if ohunerin_comp else []
+
+  def _load_components(self) -> None:
+    """Create the components appropriate for the configured hardware role."""
+    self.components = {}
+    self.component_configs = {}
+    component_config_inputs = {
+      "ohunerin": {"threshold": self.settings.ohunerin_threshold},
+      "andika": {"model": self.settings.andika_model, "samplerate": self.settings.andika_samplerate},
+    }
+
+    for comp_name, (load_config, create_component) in COMPONENTS.items():
+      if create_component.needs_audio and not self.audio.needs_audio:
+        logger.info("Skipping microphone component %s: microphone support is disabled", comp_name)
+        continue
+
+      self.component_configs[comp_name] = (
+        load_config.model_validate(component_config_inputs.get(comp_name))
+        if comp_name in component_config_inputs
+        else load_config()
+      )
+      self.components[comp_name] = create_component(self.settings)
+
   async def _publish_discovery(self) -> None:
     if self.ha_device.discovery_prefix:
       try:
@@ -126,14 +151,12 @@ class DeviceApplication:
         from device.core.speaker import Speaker
 
         curr_stream_name = self.audio.audio_stream.device_name if self.audio.audio_stream else None
-        ohunerin_comp: OhunerinComponent = self.components.get("ohunerin")  # type: ignore
-
         def collect_discovery_data() -> tuple[list[str], list[str], list[str]]:
           input_devices = (
             Audio.get_compatible_input_devices(current_device=curr_stream_name) if self.audio.needs_audio else []
           )
           output_devices = Speaker.get_compatible_output_devices() if self.audio.speaker_enabled else []
-          ohunerin_sounds = ohunerin_comp.get_supported_sounds()
+          ohunerin_sounds = self._get_supported_sounds()
 
           return input_devices, output_devices, ohunerin_sounds
 
@@ -628,24 +651,7 @@ class DeviceApplication:
     self.tts = TTSManager(self.settings)
     self.executor = CommandExecutor(self.audio, self.tts, self.ha_device, self.loop)
 
-    # Load and configure components
-    self.components = {}
-    self.component_configs = {}
-
-    component_config_inputs = {
-      "ohunerin": {"threshold": self.settings.ohunerin_threshold},
-      "andika": {"model": self.settings.andika_model, "samplerate": self.settings.andika_samplerate},
-    }
-
-    for comp_name, (load_config, create_component) in COMPONENTS.items():
-      comp_config = (
-        load_config.model_validate(component_config_inputs.get(comp_name))
-        if comp_name in component_config_inputs
-        else load_config()
-      )
-
-      self.component_configs[comp_name] = comp_config
-      self.components[comp_name] = create_component(self.settings)
+    self._load_components()
 
     # Define shared resources for components
     self.active_stream_container: ActiveStreamContainer = {"stream": self.audio.audio_stream}

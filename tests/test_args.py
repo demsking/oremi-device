@@ -150,6 +150,21 @@ def test_settings_are_loaded_from_environment(monkeypatch: pytest.MonkeyPatch) -
   assert settings.edge_tts_locale == "fr-FR"
 
 
+def test_speaker_only_settings_do_not_require_microphone_services() -> None:
+  settings = Settings(
+    _env_file=None,
+    node_id="speaker-node",
+    mqtt_broker="localhost",
+    microphone_enabled=False,
+    speaker_enabled=True,
+  )
+
+  assert settings.microphone_enabled is False
+  assert settings.speaker_enabled is True
+  assert settings.ohunerin_host is None
+  assert settings.andika_host is None
+
+
 @pytest.mark.parametrize(
   ("field", "value"),
   [
@@ -230,20 +245,17 @@ def test_invalid_timezone_coordinates_return_none(monkeypatch: pytest.MonkeyPatc
   assert infer_timezone_from_coordinates(latitude=0.0, longitude=0.0) is None
 
 
-def test_whisper_backend_requires_url() -> None:
-  with pytest.raises(ValidationError, match="OREMI_DEVICE_WHISPER_URL is required"):
-    Settings(
-      _env_file=None,
-      node_id="test-node",
-      ohunerin_host="localhost",
-      mqtt_broker="localhost",
-      transcription_backend="whisper.cpp",
-    )
-
-
-def test_edge_tts_backend_requires_url() -> None:
-  with pytest.raises(ValidationError, match="OREMI_DEVICE_EDGE_TTS_URL is required"):
-    Settings(_env_file=None, **REQUIRED_SETTINGS, tts_backend="edge-tts")
+@pytest.mark.parametrize(
+  ("updates", "message"),
+  [
+    ({"ohunerin_host": None}, "OREMI_DEVICE_OHUNERIN_HOST is required"),
+    ({"transcription_backend": "whisper.cpp", "whisper_url": None}, "OREMI_DEVICE_WHISPER_URL is required"),
+    ({"tts_backend": "edge-tts", "edge_tts_url": None}, "OREMI_DEVICE_EDGE_TTS_URL is required"),
+  ],
+)
+def test_enabled_hardware_requires_its_service_settings(updates: dict[str, object], message: str) -> None:
+  with pytest.raises(ValidationError, match=message):
+    Settings(_env_file=None, **{**REQUIRED_SETTINGS, **updates})
 
 
 def test_settings_errors_are_formatted_without_technical_details(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -254,7 +266,6 @@ def test_settings_errors_are_formatted_without_technical_details(monkeypatch: py
 
   assert issues == [
     "OREMI_DEVICE_LANGUAGE must be one of: fr, en",
-    "OREMI_DEVICE_OHUNERIN_HOST is required",
     "OREMI_DEVICE_IZWI_URL must be a valid HTTP or HTTPS URL",
     "OREMI_DEVICE_NODE_ID is required",
     "OREMI_DEVICE_MQTT_BROKER is required",
