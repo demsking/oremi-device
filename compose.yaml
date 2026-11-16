@@ -10,6 +10,8 @@ services:
       HOST: 0.0.0.0
       MCP_AUTO_OPEN_ENABLED: false
       DANGEROUSLY_OMIT_AUTH: true
+    profiles:
+      - dev
 
   mosquitto:
     image: eclipse-mosquitto:2.0.18
@@ -18,6 +20,8 @@ services:
       - 41883:1883
     volumes:
       - ./config/mosquitto.conf:/mosquitto/config/mosquitto.conf
+    profiles:
+      - dev
 
   ollama:
     tty: true
@@ -30,6 +34,8 @@ services:
       - 41434:11434
     environment:
       CUDA_VISIBLE_DEVICES: 0
+    profiles:
+      - dev
 
   akorin:
     image: demsking/oremi-akorin
@@ -37,17 +43,18 @@ services:
       - isinmi
       - ojo
       - izwi
-      - mosquitto
+      # - mosquitto
       - rediyo
       - kansa
-      - ollama
+      # - ollama
     environment:
-      OREMI_AKORIN_OLLAMA_BASE_URL: http://ollama:11434
+      OREMI_AKORIN_OLLAMA_BASE_URL: ${OREMI_AKORIN_OLLAMA_BASE_URL:-http://ollama:11434}
       OREMI_AKORIN_ISINMI_URL: http://isinmi:5073/mcp
       OREMI_AKORIN_OJO_URL: http://ojo:5040/mcp
       OREMI_AKORIN_REDIYO_URL: http://rediyo:5076/mcp
       OREMI_AKORIN_KANSA_URL: http://kansa:5046/mcp
-      OREMI_AKORIN_MQTT_BROKER: mosquitto
+      OREMI_AKORIN_MQTT_BROKER: ${OREMI_AKORIN_MQTT_BROKER:-mosquitto}
+      OREMI_AKORIN_MQTT_PORT: ${OREMI_AKORIN_MQTT_PORT:-1883}
     ports:
       - 45020:5020
 

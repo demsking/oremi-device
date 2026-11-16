@@ -22,8 +22,16 @@ shell:
 stop:
 	tmux kill-session -t $(APP_NAME)
 
-up: pull
+up:
 	$(DOCKER_COMPOSE) up -d --remove-orphans
+
+INTERNAL_IP := $(shell ip route get 1.1.1.1 | awk '{print $$7; exit}')
+
+edge:
+		OREMI_AKORIN_OLLAMA_BASE_URL=http://$(INTERNAL_IP):11434 \
+		OREMI_AKORIN_MQTT_BROKER=$(INTERNAL_IP) \
+		OREMI_AKORIN_MQTT_PORT=51883 \
+			$(DOCKER_COMPOSE) up -d --remove-orphans
 
 restart:
 	$(DOCKER_COMPOSE) restart
@@ -36,9 +44,6 @@ logs:
 
 pull:
 	$(DOCKER_COMPOSE) pull
-
-restart:
-	$(DOCKER_COMPOSE) restart
 
 down:
 	$(DOCKER_COMPOSE) down
@@ -95,13 +100,13 @@ pypi: package
 	devbox run twine upload "$(DIST_DIR)"/*
 
 image:
-	@docker buildx inspect "$(BUILDER_NAME)" >/dev/null 2>&1 || \
-	  docker buildx create --name "$(BUILDER_NAME)" --bootstrap
+	@docker --context default buildx inspect "$(BUILDER_NAME)" >/dev/null 2>&1 || \
+	  docker --context default buildx create --name "$(BUILDER_NAME)" --bootstrap
 
 	@echo "Building $(IMAGE_NAME):$(APP_VERSION)"
 	devbox run uv lock --locked
-	docker buildx use "$(BUILDER_NAME)"
-	docker buildx build . \
+	docker --context default buildx use "$(BUILDER_NAME)"
+	docker --context default buildx build . \
 	  --platform "$(IMAGE_PLATFORMS)" \
 	  --push \
 	  --progress plain \
@@ -118,7 +123,7 @@ image:
 
 image-test:
 	uv lock
-	docker build . \
+	docker --context default build . \
 	  --progress plain \
 	  --tag $(IMAGE_NAME):test
 
@@ -126,11 +131,10 @@ live: image-test
 	docker run -it --rm --env-file .env.example \
 		--env-file .env.example \
 		-e OREMI_DEVICE_LOG_LEVEL=DEBUG \
-		-e OREMI_DEVICE_MQTT_BROKER=ngaoundere \
+		-e OREMI_DEVICE_MQTT_BROKER=localhost \
 		-e OREMI_DEVICE_MQTT_PORT=51883 \
 		-e OREMI_DEVICE_DATA_PATH=data \
 		-e OREMI_DEVICE_TRANSCRIPTION_BACKEND=andika \
-		-e OREMI_DEVICE_OLLAMA_BASE_URL=http://localhost:41434 \
 		-e OREMI_DEVICE_EDGE_TTS_URL=http://localhost:45050 \
 		-e OREMI_DEVICE_OHUNERIN_PORT=45023 \
 		-e OREMI_DEVICE_ANDIKA_PORT=45022 \
