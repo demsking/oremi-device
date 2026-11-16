@@ -121,6 +121,9 @@ class DeviceApplication:
 
   async def handle_voice_error(self) -> None:
     """Announce a user-facing error when the voice pipeline cannot respond."""
+    if self.settings.microphone_muted:
+      return
+
     await self.play_sound_cue("error")
     message = VOICE_ERROR_MESSAGE.get(self.settings.language, VOICE_ERROR_MESSAGE["en"])
 
