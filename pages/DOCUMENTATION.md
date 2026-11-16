@@ -1312,6 +1312,94 @@ assistant enable state. Mount the data directory or set
 The transcription sensor follows the node's `transcription/result` topic and
 extracts its state from the final JSON payload's `text` field.
 
+### Grouped dashboard
+
+Home Assistant does not support custom sub-sections on a device page. To group
+the controls by function (`Voice assistant`, `Audio`, `Preferences`, `Data and
+diagnostics`), use the following Lovelace dashboard.
+
+MQTT discovery sets each entity's `object_id` to `<node_id>_<entity>`. Entity
+IDs are therefore stable and unique per device instance, for example
+`switch.living_room_voice_assistant` for the node `living-room`. This allows
+several Oremi Device instances to be connected to the same Home Assistant.
+
+```yaml
+# Grouped Lovelace dashboard for Oremi Device.
+#
+# Replace NODE_SLUG with the Home Assistant slug of the node_id.
+# Example: node_id "living-room" -> NODE_SLUG = living_room.
+#
+# For multiple Oremi Device instances connected to the same Home Assistant,
+# duplicate the view and set a different NODE_SLUG for each instance.
+title: Oremi Device
+views:
+  - title: Oremi
+    path: oremi
+    icon: mdi:home-assistant
+    cards:
+      - type: vertical-stack
+        cards:
+          - type: entities
+            title: Voice assistant
+            icon: mdi:account-voice
+            state_color: true
+            entities:
+              - entity: switch.NODE_SLUG_voice_assistant
+              - entity: switch.NODE_SLUG_ambient_sound
+              - entity: sensor.NODE_SLUG_wake_word_status
+              - entity: sensor.NODE_SLUG_voice_assistant_status
+              - entity: sensor.NODE_SLUG_command_processing_status
+              - entity: sensor.NODE_SLUG_voice_responses_status
+
+          - type: entities
+            title: Audio
+            icon: mdi:microphone
+            state_color: true
+            entities:
+              - entity: switch.NODE_SLUG_microphone_muted
+              - entity: select.NODE_SLUG_microphone_device
+              - entity: switch.NODE_SLUG_speaker_muted
+              - entity: select.NODE_SLUG_speaker_device
+              - entity: number.NODE_SLUG_speaker_volume
+              - entity: select.NODE_SLUG_voice
+
+          - type: entities
+            title: Preferences
+            icon: mdi:cog
+            entities:
+              - entity: select.NODE_SLUG_language
+              - entity: text.NODE_SLUG_location
+              - entity: text.NODE_SLUG_timezone
+              - entity: text.NODE_SLUG_preferred_currency
+              - entity: select.NODE_SLUG_temperature_unit
+              - entity: select.NODE_SLUG_measurement_system
+              - entity: select.NODE_SLUG_distance_unit
+              - entity: select.NODE_SLUG_time_format
+              - entity: select.NODE_SLUG_date_format
+              - entity: select.NODE_SLUG_first_day_of_week
+
+          - type: entities
+            title: Data and diagnostics
+            icon: mdi:chart-line
+            state_color: true
+            entities:
+              - entity: sensor.NODE_SLUG_wakeword
+              - entity: sensor.NODE_SLUG_ambient_sound
+              - entity: sensor.NODE_SLUG_transcription
+              - entity: sensor.NODE_SLUG_device_status
+```
+
+To install the dashboard, open **Settings → Dashboards → Add dashboard**,
+create an empty dashboard, open the raw configuration editor, and paste the
+dashboard above. Replace `NODE_SLUG` with the Home Assistant slug of the node
+ID (`living-room` becomes `living_room`). For multiple instances, duplicate the
+view or card and use a different `NODE_SLUG` for each device.
+
+If an entity ID already exists with a suffix (`_2`, `_3`, etc.), remove the old
+entity or adjust the YAML using **Developer tools → States**. The same card can
+be added to an existing dashboard: copy the `type: vertical-stack` block from
+the dashboard above into a manual card.
+
 ## Model Context Protocol (MCP)
 
 Oremi Device implements the [Model Context Protocol (MCP)](https://modelcontextprotocol.io/), allowing LLM-based agents and assistants to inspect the device's status, configure settings, and manage audio devices directly.

@@ -106,6 +106,7 @@ def test_publish_discovery_configs_no_entities(mock_mqtt_class) -> None:
   assert data_lang["options"] == ["fr", "en"]
   assert data_lang["icon"] == "mdi:translate"
   assert data_lang["entity_category"] == "config"
+  assert data_lang["object_id"] == "oremi-ohunerin-custom_language"
 
   # Fifth call: language state
   call_lang_state = calls[4]
@@ -550,6 +551,7 @@ def test_service_control_and_status_discovery(mock_mqtt_class) -> None:
   device_status = json.loads(published["homeassistant/sensor/oremi-device-kitchen/device_status/config"])
 
   assert ambient_switch["name"] == "Ambient sound detection"
+  assert ambient_switch["object_id"] == "kitchen_ambient_sound"
   assert ambient_switch["command_topic"] == "oremi/device/nodes/kitchen/services/ambient-sound/enabled/set"
   assert ambient_switch["state_topic"] == "oremi/device/nodes/kitchen/services/ambient-sound/enabled/state"
   assert ambient_switch["payload_on"] == "ON"
@@ -560,6 +562,7 @@ def test_service_control_and_status_discovery(mock_mqtt_class) -> None:
   assert published["oremi/device/nodes/kitchen/services/ambient-sound/enabled/state"] == "OFF"
   assert published["oremi/device/nodes/kitchen/services/voice-assistant/enabled/state"] == "ON"
 
+  assert wakeword_status["object_id"] == "kitchen_wake_word_status"
   assert wakeword_status["state_topic"] == "oremi/device/nodes/kitchen/services/wake-word/status"
   assert wakeword_status["json_attributes_topic"] == wakeword_status["state_topic"]
   assert wakeword_status["value_template"] == "{{ value_json.state }}"
@@ -567,6 +570,7 @@ def test_service_control_and_status_discovery(mock_mqtt_class) -> None:
   assert tts_status["state_topic"] == "oremi/device/nodes/kitchen/services/voice-responses/status"
   assert device_status["state_topic"] == "oremi/device/nodes/kitchen/device/status"
   assert device_status["unique_id"] == "oremi-device-kitchen_device_status"
+  assert device_status["object_id"] == "kitchen_device_status"
 
 
 @patch("paho.mqtt.client.Client")

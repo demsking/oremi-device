@@ -310,6 +310,7 @@ class HomeAssistantDevice:
     transcription_payload = {
       "name": "Voice transcription",
       "unique_id": f"{node_id}_transcription",
+      "object_id": f"{self.node_id}_transcription",
       "state_topic": self.parse_node_topic("transcription/result"),
       "value_template": "{{ value_json.text }}",
       "availability_topic": self.parse_node_topic("available"),
@@ -329,6 +330,7 @@ class HomeAssistantDevice:
     wakeword_payload = {
       "name": "Wake word",
       "unique_id": f"{node_id}_wakeword",
+      "object_id": f"{self.node_id}_wakeword",
       "state_topic": event_topic,
       "value_template": ("{% if value_json.type == 'wakeword' and value_json.sound != '...' %}detected{% else %}💤{% endif %}"),
       "availability_topic": self.parse_node_topic("available"),
@@ -353,6 +355,7 @@ class HomeAssistantDevice:
     sound_payload: dict = {
       "name": "Ambient sound",
       "unique_id": f"{node_id}_sound",
+      "object_id": f"{self.node_id}_ambient_sound",
       "state_topic": event_topic,
       "value_template": (
         "{% if value_json.type == 'sound' and value_json.sound != '...' %}{{ value_json.sound }}{% else %}💤{% endif %}"
@@ -405,6 +408,7 @@ class HomeAssistantDevice:
       language_payload = {
         "name": "Language",
         "unique_id": f"{node_id}_language",
+        "object_id": f"{self.node_id}_language",
         "state_topic": self.get_language_state_topic(),
         "command_topic": self.get_language_command_topic(),
         "availability_topic": self.parse_node_topic("available"),
@@ -425,6 +429,7 @@ class HomeAssistantDevice:
         payload = {
           "name": DEVICE_CONTEXT_LABELS[field],
           "unique_id": f"{node_id}_{field}",
+          "object_id": f"{self.node_id}_{field}",
           "state_topic": self.get_device_context_field_state_topic(field),
           "command_topic": self.get_device_context_command_topic(field),
           "availability_topic": self.parse_node_topic("available"),
@@ -442,6 +447,7 @@ class HomeAssistantDevice:
         payload = {
           "name": DEVICE_CONTEXT_LABELS[field],
           "unique_id": f"{node_id}_{field}",
+          "object_id": f"{self.node_id}_{field}",
           "state_topic": self.get_device_context_field_state_topic(field),
           "command_topic": self.get_device_context_command_topic(field),
           "availability_topic": self.parse_node_topic("available"),
@@ -462,6 +468,7 @@ class HomeAssistantDevice:
       voice_payload = {
         "name": "Voice",
         "unique_id": f"{node_id}_voice",
+        "object_id": f"{self.node_id}_voice",
         "state_topic": self.get_voice_state_topic(),
         "command_topic": self.get_voice_command_topic(),
         "availability_topic": self.parse_node_topic("available"),
@@ -482,6 +489,7 @@ class HomeAssistantDevice:
     mute_payload = {
       "name": "Microphone muted",
       "unique_id": f"{node_id}_microphone_muted",
+      "object_id": f"{self.node_id}_microphone_muted",
       "state_topic": self.get_mute_state_topic(),
       "command_topic": self.get_mute_command_topic(),
       "payload_on": "ON",
@@ -506,6 +514,7 @@ class HomeAssistantDevice:
     select_payload = {
       "name": "Microphone Device",
       "unique_id": f"{node_id}_microphone_device",
+      "object_id": f"{self.node_id}_microphone_device",
       "state_topic": self.parse_node_topic("microphone/state"),
       "command_topic": self.get_microphone_command_topic(),
       "availability_topic": self.parse_node_topic("available"),
@@ -529,6 +538,7 @@ class HomeAssistantDevice:
     speaker_payload = {
       "name": "Speaker Device",
       "unique_id": f"{node_id}_speaker_device",
+      "object_id": f"{self.node_id}_speaker_device",
       "state_topic": self.get_speaker_state_topic(),
       "command_topic": self.get_speaker_command_topic(),
       "availability_topic": self.parse_node_topic("available"),
@@ -550,6 +560,7 @@ class HomeAssistantDevice:
     speaker_mute_payload = {
       "name": "Speaker muted",
       "unique_id": f"{node_id}_speaker_muted",
+      "object_id": f"{self.node_id}_speaker_muted",
       "state_topic": self.get_speaker_mute_state_topic(),
       "command_topic": self.get_speaker_mute_cmd_topic(),
       "payload_on": "ON",
@@ -573,6 +584,7 @@ class HomeAssistantDevice:
     speaker_volume_payload = {
       "name": "Speaker volume",
       "unique_id": f"{node_id}_speaker_volume",
+      "object_id": f"{self.node_id}_speaker_volume",
       "state_topic": self.get_speaker_volume_state_topic(),
       "command_topic": self.get_speaker_volume_cmd_topic(),
       "availability_topic": self.parse_node_topic("available"),
@@ -627,6 +639,7 @@ class HomeAssistantDevice:
         payload = {
           "name": label,
           "unique_id": f"{node_id}_{service.replace('-', '_')}",
+          "object_id": f"{self.node_id}_{service.replace('-', '_')}",
           "state_topic": self.get_service_enabled_state_topic(service),
           "command_topic": self.get_service_enabled_command_topic(service),
           "payload_on": "ON",
@@ -674,6 +687,7 @@ class HomeAssistantDevice:
       payload = {
         "name": f"{SERVICE_LABELS[service]} status",
         "unique_id": f"{node_id}_{slug}_status",
+        "object_id": f"{self.node_id}_{slug.replace('-', '_')}_status",
         "state_topic": self.get_service_status_topic(service),
         "value_template": "{{ value_json.state }}",
         "json_attributes_topic": self.get_service_status_topic(service),
@@ -690,6 +704,7 @@ class HomeAssistantDevice:
     device_payload = {
       "name": "Device status",
       "unique_id": f"{node_id}_device_status",
+      "object_id": f"{self.node_id}_device_status",
       "state_topic": self.get_device_status_topic(),
       "value_template": "{{ value_json.state }}",
       "json_attributes_topic": self.get_device_status_topic(),
