@@ -31,6 +31,11 @@ SoundCue = Literal[
   "wakeword",
 ]
 
+VOICE_ERROR_MESSAGE = {
+  "fr": "Je n'arrive pas à vous comprendre. Veuillez réessayer plus tard.",
+  "en": "I'm having trouble understanding you. Please try again later.",
+}
+
 ConversationEvent = Literal["cancelled", "listening", "processing"]
 ConversationState = Literal["idle", "listening", "processing", "speaking"]
 SOUNDS_DIRECTORY = Path(__file__).resolve().parent.parent / "sounds"

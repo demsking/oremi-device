@@ -29,14 +29,15 @@ from device.components import COMPONENTS
 from device.components.ohunerin import OhunerinComponent
 from device.core.audio import AudioDeviceError
 from device.core.components import ActiveStreamContainer
-from device.core.components import AudioStreamComponent
 from device.core.components import ServiceState
 from device.core.components import ServiceStatus
 from device.core.components import SharedResources
 from device.core.cues import ConversationEvent
 from device.core.cues import get_sound_cue_path
 from device.core.cues import SoundCue
+from device.core.cues import VOICE_ERROR_MESSAGE
 from device.core.mcp import McpDevice
+from device.core.models import AnnounceCommand
 from device.core.models import ProcessingResponse
 from device.core.mqtt import DEVICE_CONTEXT_OPTIONS
 from device.core.mqtt import DEVICE_CONTEXT_TEXT_FIELDS
@@ -118,6 +119,18 @@ class DeviceApplication:
       except Exception as error:
         logger.warning(f"Failed to play sound cue {cue}: {error}")
 
+  async def handle_voice_error(self) -> None:
+    """Announce a user-facing error when the voice pipeline cannot respond."""
+    await self.play_sound_cue("error")
+    message = VOICE_ERROR_MESSAGE.get(self.settings.language, VOICE_ERROR_MESSAGE["en"])
+
+    try:
+      await self.executor.execute_response(
+        ProcessingResponse(commands=[AnnounceCommand(type="announce", text=message)])
+      )
+    except Exception as error:
+      logger.error(f"Failed to announce voice pipeline error: {error}")
+
   def _handle_task_done(self, task: asyncio.Task) -> None:
     if task.cancelled():
       return
@@ -128,7 +141,7 @@ class DeviceApplication:
       logger.exception(f"Unhandled error in task {task.get_name() or task}: {error}")
 
   def _get_supported_sounds(self) -> list[str]:
-    if not self.settings.ohunerin_enabled:
+    if not self.settings.sound_detection_enabled:
       return []
 
     ohunerin_comp: OhunerinComponent | None = self.components.get("ohunerin")  # type: ignore
@@ -136,7 +149,8 @@ class DeviceApplication:
 
   def _is_service_enabled(self, name: str) -> bool:
     if name == "ohunerin":
-      return self.settings.ohunerin_enabled
+      # Wake-word detection is always active while the microphone is enabled.
+      return True
     elif name == "andika":
       return self.settings.andika_enabled
     elif name == "akorin":
@@ -146,8 +160,12 @@ class DeviceApplication:
 
   def _create_component_config(self, name: str) -> BaseModel:
     load_config, _ = COMPONENTS[name]
+    features = ["wakeword-detection"]
+    if self.settings.sound_detection_enabled:
+      features.append("sound-detection")
+
     inputs = {
-      "ohunerin": {"threshold": self.settings.ohunerin_threshold},
+      "ohunerin": {"threshold": self.settings.ohunerin_threshold, "features": features},
       "andika": {"model": self.settings.andika_model, "samplerate": self.settings.andika_samplerate},
     }
 
@@ -166,13 +184,18 @@ class DeviceApplication:
         logger.info("Skipping microphone component %s: microphone support is disabled", comp_name)
         enabled = False
 
+      muted = enabled and create_component.needs_audio and self.settings.microphone_muted
       self.service_states[comp_name] = ServiceState(
         enabled=enabled,
-        status="starting" if enabled else "disabled",
+        status="muted" if muted else ("starting" if enabled else "disabled"),
       )
 
       if not enabled:
         logger.info("Skipping component %s: service is disabled", comp_name)
+        continue
+
+      if muted:
+        logger.info("Skipping component %s: microphone is muted", comp_name)
         continue
 
       self.component_configs[comp_name] = self._create_component_config(comp_name)
@@ -217,7 +240,7 @@ class DeviceApplication:
           voices=self.tts.get_active_voice_names() if self.tts else None,
           current_voice=self.tts.current_voice or "",
           ohunerin_sounds=ohunerin_sounds,
-          ohunerin_enabled=self.settings.ohunerin_enabled,
+          sound_detection_enabled=self.settings.sound_detection_enabled,
           andika_enabled=self.settings.andika_enabled,
         )
       except Exception as error:
@@ -235,8 +258,8 @@ class DeviceApplication:
       if self.audio.needs_audio:
         client.subscribe(self.ha_device.get_microphone_command_topic())
         client.subscribe(self.ha_device.get_mute_command_topic())
-        client.subscribe(self.ha_device.get_service_enabled_command_topic("ohunerin"))
-        client.subscribe(self.ha_device.get_service_enabled_command_topic("andika"))
+        client.subscribe(self.ha_device.get_service_enabled_command_topic("ambient-sound"))
+        client.subscribe(self.ha_device.get_service_enabled_command_topic("voice-assistant"))
 
       if self.audio.speaker_enabled:
         client.subscribe(self.ha_device.get_speaker_command_topic())
@@ -302,20 +325,20 @@ class DeviceApplication:
       elif self.audio.speaker_enabled and topic == self.ha_device.get_player_stop_command_topic():
         self.loop.call_soon_threadsafe(self.queues["player_stop"].put_nowait, True)
 
-      elif self.audio.needs_audio and topic == self.ha_device.get_service_enabled_command_topic("ohunerin"):
+      elif self.audio.needs_audio and topic == self.ha_device.get_service_enabled_command_topic("ambient-sound"):
         if payload_str.upper() in ("ON", "OFF"):
-          logger.info(f"Received Ohunerin service command: {payload_str.upper()}")
+          logger.info(f"Received ambient sound detection command: {payload_str.upper()}")
           self.loop.call_soon_threadsafe(
             self.queues["service_enabled"].put_nowait,
-            ("ohunerin", payload_str.upper() == "ON"),
+            ("sound-detection", payload_str.upper() == "ON"),
           )
 
-      elif self.audio.needs_audio and topic == self.ha_device.get_service_enabled_command_topic("andika"):
+      elif self.audio.needs_audio and topic == self.ha_device.get_service_enabled_command_topic("voice-assistant"):
         if payload_str.upper() in ("ON", "OFF"):
-          logger.info(f"Received Andika service command: {payload_str.upper()}")
+          logger.info(f"Received voice assistant command: {payload_str.upper()}")
           self.loop.call_soon_threadsafe(
             self.queues["service_enabled"].put_nowait,
-            ("andika", payload_str.upper() == "ON"),
+            ("voice-assistant", payload_str.upper() == "ON"),
           )
 
       elif topic == self.ha_device.get_language_command_topic():
@@ -408,41 +431,101 @@ class DeviceApplication:
 
     elif event_type == "service_enabled":
       name, enabled = data
-      await self.apply_settings_updates(cast(SettingsUpdates, {f"{name}_enabled": enabled}))
+
+      if name == "sound-detection":
+        await self.apply_settings_updates(cast(SettingsUpdates, {"sound_detection_enabled": enabled}))
+      elif name == "voice-assistant":
+        await self.apply_settings_updates(cast(SettingsUpdates, {"andika_enabled": enabled}))
 
     elif event_type == "processing":
-      await self.executor.execute_response(data)
+      try:
+        await self.executor.execute_response(data)
+      except Exception as error:
+        logger.exception(f"Failed to execute processing response: {error}")
+        await self.handle_voice_error()
+
+  async def _start_component(self, name: str) -> None:
+    """Create, bind, and start a component if it is not already running."""
+    if name in self.components:
+      return
+
+    component = COMPONENTS[name][1](self.settings)
+    component.bind_status_reporter(self._set_service_status)
+    self.component_configs[name] = self._create_component_config(name)
+    self.components[name] = component
+    self._set_service_status(name, "starting")
+    await component.start(self.component_configs[name], self.shared_resources)
+
+  async def _stop_component(self, name: str) -> None:
+    """Stop and forget a running component."""
+    component = self.components.pop(name) if name in self.components else None
+    self.component_configs.pop(name, None)
+
+    if component:
+      await component.stop()
 
   async def _set_component_enabled(self, name: str, enabled: bool) -> None:
-    """Start or stop a service component and update its Home Assistant state."""
+    """Start or stop a voice-assistant component and update its Home Assistant state."""
     if name not in self.service_states:
       return
 
     state = self.service_states[name]
     state.enabled = enabled
     setattr(self.settings, f"{name}_enabled", enabled)
+    switch_name = "voice-assistant" if name == "andika" else name
 
     if enabled:
-      if name not in self.components:
-        component = COMPONENTS[name][1](self.settings)
-        component.bind_status_reporter(self._set_service_status)
-        self.component_configs[name] = self._create_component_config(name)
-        self.components[name] = component
-        self._set_service_status(name, "starting")
-        await component.start(self.component_configs[name], self.shared_resources)
+      if self.settings.microphone_muted:
+        self._set_service_status(name, "muted")
+      else:
+        await self._start_component(name)
 
-      self.ha_device.publish_service_enabled_state(name, True)
+      self.ha_device.publish_service_enabled_state(switch_name, True)
     else:
-      stopped_component = self.components.pop(name) if name in self.components else None
-      self.component_configs.pop(name, None)
-
-      if stopped_component:
-        await stopped_component.stop()
-
+      await self._stop_component(name)
       self._set_service_status(name, "disabled")
-      self.ha_device.publish_service_enabled_state(name, False)
+      self.ha_device.publish_service_enabled_state(switch_name, False)
 
     await self._publish_discovery()
+
+  async def _set_sound_detection_enabled(self, enabled: bool) -> None:
+    """Apply the ambient sound detection setting, restarting Ohunerin if needed."""
+    self.settings.sound_detection_enabled = enabled
+    await self._stop_component("ohunerin")
+
+    if self.audio.needs_audio and not self.settings.microphone_muted:
+      await self._start_component("ohunerin")
+    elif self.settings.microphone_muted and self.service_states["ohunerin"].enabled:
+      self._set_service_status("ohunerin", "muted")
+
+    self.ha_device.publish_service_enabled_state("ambient-sound", enabled)
+    await self._publish_discovery()
+
+  async def _apply_microphone_muted(self, muted: bool) -> None:
+    """Fully stop or restart voice services when the microphone mute changes."""
+    self.settings.microphone_muted = muted
+    self.audio.device_state["microphone_muted"] = muted
+    self.ha_device.set_mute_state(muted)
+
+    for name in ("ohunerin", "andika"):
+      state = self.service_states.get(name)
+
+      if state is None:
+        continue
+
+      await self._stop_component(name)
+
+      if not state.enabled or not self.audio.needs_audio:
+        self._set_service_status(name, "disabled")
+      elif muted:
+        self._set_service_status(name, "muted")
+      else:
+        await self._start_component(name)
+
+    if muted:
+      self._publish_service_statuses()
+    else:
+      await self._publish_discovery()
 
   def _set_service_status(self, name: str, status: ServiceStatus, detail: str | None = None) -> None:
     """Record a service status transition and publish it to MQTT."""
@@ -478,8 +561,8 @@ class DeviceApplication:
     if not updates:
       return
 
-    if "ohunerin_enabled" in updates:
-      await self._set_component_enabled("ohunerin", updates["ohunerin_enabled"])
+    if "sound_detection_enabled" in updates:
+      await self._set_sound_detection_enabled(updates["sound_detection_enabled"])
 
     if "andika_enabled" in updates:
       await self._set_component_enabled("andika", updates["andika_enabled"])
@@ -507,19 +590,7 @@ class DeviceApplication:
         await self._publish_discovery()
 
     if "microphone_muted" in updates:
-      muted = updates["microphone_muted"]
-      self.settings.microphone_muted = muted
-
-      if hasattr(self, "audio") and self.audio:
-        self.audio.device_state["microphone_muted"] = muted
-
-      if hasattr(self, "ha_device") and self.ha_device:
-        self.ha_device.set_mute_state(muted)
-
-      if hasattr(self, "components") and self.components:
-        for component in self.components.values():
-          if isinstance(component, AudioStreamComponent):
-            await component.on_mute_changed(muted)
+      await self._apply_microphone_muted(updates["microphone_muted"])
 
     if "speaker_device" in updates:
       device_name = updates["speaker_device"]
@@ -686,7 +757,7 @@ class DeviceApplication:
     log_group(
       self.settings,
       "Wake Word & Sounds Detection",
-      "ohunerin_enabled",
+      "sound_detection_enabled",
       "ohunerin_threshold",
       "ohunerin_host",
       "ohunerin_port",
@@ -821,11 +892,9 @@ class DeviceApplication:
       "final_transcription_handler": handle_final_transcription,
       "sound_cue_handler": self.play_sound_cue,
       "cancel_active_processing": cancel_active_processing,
+      "voice_error_handler": self.handle_voice_error,
       "mqtt_publisher": self.ha_device,
     }
-
-    if self.settings.andika_enabled and not self.settings.ohunerin_enabled:
-      logger.warning("Andika is enabled but Ohunerin is disabled; no wake word will trigger transcription")
 
     # Start all components
     for comp_name, component in self.components.items():

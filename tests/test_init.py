@@ -15,6 +15,7 @@
 import asyncio
 import json
 import urllib.parse
+from unittest.mock import AsyncMock
 from unittest.mock import MagicMock
 from unittest.mock import patch
 
@@ -230,6 +231,33 @@ async def test_ohunerin_reports_online_when_connected() -> None:
     await asyncio.wait_for(entered.wait(), timeout=1)
     assert ("ohunerin", "online", None) in statuses
     await component.stop()
+
+
+@pytest.mark.asyncio
+async def test_andika_speaks_error_when_connection_fails() -> None:
+  component = AndikaComponent(_make_settings())
+  voice_error_handler = AsyncMock()
+  shared_resources = {
+    "handle_task_done": None,
+    "active_stream_container": {"stream": MagicMock()},
+    "wakeword_event": asyncio.Event(),
+    "device_state": {"microphone_muted": False},
+    "conversation_event_handler": AsyncMock(),
+    "final_transcription_handler": None,
+    "voice_error_handler": voice_error_handler,
+  }
+  shared_resources["wakeword_event"].set()
+
+  with (
+    patch.object(component, "_get_supported_models", return_value=[]),
+    patch("device.core.stt.connect", side_effect=OSError("Andika is down")),
+  ):
+    await component.start(AndikaConfig(), shared_resources)
+    await asyncio.sleep(0.05)
+    await component.stop()
+
+  voice_error_handler.assert_awaited()
+  assert component.status == "error"
 
 
 @pytest.mark.asyncio

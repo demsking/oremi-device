@@ -69,7 +69,7 @@ def test_settings_defaults() -> None:
   assert settings.speaker_muted is False
   assert settings.speaker_volume == 1.0
   assert settings.akorin_url is None
-  assert settings.ohunerin_enabled is True
+  assert settings.sound_detection_enabled is True
   assert settings.andika_enabled is True
   assert settings.ohunerin_threshold == 0.25
   assert settings.andika_model == "zhifeixie/Mega-ASR"
@@ -152,35 +152,32 @@ def test_settings_are_loaded_from_environment(monkeypatch: pytest.MonkeyPatch) -
   assert settings.edge_tts_locale == "fr-FR"
 
 
-def test_voice_services_can_be_disabled_without_hosts() -> None:
+def test_sound_detection_can_be_disabled_without_disabling_wakeword() -> None:
   settings = Settings(
     _env_file=None,
     node_id="test-node",
     mqtt_broker="localhost",
     microphone_enabled=True,
-    ohunerin_enabled=False,
+    ohunerin_host="ohunerin",
     andika_enabled=False,
+    sound_detection_enabled=False,
   )
 
-  assert settings.ohunerin_enabled is False
-  assert settings.andika_enabled is False
-  assert settings.ohunerin_host is None
+  assert settings.sound_detection_enabled is False
+  assert settings.ohunerin_host == "ohunerin"
   assert settings.andika_host is None
 
 
-def test_disabled_ohunerin_does_not_require_its_host() -> None:
-  settings = Settings(
-    _env_file=None,
-    node_id="test-node",
-    mqtt_broker="localhost",
-    microphone_enabled=True,
-    ohunerin_enabled=False,
-    andika_enabled=True,
-    andika_host="andika",
-  )
-
-  assert settings.ohunerin_host is None
-  assert settings.andika_host == "andika"
+def test_microphone_requires_ohunerin_host_even_without_sound_detection() -> None:
+  with pytest.raises(ValidationError, match="OREMI_DEVICE_OHUNERIN_HOST"):
+    Settings(
+      _env_file=None,
+      node_id="test-node",
+      mqtt_broker="localhost",
+      microphone_enabled=True,
+      sound_detection_enabled=False,
+      andika_enabled=False,
+    )
 
 
 def test_disabled_andika_does_not_require_its_host() -> None:
@@ -189,7 +186,6 @@ def test_disabled_andika_does_not_require_its_host() -> None:
     node_id="test-node",
     mqtt_broker="localhost",
     microphone_enabled=True,
-    ohunerin_enabled=True,
     ohunerin_host="ohunerin",
     andika_enabled=False,
   )
@@ -347,7 +343,7 @@ def test_runtime_settings_cache_overrides_mutable_settings(tmp_path, monkeypatch
         "speaker_muted": True,
         "speaker_volume": 0.35,
         "tts_voice": "en-US-JennyNeural",
-        "ohunerin_enabled": False,
+        "sound_detection_enabled": False,
         "andika_enabled": False,
       }
     ),
@@ -382,7 +378,7 @@ def test_runtime_settings_cache_overrides_mutable_settings(tmp_path, monkeypatch
   assert settings.speaker_muted is True
   assert settings.speaker_volume == 0.35
   assert settings.tts_voice == "en-US-JennyNeural"
-  assert settings.ohunerin_enabled is False
+  assert settings.sound_detection_enabled is False
   assert settings.andika_enabled is False
 
 

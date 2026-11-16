@@ -46,19 +46,31 @@ DEVICE_CONTEXT_TEXT_FIELDS = ("location", "timezone", "preferred_currency")
 
 SERVICES = ("ohunerin", "andika", "akorin", "tts")
 
+SERVICE_SLUGS = {
+  "ohunerin": "wake-word",
+  "andika": "voice-assistant",
+  "akorin": "command-processing",
+  "tts": "voice-responses",
+}
+
 SERVICE_LABELS = {
-  "ohunerin": "Ohunerin",
-  "andika": "Andika",
-  "akorin": "Akọrin",
-  "tts": "Speech synthesis",
+  "ohunerin": "Wake word",
+  "andika": "Voice assistant",
+  "akorin": "Command processing",
+  "tts": "Voice responses",
 }
 
 SERVICE_ICONS = {
-  "ohunerin": "mdi:ear-hearing",
-  "andika": "mdi:microphone-message",
+  "ohunerin": "mdi:waveform",
+  "andika": "mdi:account-voice",
   "akorin": "mdi:brain",
-  "tts": "mdi:account-voice",
+  "tts": "mdi:volume-high",
 }
+
+SERVICE_SWITCHES = (
+  ("ambient-sound", "Ambient sound detection", "mdi:ear-hearing"),
+  ("voice-assistant", "Voice assistant", "mdi:account-voice"),
+)
 
 DEVICE_CONTEXT_LABELS = {
   "language": "Language",
@@ -250,7 +262,8 @@ class HomeAssistantDevice:
     return self.parse_node_topic(f"services/{service}/enabled/state")
 
   def get_service_status_topic(self, service: str) -> str:
-    return self.parse_node_topic(f"services/{service}/status")
+    slug = SERVICE_SLUGS.get(service, service)
+    return self.parse_node_topic(f"services/{slug}/status")
 
   def get_device_status_topic(self) -> str:
     return self.parse_node_topic("device/status")
@@ -283,7 +296,7 @@ class HomeAssistantDevice:
     voices: list[str] | None = None,
     current_voice: str = "",
     ohunerin_sounds: list[str] | None = None,
-    ohunerin_enabled: bool = True,
+    sound_detection_enabled: bool = True,
     andika_enabled: bool = True,
   ) -> None:
     """Publish Home Assistant MQTT discovery configs."""
@@ -295,7 +308,7 @@ class HomeAssistantDevice:
 
     # ── Core Home Assistant Entities Managed ONLY by HomeAssistantDevice ─────
     transcription_payload = {
-      "name": "Transcription",
+      "name": "Voice transcription",
       "unique_id": f"{node_id}_transcription",
       "state_topic": self.parse_node_topic("transcription/result"),
       "value_template": "{{ value_json.text }}",
@@ -314,7 +327,7 @@ class HomeAssistantDevice:
 
     event_topic = self.parse_node_topic("events/detection")
     wakeword_payload = {
-      "name": "Wakeword",
+      "name": "Wake word",
       "unique_id": f"{node_id}_wakeword",
       "state_topic": event_topic,
       "value_template": ("{% if value_json.type == 'wakeword' and value_json.sound != '...' %}detected{% else %}💤{% endif %}"),
@@ -334,11 +347,11 @@ class HomeAssistantDevice:
     self._publish_discovery_config(
       wakeword_topic,
       wakeword_payload,
-      enabled=microphone_enabled and ohunerin_enabled,
+      enabled=microphone_enabled,
     )
 
     sound_payload: dict = {
-      "name": "Sound Detector",
+      "name": "Ambient sound",
       "unique_id": f"{node_id}_sound",
       "state_topic": event_topic,
       "value_template": (
@@ -377,7 +390,7 @@ class HomeAssistantDevice:
     self._publish_discovery_config(
       sound_topic,
       sound_payload,
-      enabled=microphone_enabled and ohunerin_enabled,
+      enabled=microphone_enabled and sound_detection_enabled,
     )
 
     # ── Additional custom entities (if provided) ──────────────────────────────
@@ -584,7 +597,7 @@ class HomeAssistantDevice:
       device=device,
       microphone_enabled=microphone_enabled,
       speaker_enabled=speaker_enabled,
-      ohunerin_enabled=ohunerin_enabled,
+      sound_detection_enabled=sound_detection_enabled,
       andika_enabled=andika_enabled,
     )
 
@@ -595,15 +608,16 @@ class HomeAssistantDevice:
     device: dict,
     microphone_enabled: bool,
     speaker_enabled: bool,
-    ohunerin_enabled: bool,
+    sound_detection_enabled: bool,
     andika_enabled: bool,
   ) -> None:
     """Publish service enable switches and diagnostic status sensors."""
     if microphone_enabled:
-      for service, enabled in (("ohunerin", ohunerin_enabled), ("andika", andika_enabled)):
+      for service, label, icon in SERVICE_SWITCHES:
+        enabled = sound_detection_enabled if service == "ambient-sound" else andika_enabled
         payload = {
-          "name": f"{SERVICE_LABELS[service]} enabled",
-          "unique_id": f"{node_id}_{service}_enabled",
+          "name": label,
+          "unique_id": f"{node_id}_{service.replace('-', '_')}",
           "state_topic": self.get_service_enabled_state_topic(service),
           "command_topic": self.get_service_enabled_command_topic(service),
           "payload_on": "ON",
@@ -613,19 +627,30 @@ class HomeAssistantDevice:
           "availability_topic": self.parse_node_topic("available"),
           "payload_available": "online",
           "payload_not_available": "offline",
-          "icon": SERVICE_ICONS[service],
+          "icon": icon,
           "device": device,
         }
-        topic = f"{self.discovery_prefix}/switch/{node_id}/{service}_enabled/config"
+        topic = f"{self.discovery_prefix}/switch/{node_id}/{service.replace('-', '_')}/config"
         self.client.publish(topic, json.dumps(payload), retain=True)
         self.publish_service_enabled_state(service, enabled)
     else:
+      for service in ("ambient-sound", "voice-assistant"):
+        self.client.publish(
+          f"{self.discovery_prefix}/switch/{node_id}/{service.replace('-', '_')}/config",
+          "",
+          retain=True,
+        )
+
       for service in ("ohunerin", "andika"):
-        self.client.publish(f"{self.discovery_prefix}/switch/{node_id}/{service}_enabled/config", "", retain=True)
-        self.client.publish(f"{self.discovery_prefix}/sensor/{node_id}/{service}_status/config", "", retain=True)
+        slug = SERVICE_SLUGS[service]
+        self.client.publish(f"{self.discovery_prefix}/sensor/{node_id}/{slug}_status/config", "", retain=True)
 
     if not speaker_enabled:
-      self.client.publish(f"{self.discovery_prefix}/sensor/{node_id}/tts_status/config", "", retain=True)
+      self.client.publish(
+        f"{self.discovery_prefix}/sensor/{node_id}/{SERVICE_SLUGS['tts']}_status/config",
+        "",
+        retain=True,
+      )
 
     visible_services = [
       service
@@ -635,9 +660,10 @@ class HomeAssistantDevice:
     ]
 
     for service in visible_services:
+      slug = SERVICE_SLUGS[service]
       payload = {
         "name": f"{SERVICE_LABELS[service]} status",
-        "unique_id": f"{node_id}_{service}_status",
+        "unique_id": f"{node_id}_{slug}_status",
         "state_topic": self.get_service_status_topic(service),
         "value_template": "{{ value_json.state }}",
         "json_attributes_topic": self.get_service_status_topic(service),
@@ -648,12 +674,12 @@ class HomeAssistantDevice:
         "icon": SERVICE_ICONS[service],
         "device": device,
       }
-      topic = f"{self.discovery_prefix}/sensor/{node_id}/{service}_status/config"
+      topic = f"{self.discovery_prefix}/sensor/{node_id}/{slug}_status/config"
       self.client.publish(topic, json.dumps(payload), retain=True)
 
     device_payload = {
       "name": "Device status",
-      "unique_id": f"{node_id}_status",
+      "unique_id": f"{node_id}_device_status",
       "state_topic": self.get_device_status_topic(),
       "value_template": "{{ value_json.state }}",
       "json_attributes_topic": self.get_device_status_topic(),
@@ -664,7 +690,7 @@ class HomeAssistantDevice:
       "icon": "mdi:server-network",
       "device": device,
     }
-    topic = f"{self.discovery_prefix}/sensor/{node_id}/status/config"
+    topic = f"{self.discovery_prefix}/sensor/{node_id}/device_status/config"
     self.client.publish(topic, json.dumps(device_payload), retain=True)
 
   def publish_language_state(self, language: str) -> None:

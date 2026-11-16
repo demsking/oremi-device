@@ -25,6 +25,7 @@ from pydantic import ValidationError
 from device.core.components import HttpComponent
 from device.core.components import SharedResources
 from device.core.cues import SoundCue
+from device.core.cues import VOICE_ERROR_MESSAGE
 from device.core.models import AkorinConfig
 from device.core.models import AnnounceCommand
 from device.core.models import ConversationMessage
@@ -33,10 +34,7 @@ from device.core.settings import Settings
 
 logger = logging.getLogger(__name__)
 
-ERROR_MESSAGE = {
-  "fr": "Je n'arrive pas a obtenir une reponse pour le moment. Veuillez réessayer plus tard.",
-  "en": "I cannot get a response right now. Please try again later.",
-}
+ERROR_MESSAGE = VOICE_ERROR_MESSAGE
 
 STOP_WORDS = {
   "annule",

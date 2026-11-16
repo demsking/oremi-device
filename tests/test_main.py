@@ -421,13 +421,16 @@ async def test_handle_event_service_enabled() -> None:
 
   app.apply_settings_updates = AsyncMock()
 
-  await app._handle_event("service_enabled", ("ohunerin", False))
+  await app._handle_event("service_enabled", ("sound-detection", False))
+  app.apply_settings_updates.assert_awaited_once_with({"sound_detection_enabled": False})
+  app.apply_settings_updates.reset_mock()
 
-  app.apply_settings_updates.assert_awaited_once_with({"ohunerin_enabled": False})
+  await app._handle_event("service_enabled", ("voice-assistant", False))
+  app.apply_settings_updates.assert_awaited_once_with({"andika_enabled": False})
 
 
 @pytest.mark.asyncio
-async def test_load_components_skips_disabled_voice_services() -> None:
+async def test_load_components_keeps_wakeword_but_skips_disabled_voice_assistant() -> None:
   from device.core.app import DeviceApplication
   from device.core.settings import Settings
 
@@ -439,7 +442,42 @@ async def test_load_components_skips_disabled_voice_services() -> None:
     mqtt_broker="localhost",
     mqtt_discovery=False,
     speaker_enabled=False,
-    ohunerin_enabled=False,
+    sound_detection_enabled=False,
+    andika_enabled=False,
+  )
+
+  with patch("device.core.app.get_settings", return_value=fake_settings):
+    app = DeviceApplication()
+
+  app.audio = MagicMock()
+  app.audio.needs_audio = True
+  app.tts = MagicMock()
+  app.tts.client = None
+  app._load_components()
+
+  assert "ohunerin" in app.components
+  assert app.component_configs["ohunerin"].features == ["wakeword-detection"]
+  assert "andika" not in app.components
+  assert app.service_states["ohunerin"].enabled is True
+  assert app.service_states["ohunerin"].status == "starting"
+  assert app.service_states["andika"].enabled is False
+  assert app.service_states["andika"].status == "disabled"
+  assert app.service_states["tts"].enabled is False
+
+
+@pytest.mark.asyncio
+async def test_load_components_keeps_audio_services_muted() -> None:
+  from device.core.app import DeviceApplication
+  from device.core.settings import Settings
+
+  fake_settings = Settings(
+    _env_file=None,
+    node_id="test-node",
+    ohunerin_host="localhost",
+    andika_host="localhost",
+    mqtt_broker="localhost",
+    mqtt_discovery=False,
+    microphone_muted=True,
   )
 
   with patch("device.core.app.get_settings", return_value=fake_settings):
@@ -452,12 +490,11 @@ async def test_load_components_skips_disabled_voice_services() -> None:
   app._load_components()
 
   assert "ohunerin" not in app.components
-  assert "andika" in app.components
-  assert app.service_states["ohunerin"].enabled is False
-  assert app.service_states["ohunerin"].status == "disabled"
+  assert "andika" not in app.components
+  assert app.service_states["ohunerin"].enabled is True
+  assert app.service_states["ohunerin"].status == "muted"
   assert app.service_states["andika"].enabled is True
-  assert app.service_states["andika"].status == "starting"
-  assert app.service_states["tts"].enabled is False
+  assert app.service_states["andika"].status == "muted"
 
 
 @pytest.mark.asyncio
@@ -482,7 +519,7 @@ async def test_set_component_enabled_starts_and_stops() -> None:
   app.audio.needs_audio = True
   app.ha_device = MagicMock()
   app.shared_resources = {}
-  app.service_states = {"ohunerin": ServiceState(enabled=False, status="disabled")}
+  app.service_states = {"andika": ServiceState(enabled=False, status="disabled")}
   app.components = {}
   app.component_configs = {}
   app._publish_discovery = AsyncMock()
@@ -493,27 +530,174 @@ async def test_set_component_enabled_starts_and_stops() -> None:
   config = MagicMock()
   load_config = MagicMock()
   load_config.model_validate.return_value = config
-  registry = {"ohunerin": (load_config, MagicMock(return_value=component))}
+  registry = {"andika": (load_config, MagicMock(return_value=component))}
 
   with patch.dict("device.core.app.COMPONENTS", registry, clear=True):
-    await app._set_component_enabled("ohunerin", True)
+    await app._set_component_enabled("andika", True)
 
-  assert app.settings.ohunerin_enabled is True
-  assert app.service_states["ohunerin"].enabled is True
-  assert app.components["ohunerin"] is component
+  assert app.settings.andika_enabled is True
+  assert app.service_states["andika"].enabled is True
+  assert app.components["andika"] is component
   component.bind_status_reporter.assert_called_once_with(app._set_service_status)
   component.start.assert_awaited_once_with(config, app.shared_resources)
-  app.ha_device.publish_service_enabled_state.assert_called_once_with("ohunerin", True)
+  app.ha_device.publish_service_enabled_state.assert_called_once_with("voice-assistant", True)
   app._publish_discovery.assert_awaited_once()
 
-  await app._set_component_enabled("ohunerin", False)
+  await app._set_component_enabled("andika", False)
 
-  assert app.settings.ohunerin_enabled is False
-  assert app.service_states["ohunerin"].enabled is False
-  assert "ohunerin" not in app.components
+  assert app.settings.andika_enabled is False
+  assert app.service_states["andika"].enabled is False
+  assert "andika" not in app.components
   component.stop.assert_awaited_once()
-  app.ha_device.publish_service_enabled_state.assert_called_with("ohunerin", False)
+  app.ha_device.publish_service_enabled_state.assert_called_with("voice-assistant", False)
   assert app._publish_discovery.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_handle_voice_error_speaks_error() -> None:
+  from device.core.app import DeviceApplication
+  from device.core.settings import Settings
+
+  fake_settings = Settings(
+    _env_file=None,
+    node_id="test-node",
+    language="fr",
+    ohunerin_host="localhost",
+    andika_host="localhost",
+    mqtt_broker="localhost",
+    mqtt_discovery=False,
+  )
+
+  with patch("device.core.app.get_settings", return_value=fake_settings):
+    app = DeviceApplication()
+
+  app.play_sound_cue = AsyncMock()
+  app.executor = MagicMock()
+  app.executor.execute_response = AsyncMock()
+
+  await app.handle_voice_error()
+
+  app.play_sound_cue.assert_awaited_once_with("error")
+  response = app.executor.execute_response.await_args.args[0]
+  assert response.commands[0].type == "announce"
+  assert "comprendre" in response.commands[0].text
+  assert "réessayer" in response.commands[0].text
+
+
+@pytest.mark.asyncio
+async def test_sound_detection_toggle_restarts_wakeword_service() -> None:
+  from device.core.app import DeviceApplication
+  from device.core.components import ServiceState
+  from device.core.settings import Settings
+
+  fake_settings = Settings(
+    _env_file=None,
+    node_id="test-node",
+    ohunerin_host="localhost",
+    andika_host="localhost",
+    mqtt_broker="localhost",
+    mqtt_discovery=False,
+  )
+
+  with patch("device.core.app.get_settings", return_value=fake_settings):
+    app = DeviceApplication()
+
+  app.audio = MagicMock()
+  app.audio.needs_audio = True
+  app.ha_device = MagicMock()
+  app.shared_resources = {}
+  app.service_states = {"ohunerin": ServiceState(enabled=True, status="online")}
+  old_component = MagicMock()
+  old_component.stop = AsyncMock()
+  new_component = MagicMock()
+  new_component.start = AsyncMock()
+  new_config = MagicMock()
+  app.components = {"ohunerin": old_component}
+  app.component_configs = {"ohunerin": MagicMock()}
+  app._create_component_config = MagicMock(return_value=new_config)
+  app._publish_discovery = AsyncMock()
+
+  with patch.dict(
+    "device.core.app.COMPONENTS",
+    {"ohunerin": (MagicMock(), MagicMock(return_value=new_component))},
+    clear=True,
+  ):
+    await app._set_sound_detection_enabled(False)
+
+  assert app.settings.sound_detection_enabled is False
+  old_component.stop.assert_awaited_once()
+  new_component.start.assert_awaited_once_with(new_config, app.shared_resources)
+  app.ha_device.publish_service_enabled_state.assert_called_once_with("ambient-sound", False)
+  app._publish_discovery.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_microphone_mute_stops_and_restarts_voice_services() -> None:
+  from device.core.app import DeviceApplication
+  from device.core.components import ServiceState
+  from device.core.settings import Settings
+
+  fake_settings = Settings(
+    _env_file=None,
+    node_id="test-node",
+    ohunerin_host="localhost",
+    andika_host="localhost",
+    mqtt_broker="localhost",
+    mqtt_discovery=False,
+  )
+
+  with patch("device.core.app.get_settings", return_value=fake_settings):
+    app = DeviceApplication()
+
+  app.audio = MagicMock()
+  app.audio.needs_audio = True
+  app.audio.speaker_enabled = True
+  app.audio.device_state = {}
+  app.ha_device = MagicMock()
+  app.shared_resources = {}
+  app.service_states = {
+    "ohunerin": ServiceState(enabled=True, status="online"),
+    "andika": ServiceState(enabled=True, status="idle"),
+  }
+  app.components = {"ohunerin": MagicMock(), "andika": MagicMock()}
+  app.component_configs = {"ohunerin": MagicMock(), "andika": MagicMock()}
+
+  for component in app.components.values():
+    component.stop = AsyncMock()
+
+  app._publish_discovery = AsyncMock()
+  app._publish_service_statuses = MagicMock()
+
+  await app._apply_microphone_muted(True)
+
+  assert app.settings.microphone_muted is True
+  assert app.audio.device_state["microphone_muted"] is True
+  assert app.components == {}
+  assert app.service_states["ohunerin"].status == "muted"
+  assert app.service_states["andika"].status == "muted"
+  app.ha_device.set_mute_state.assert_called_once_with(True)
+  app._publish_service_statuses.assert_called_once()
+
+  first_ohunerin = MagicMock()
+  first_ohunerin.start = AsyncMock()
+  first_andika = MagicMock()
+  first_andika.start = AsyncMock()
+  factories = {
+    "ohunerin": (MagicMock(), MagicMock(return_value=first_ohunerin)),
+    "andika": (MagicMock(), MagicMock(return_value=first_andika)),
+  }
+
+  with patch.dict("device.core.app.COMPONENTS", factories, clear=True):
+    await app._apply_microphone_muted(False)
+
+  assert app.settings.microphone_muted is False
+  assert app.audio.device_state["microphone_muted"] is False
+  assert set(app.components) == {"ohunerin", "andika"}
+  assert app.service_states["ohunerin"].status == "starting"
+  assert app.service_states["andika"].status == "starting"
+  first_ohunerin.start.assert_awaited_once()
+  first_andika.start.assert_awaited_once()
+  app._publish_discovery.assert_awaited_once()
 
 
 @pytest.mark.asyncio
@@ -535,12 +719,12 @@ async def test_service_toggle_is_persisted(tmp_path) -> None:
   with patch("device.core.app.get_settings", return_value=fake_settings):
     app = DeviceApplication()
 
-  app._set_component_enabled = AsyncMock()
+  app._set_sound_detection_enabled = AsyncMock()
 
-  await app.apply_settings_updates({"ohunerin_enabled": False})
+  await app.apply_settings_updates({"sound_detection_enabled": False})
 
-  app._set_component_enabled.assert_awaited_once_with("ohunerin", False)
-  assert read_runtime_settings_cache(fake_settings).ohunerin_enabled is False
+  app._set_sound_detection_enabled.assert_awaited_once_with(False)
+  assert read_runtime_settings_cache(fake_settings).sound_detection_enabled is False
 
 
 @pytest.mark.asyncio

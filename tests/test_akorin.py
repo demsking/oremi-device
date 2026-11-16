@@ -232,5 +232,6 @@ async def test_akorin_timeout_returns_discreet_error_message() -> None:
 
   assert result is not None
   assert result.commands[0].type == "announce"
-  assert "reponse" in result.commands[0].text
+  assert "comprendre" in result.commands[0].text
+  assert "réessayer" in result.commands[0].text
   assert cues == ["error"]

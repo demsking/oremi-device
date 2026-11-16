@@ -62,6 +62,7 @@ class Speech2Text(AudioStreamComponent[AndikaConfig]):
     self._transcription_active = False
     self._conversation_event_handler: Callable[[ConversationEvent], Awaitable[None]] | None = None
     self._final_transcription_handler: Callable[[str], Awaitable[None]] | None = None
+    self._voice_error_handler: Callable[[], Awaitable[None]] | None = None
     self._publisher: Any = None
     self._active_stream_container: ActiveStreamContainer | dict[str, Any] = {}
     self._device_state: DeviceState | dict[str, Any] = {}
@@ -244,6 +245,10 @@ class Speech2Text(AudioStreamComponent[AndikaConfig]):
       except Exception:
         pass
 
+  async def _report_voice_error(self) -> None:
+    if self._voice_error_handler:
+      await self._voice_error_handler()
+
   async def _handle_transcription_event(self, event: ConversationEvent) -> None:
     self._transcription_result_received = True
     await self._stop_listening()
@@ -281,6 +286,7 @@ class Speech2Text(AudioStreamComponent[AndikaConfig]):
         if self._conversation_event_handler:
           await self._conversation_event_handler("cancelled")
 
+        await self._report_voice_error()
         return
 
       logger.info(f"Andika conversation timed out after {self.settings.conversation_timeout:g}s")
@@ -376,6 +382,7 @@ class Speech2Text(AudioStreamComponent[AndikaConfig]):
           logger.error(f"Andika connection error during transcription turn: {error}")
           if self._conversation_event_handler:
             await self._conversation_event_handler("cancelled")
+          await self._report_voice_error()
         finally:
           if transcribing_task and not transcribing_task.done():
             transcribing_task.cancel()
@@ -414,6 +421,7 @@ class Speech2Text(AudioStreamComponent[AndikaConfig]):
     self._wakeword_event = shared_resources.get("wakeword_event")
     self._conversation_event_handler = shared_resources.get("conversation_event_handler")
     self._final_transcription_handler = shared_resources.get("final_transcription_handler")
+    self._voice_error_handler = shared_resources.get("voice_error_handler")
     self.report_status("idle")
     andika_uri = self.build_connection_uri(config)
 
@@ -441,6 +449,7 @@ class Speech2Text(AudioStreamComponent[AndikaConfig]):
     self._wakeword_event = shared_resources.get("wakeword_event")
     self._conversation_event_handler = shared_resources.get("conversation_event_handler")
     self._final_transcription_handler = shared_resources.get("final_transcription_handler")
+    self._voice_error_handler = shared_resources.get("voice_error_handler")
     self._handle_task_done = shared_resources.get("handle_task_done")
     self.report_status("idle")
     audio_stream = active_stream_container.get("stream")

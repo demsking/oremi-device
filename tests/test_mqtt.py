@@ -293,11 +293,11 @@ def test_disabled_audio_discovery(mock_mqtt_class) -> None:
     for call in mock_client.publish.call_args_list
     if call.args[0].endswith(
       (
-        "/ohunerin_enabled/config",
-        "/andika_enabled/config",
-        "/ohunerin_status/config",
-        "/andika_status/config",
-        "/tts_status/config",
+        "/ambient_sound/config",
+        "/voice_assistant/config",
+        "/wake-word_status/config",
+        "/voice-assistant_status/config",
+        "/voice-responses_status/config",
       )
     )
   }
@@ -536,33 +536,35 @@ def test_service_control_and_status_discovery(mock_mqtt_class) -> None:
   client.publish_discovery_configs(
     input_devices=[],
     current_device="",
-    ohunerin_enabled=False,
+    sound_detection_enabled=False,
     andika_enabled=True,
   )
 
   published = {call.args[0]: call.args[1] for call in mock_client_instance.publish.call_args_list}
 
-  ohunerin_switch = json.loads(published["homeassistant/switch/oremi-device-kitchen/ohunerin_enabled/config"])
-  andika_switch = json.loads(published["homeassistant/switch/oremi-device-kitchen/andika_enabled/config"])
-  ohunerin_status = json.loads(published["homeassistant/sensor/oremi-device-kitchen/ohunerin_status/config"])
-  tts_status = json.loads(published["homeassistant/sensor/oremi-device-kitchen/tts_status/config"])
-  device_status = json.loads(published["homeassistant/sensor/oremi-device-kitchen/status/config"])
+  ambient_switch = json.loads(published["homeassistant/switch/oremi-device-kitchen/ambient_sound/config"])
+  assistant_switch = json.loads(published["homeassistant/switch/oremi-device-kitchen/voice_assistant/config"])
+  wakeword_status = json.loads(published["homeassistant/sensor/oremi-device-kitchen/wake-word_status/config"])
+  tts_status = json.loads(published["homeassistant/sensor/oremi-device-kitchen/voice-responses_status/config"])
+  device_status = json.loads(published["homeassistant/sensor/oremi-device-kitchen/device_status/config"])
 
-  assert ohunerin_switch["command_topic"] == "oremi/device/nodes/kitchen/services/ohunerin/enabled/set"
-  assert ohunerin_switch["state_topic"] == "oremi/device/nodes/kitchen/services/ohunerin/enabled/state"
-  assert ohunerin_switch["payload_on"] == "ON"
-  assert ohunerin_switch["payload_off"] == "OFF"
-  assert andika_switch["command_topic"].endswith("/services/andika/enabled/set")
-  assert published["oremi/device/nodes/kitchen/services/ohunerin/enabled/state"] == "OFF"
-  assert published["oremi/device/nodes/kitchen/services/andika/enabled/state"] == "ON"
+  assert ambient_switch["name"] == "Ambient sound detection"
+  assert ambient_switch["command_topic"] == "oremi/device/nodes/kitchen/services/ambient-sound/enabled/set"
+  assert ambient_switch["state_topic"] == "oremi/device/nodes/kitchen/services/ambient-sound/enabled/state"
+  assert ambient_switch["payload_on"] == "ON"
+  assert ambient_switch["payload_off"] == "OFF"
+  assert assistant_switch["name"] == "Voice assistant"
+  assert assistant_switch["command_topic"].endswith("/services/voice-assistant/enabled/set")
+  assert published["oremi/device/nodes/kitchen/services/ambient-sound/enabled/state"] == "OFF"
+  assert published["oremi/device/nodes/kitchen/services/voice-assistant/enabled/state"] == "ON"
 
-  assert ohunerin_status["state_topic"] == "oremi/device/nodes/kitchen/services/ohunerin/status"
-  assert ohunerin_status["json_attributes_topic"] == ohunerin_status["state_topic"]
-  assert ohunerin_status["value_template"] == "{{ value_json.state }}"
-  assert ohunerin_status["entity_category"] == "diagnostic"
-  assert tts_status["state_topic"] == "oremi/device/nodes/kitchen/services/tts/status"
+  assert wakeword_status["state_topic"] == "oremi/device/nodes/kitchen/services/wake-word/status"
+  assert wakeword_status["json_attributes_topic"] == wakeword_status["state_topic"]
+  assert wakeword_status["value_template"] == "{{ value_json.state }}"
+  assert wakeword_status["entity_category"] == "diagnostic"
+  assert tts_status["state_topic"] == "oremi/device/nodes/kitchen/services/voice-responses/status"
   assert device_status["state_topic"] == "oremi/device/nodes/kitchen/device/status"
-  assert device_status["unique_id"] == "oremi-device-kitchen_status"
+  assert device_status["unique_id"] == "oremi-device-kitchen_device_status"
 
 
 @patch("paho.mqtt.client.Client")
@@ -575,14 +577,14 @@ def test_publish_service_status_and_enabled_state(mock_mqtt_class) -> None:
   )
   mock_client_instance = mock_mqtt_class.return_value
 
-  client.publish_service_enabled_state("ohunerin", False)
+  client.publish_service_enabled_state("ambient-sound", False)
   client.publish_service_status("ohunerin", "error", enabled=False, detail="connection refused")
   client.publish_device_status("running", started_at="2026-11-16T08:00:00+00:00")
 
   calls = mock_client_instance.publish.call_args_list
-  assert calls[0].args == ("oremi/device/nodes/kitchen/services/ohunerin/enabled/state", "OFF")
+  assert calls[0].args == ("oremi/device/nodes/kitchen/services/ambient-sound/enabled/state", "OFF")
   assert calls[0].kwargs["retain"] is True
-  assert calls[1].args[0] == "oremi/device/nodes/kitchen/services/ohunerin/status"
+  assert calls[1].args[0] == "oremi/device/nodes/kitchen/services/wake-word/status"
   assert json.loads(calls[1].args[1]) == {
     "state": "error",
     "enabled": False,
@@ -611,16 +613,17 @@ def test_disabled_services_hide_data_sensors(mock_mqtt_class) -> None:
     input_devices=[],
     current_device="",
     microphone_enabled=True,
-    ohunerin_enabled=False,
+    sound_detection_enabled=False,
     andika_enabled=False,
   )
 
   published = {call.args[0]: call.args[1] for call in mock_client_instance.publish.call_args_list}
 
-  for entity in ("transcription", "wakeword", "sound"):
-    assert published[f"homeassistant/sensor/oremi-device-kitchen/{entity}/config"] == ""
+  assert published["homeassistant/sensor/oremi-device-kitchen/transcription/config"] == ""
+  assert published["homeassistant/sensor/oremi-device-kitchen/sound/config"] == ""
+  assert published["homeassistant/sensor/oremi-device-kitchen/wakeword/config"] != ""
 
-  assert published["oremi/device/nodes/kitchen/services/ohunerin/enabled/state"] == "OFF"
-  assert published["oremi/device/nodes/kitchen/services/andika/enabled/state"] == "OFF"
-  assert "homeassistant/switch/oremi-device-kitchen/ohunerin_enabled/config" in published
-  assert "homeassistant/sensor/oremi-device-kitchen/ohunerin_status/config" in published
+  assert published["oremi/device/nodes/kitchen/services/ambient-sound/enabled/state"] == "OFF"
+  assert published["oremi/device/nodes/kitchen/services/voice-assistant/enabled/state"] == "OFF"
+  assert "homeassistant/switch/oremi-device-kitchen/ambient_sound/config" in published
+  assert "homeassistant/sensor/oremi-device-kitchen/wake-word_status/config" in published

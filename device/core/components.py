@@ -41,6 +41,7 @@ from dataclasses import dataclass
 from typing import Any
 from typing import Generic
 from typing import Literal
+from typing import NotRequired
 from typing import TypedDict
 from typing import TypeVar
 
@@ -56,7 +57,7 @@ from device.core.settings import Settings
 # e.g. ("sensor", "wakeword", {"name": "Wakeword", ...})
 HAEntity = tuple[str, str, dict]
 ComponentConfigModel = TypeVar("ComponentConfigModel", bound=BaseModel)
-ServiceStatus = Literal["disabled", "starting", "idle", "online", "busy", "error", "offline"]
+ServiceStatus = Literal["disabled", "starting", "idle", "online", "busy", "error", "offline", "muted"]
 
 
 @dataclass
@@ -93,6 +94,7 @@ class SharedResources(TypedDict):
   final_transcription_handler: Callable[[str], Awaitable[None]]
   sound_cue_handler: Callable[[SoundCue], Awaitable[None]]
   cancel_active_processing: Callable[[], Awaitable[None]]
+  voice_error_handler: NotRequired[Callable[[], Awaitable[None]]]
   mqtt_publisher: Any
 
 
