@@ -19,6 +19,7 @@ import miniaudio
 
 from device.core.audio import Audio
 from device.core.audio import AudioDeviceError
+from device.core.audio import match_device_name
 from device.core.components import AudioStreamComponent
 from device.core.components import DeviceState
 from device.core.settings import Settings
@@ -111,13 +112,15 @@ class AudioService:
     if not self.needs_audio:
       return
 
-    def get_input_signatures():
+    def get_input_signatures() -> set[str] | None:
       try:
         current_devs = miniaudio.Devices().get_captures()
         return {d["name"] for d in current_devs}
       except Exception as e:
+        # A transient ALSA/miniaudio query failure must not look like a
+        # device-list change; otherwise the monitor switches devices.
         logger.warning(f"Failed to query audio devices: {e}")
-        return set()
+        return None
 
     last_signatures = await asyncio.to_thread(get_input_signatures)
 
@@ -126,8 +129,35 @@ class AudioService:
 
       current_signatures = await asyncio.to_thread(get_input_signatures)
 
-      if current_signatures != last_signatures:
-        logger.info("Audio device change detected.")
-        last_signatures = current_signatures
+      if current_signatures is None:
+        continue
 
-        await queue.put("__auto_select__")
+      if last_signatures is None:
+        last_signatures = current_signatures
+        continue
+
+      if current_signatures == last_signatures:
+        continue
+
+      last_signatures = current_signatures
+      selected_device = self.settings.microphone_device
+
+      if self.settings.microphone_device_index is not None:
+        logger.debug("Audio device list changed; keeping explicitly indexed microphone")
+        continue
+
+      if selected_device:
+        # Never replace an explicit user selection. Only retry the selected
+        # device when it becomes available and no stream is open yet.
+        if self.audio_stream is None and any(
+          match_device_name(selected_device, name) for name in current_signatures
+        ):
+          logger.info(f"Selected microphone '{selected_device}' is available again; reconnecting")
+          await queue.put(selected_device)
+        else:
+          logger.debug(f"Audio device list changed; keeping selected microphone '{selected_device}'")
+
+        continue
+
+      logger.info("Audio device change detected; auto-selecting microphone")
+      await queue.put("__auto_select__")

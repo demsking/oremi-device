@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
+import asyncio
 from unittest.mock import MagicMock
 from unittest.mock import patch
 
@@ -172,6 +173,28 @@ def test_find_device_by_name_exact_matching() -> None:
   assert selected_hid["name"] == "USB Audio and HID, USB Audio"
 
 
+def test_find_device_by_name_ignores_unusable_devices_when_physical_filtered() -> None:
+  from device.core.audio import find_device_by_name
+
+  devices = [
+    {
+      "name": "Discard all samples (playback) or generate zero samples (capture)",
+      "id": 0,
+      "formats": [{"samplerate": 48000, "channels": 0}],
+    },
+    {
+      "name": "eMeet Luna Mono",
+      "id": 2,
+      "formats": [{"samplerate": 16000, "channels": 1}],
+    },
+  ]
+
+  assert find_device_by_name("Discard all samples (playback)", devices, filter_physical=True) is None
+  selected = find_device_by_name("eMeet Luna Mono", devices, filter_physical=True)
+  assert selected is not None
+  assert selected["name"] == "eMeet Luna Mono"
+
+
 def test_sound_detector_terminate_with_no_stream() -> None:
   mock_mqtt = MagicMock()
   mock_ws = MagicMock()
@@ -226,3 +249,164 @@ async def test_audio_service_change_device_notifies_components() -> None:
     res = await service.change_audio_device("Mic", components=[component])
     assert res is True
     assert component.device_changed_called is True
+
+
+def test_find_compatible_device_ignores_discard_and_zero_channel_devices() -> None:
+  with patch("miniaudio.Devices") as mock_devices:
+    mock_devices.return_value.get_captures.return_value = [
+      {
+        "name": "Discard all samples (playback) or generate zero samples (capture)",
+        "id": 0,
+        "formats": [{"samplerate": 48000, "channels": 0}],
+      },
+      {
+        "name": "Default Audio Device",
+        "id": 1,
+        "formats": [{"samplerate": 48000, "channels": 0}],
+      },
+      {
+        "name": "eMeet Luna Mono",
+        "id": 2,
+        "formats": [{"samplerate": 16000, "channels": 1}],
+      },
+    ]
+
+    compatible = Audio.find_compatible_device()
+
+  assert compatible is not None
+  assert compatible["name"] == "eMeet Luna Mono"
+
+
+def test_find_compatible_device_returns_none_when_only_unusable_devices_exist() -> None:
+  with patch("miniaudio.Devices") as mock_devices:
+    mock_devices.return_value.get_captures.return_value = [
+      {
+        "name": "Discard all samples (playback) or generate zero samples (capture)",
+        "id": 0,
+        "formats": [{"samplerate": 48000, "channels": 0}],
+      },
+      {
+        "name": "Default Audio Device",
+        "id": 1,
+        "formats": [{"samplerate": 48000, "channels": 0}],
+      },
+    ]
+
+    assert Audio.find_compatible_device() is None
+
+
+def test_get_compatible_input_devices_excludes_discard_and_zero_channel_devices() -> None:
+  with patch("miniaudio.Devices") as mock_devices:
+    mock_devices.return_value.get_captures.return_value = [
+      {
+        "name": "Discard all samples (playback) or generate zero samples (capture)",
+        "id": 0,
+        "formats": [{"samplerate": 48000, "channels": 0}],
+      },
+      {
+        "name": "Default Audio Device",
+        "id": 1,
+        "formats": [{"samplerate": 48000, "channels": 0}],
+      },
+      {
+        "name": "eMeet Luna Mono",
+        "id": 2,
+        "formats": [{"samplerate": 16000, "channels": 1}],
+      },
+    ]
+
+    assert Audio.get_compatible_input_devices() == ["eMeet Luna Mono"]
+
+
+@pytest.mark.asyncio
+async def test_monitor_devices_keeps_selected_microphone_when_device_list_changes(monkeypatch) -> None:
+  from device.core.settings import Settings
+  from device.services.audio_service import AudioService
+
+  settings = Settings(
+    _env_file=None,
+    node_id="test-node",
+    ohunerin_host="localhost",
+    andika_host="localhost",
+    mqtt_broker="localhost",
+    microphone_device="eMeet Luna Mono",
+  )
+  service = AudioService(settings)
+  service.audio_stream = MagicMock()
+  queue: asyncio.Queue[str] = asyncio.Queue()
+  device_lists = [
+    [{"name": "eMeet Luna Mono", "id": 1}],
+    [{"name": "Camera Mono", "id": 2}],
+    [{"name": "eMeet Luna Mono", "id": 1}, {"name": "Camera Mono", "id": 2}],
+    [{"name": "Camera Mono", "id": 2}],
+  ]
+  index = 0
+
+  def get_captures():
+    nonlocal index
+    result = device_lists[min(index, len(device_lists) - 1)]
+    index += 1
+    return result
+
+  original_sleep = asyncio.sleep
+
+  async def fast_sleep(_: float) -> None:
+    await original_sleep(0.01)
+
+  monkeypatch.setattr("device.services.audio_service.asyncio.sleep", fast_sleep)
+
+  with patch("miniaudio.Devices") as mock_devices:
+    mock_devices.return_value.get_captures.side_effect = get_captures
+    task = asyncio.create_task(service.monitor_devices(queue))
+    await original_sleep(0.1)
+    task.cancel()
+
+    with pytest.raises(asyncio.CancelledError):
+      await task
+
+  assert queue.empty()
+
+
+@pytest.mark.asyncio
+async def test_monitor_devices_ignores_transient_device_query_failures(monkeypatch) -> None:
+  from device.core.settings import Settings
+  from device.services.audio_service import AudioService
+
+  settings = Settings(
+    _env_file=None,
+    node_id="test-node",
+    ohunerin_host="localhost",
+    andika_host="localhost",
+    mqtt_broker="localhost",
+    microphone_device="eMeet Luna Mono",
+  )
+  service = AudioService(settings)
+  queue: asyncio.Queue[str] = asyncio.Queue()
+  calls = 0
+
+  def get_captures():
+    nonlocal calls
+    calls += 1
+
+    if calls == 2:
+      raise OSError("can't get device info")
+
+    return [{"name": "eMeet Luna Mono", "id": 1}]
+
+  original_sleep = asyncio.sleep
+
+  async def fast_sleep(_: float) -> None:
+    await original_sleep(0.01)
+
+  monkeypatch.setattr("device.services.audio_service.asyncio.sleep", fast_sleep)
+
+  with patch("miniaudio.Devices") as mock_devices:
+    mock_devices.return_value.get_captures.side_effect = get_captures
+    task = asyncio.create_task(service.monitor_devices(queue))
+    await original_sleep(0.1)
+    task.cancel()
+
+    with pytest.raises(asyncio.CancelledError):
+      await task
+
+  assert queue.empty()

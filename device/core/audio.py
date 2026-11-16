@@ -29,6 +29,24 @@ class AudioDeviceError(Exception):
   """Exception raised when an audio device cannot be found or initialized."""
 
 
+_UNUSABLE_CAPTURE_PATTERNS = ("discard", "zero samples", "generate zero", "dummy")
+
+
+def is_usable_capture_device(device: dict) -> bool:
+  """Return whether a miniaudio capture device can provide real audio samples."""
+  name = str(device.get("name", "")).lower()
+
+  if any(pattern in name for pattern in _UNUSABLE_CAPTURE_PATTERNS):
+    return False
+
+  formats = device.get("formats") or []
+
+  if formats and all((fmt.get("channels") or 0) <= 0 for fmt in formats):
+    return False
+
+  return True
+
+
 _GENERIC_TERMS_TO_IGNORE: set[str] = {
   "audio",
   "usb",
@@ -96,6 +114,9 @@ def find_device_by_name(requested_name: str, devices: list[dict], *, filter_phys
     return None
 
   req_lower = req.lower()
+
+  if filter_physical:
+    devices = [d for d in devices if is_usable_capture_device(d)]
 
   # Pass 1: Exact match (case-insensitive)
   for dev in devices:
@@ -346,16 +367,19 @@ class Audio:
     except Exception:
       return None
 
-    # First pass: try to find a physical, compatible device
+    # First pass: try to find a physical, usable capture device.
     for idx, device in enumerate(devices):
       name = device["name"]
 
-      if Audio.is_physical_microphone(name):
+      if Audio.is_physical_microphone(name) and is_usable_capture_device(device):
         return {"index": idx, "name": name, "id": device.get("id")}
 
-    # Second pass fallback: if no physical compatible device, check any input device
+    # Second pass fallback: accept virtual devices only when they can provide
+    # real samples. This prevents selecting ALSA's "Discard all samples" null
+    # capture or a default device that reports zero input channels.
     for idx, device in enumerate(devices):
-      return {"index": idx, "name": device["name"], "id": device.get("id")}
+      if is_usable_capture_device(device):
+        return {"index": idx, "name": device["name"], "id": device.get("id")}
 
     return None
 
@@ -452,9 +476,12 @@ class Audio:
     seen = set()
     matched_devices = []
 
-    # First pass: check for physical devices (or active device)
+    # First pass: check for physical, usable devices (or the active device)
     for device in devices:
       name = device["name"]
+
+      if not is_usable_capture_device(device):
+        continue
 
       if not Audio.is_physical_microphone(name) and not (current_device and name == current_device):
         continue
@@ -463,12 +490,12 @@ class Audio:
         seen.add(name)
         matched_devices.append(name)
 
-    # If no compatible physical devices found, fall back to virtual devices
+    # If no compatible physical devices found, fall back to usable virtual devices
     if not matched_devices:
       for device in devices:
         name = device["name"]
 
-        if name not in seen:
+        if is_usable_capture_device(device) and name not in seen:
           seen.add(name)
           matched_devices.append(name)
 
