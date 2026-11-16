@@ -585,21 +585,26 @@ values matching the structural block patterns declared with the designated
 ### Required Settings
 
 - **`OREMI_DEVICE_NODE_ID`** – Unique node identifier used in MQTT device topics.
-- **`OREMI_DEVICE_OHUNERIN_HOST`** – Ohunerin server host or IP address.
+- **`OREMI_DEVICE_OHUNERIN_HOST`** – Ohunerin server host or IP address. Required only when `OREMI_DEVICE_MICROPHONE_ENABLED=true`.
 - **`OREMI_DEVICE_MQTT_BROKER`** – MQTT broker host or IP address.
 
-Depending on your configured `OREMI_DEVICE_TRANSCRIPTION_BACKEND`, one additional setting is strictly enforced:
+When the microphone is enabled, the configured `OREMI_DEVICE_TRANSCRIPTION_BACKEND` requires one additional setting:
 
 - **`andika` engine backend**: `OREMI_DEVICE_ANDIKA_HOST` must point to an active Andika engine instance.
 - **`whisper.cpp` engine backend**: `OREMI_DEVICE_WHISPER_URL` must point to a target HTTP endpoint.
+
+For a microphone-only node, set `OREMI_DEVICE_MICROPHONE_ENABLED=true` and
+`OREMI_DEVICE_SPEAKER_ENABLED=false`. For an output-only node, use the inverse
+values; it can then run without an Ohunerin or transcription service. Leave
+both enabled for the combined voice-assistant device.
 
 ### Audio Hardware
 
 - **`OREMI_DEVICE_MICROPHONE_DEVICE_INDEX`** – Explicit host system hardware device identifier index for audio recording capture mapping. Default: `None` (System Auto).
 - **`OREMI_DEVICE_MICROPHONE_DEVICE`** – Specific named identifier string overlaying microphone targeting configurations. Default: `None`.
-- **`OREMI_DEVICE_MICROPHONE_ENABLED`** – Controls initial loading execution structures targeting physical capturing components. Default: `true`.
+- **`OREMI_DEVICE_MICROPHONE_ENABLED`** – Enables microphone capture, wake-word detection and transcription. Set to `false` for a speaker-only MQTT/Home Assistant node. Default: `true`.
 - **`OREMI_DEVICE_MICROPHONE_MUTED`** – Initializes the recording input hardware engine stream in a quiet state. Default: `false`.
-- **`OREMI_DEVICE_SPEAKER_ENABLED`** – Activates peripheral audio reproduction routines and sound validation configurations. Default: `true`.
+- **`OREMI_DEVICE_SPEAKER_ENABLED`** – Enables playback, volume and mute control. Set to `false` for a microphone-only MQTT/Home Assistant node. Default: `true`. When both flags are `true`, the node operates as a combined microphone and speaker.
 - **`OREMI_DEVICE_SPEAKER_DEVICE`** – Explicit device identifier assignment mapping the designated sound driver. Default: `None`.
 - **`OREMI_DEVICE_SPEAKER_MUTED`** – Initializes sound rendering outputs to silent runtime configurations. Default: `false`.
 - **`OREMI_DEVICE_SPEAKER_VOLUME`** – Floating level index mapping target playback audio scales between `0.0` and `1.0`. Default: `1.0`.
