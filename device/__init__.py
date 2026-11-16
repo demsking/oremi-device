@@ -18,6 +18,3 @@ from device.core.app import DeviceApplication
 async def start() -> None:
   app = DeviceApplication()
   await app.run()
-
-
-app = start()

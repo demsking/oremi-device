@@ -17,9 +17,15 @@ Project repository: https://gitlab.com/demsking/oremi-device
 
 ## Deployment
 
-Oremi Device is distributed as a multi-platform Docker image for `linux/amd64` and `linux/arm64`. It can be deployed as a standalone agent or integrated into the Oremi ecosystem alongside services such as Ohunerin, Akọrin, Andika, and whisper.cpp.
+### Docker Image
 
-The following sections describe the available installation methods, persistent storage requirements, and example deployments using both Docker and Docker Compose.
+The official [`demsking/oremi-device`](https://hub.docker.com/r/demsking/oremi-device)
+image on Docker Hub supports `linux/amd64` and `linux/arm64`. It can run as a
+standalone audio endpoint or alongside Ohunerin, Akọrin, Andika, and
+whisper.cpp.
+
+The following sections describe the available installation methods, persistent
+storage requirements, and Docker or Docker Compose deployments.
 
 ### Command Line
 
@@ -63,11 +69,9 @@ $ oremi-device
 
 All device configuration, including server addresses, audio parameters, and UI localization context, is provided through environment variables or a `.env` file rather than command-line options.
 
-### Docker Image
-
-The [`demsking/oremi-device`](https://www.google.com/search?q=https://hub.docker.com/r/demsking/oremi-device) Docker image is officially available on Docker Hub, supporting both `linux/amd64` and `linux/arm64` platforms.
-
-Because it interacts directly with host audio devices for capture and output, containerized deployments typically require binding local sound architectures (`/dev/snd`) and utilizing host-networking setups where local low-latency routing is preferred.
+Because it interacts directly with host audio devices for capture and output,
+containerized deployments typically require binding `/dev/snd` and, where
+appropriate, host networking for low-latency local routing.
 
 ### Volumes
 
@@ -599,7 +603,7 @@ Depending on your configured `OREMI_DEVICE_TRANSCRIPTION_BACKEND`, one additiona
 - **`OREMI_DEVICE_SPEAKER_DEVICE`** – Explicit device identifier assignment mapping the designated sound driver. Default: `None`.
 - **`OREMI_DEVICE_SPEAKER_MUTED`** – Initializes sound rendering outputs to silent runtime configurations. Default: `false`.
 - **`OREMI_DEVICE_SPEAKER_VOLUME`** – Floating level index mapping target playback audio scales between `0.0` and `1.0`. Default: `1.0`.
-- **`OREMI_DEVICE_DATA_PATH`** – Explicit folder destination path strings capturing state file targets. Defaults: `/oremi/data`.
+- **`OREMI_DEVICE_DATA_PATH`** – Directory used for the runtime settings cache. Default: `$XDG_DATA_HOME/oremi-device` (or `~/.local/share/oremi-device`); the Docker image sets `/oremi/data`.
 
 ### Transcription Controls
 
@@ -626,14 +630,18 @@ Depending on your configured `OREMI_DEVICE_TRANSCRIPTION_BACKEND`, one additiona
 
 ### Ohunerin Wake Word
 
+- **`OREMI_DEVICE_OHUNERIN_HOST`** – Ohunerin server host or IP address.
 - **`OREMI_DEVICE_OHUNERIN_PORT`** – Connectivity port routing Ohunerin service sockets. Default: `5023`.
 - **`OREMI_DEVICE_OHUNERIN_THRESHOLD`** – Minimum operational score matching confidence boundaries. Default: `0.25`.
+- **`OREMI_DEVICE_OHUNERIN_CERT_FILE`** – CA certificate used for a secure Ohunerin connection. Default: `None`.
 
 ### Andika Engine
 
+- **`OREMI_DEVICE_ANDIKA_HOST`** – Andika server host or IP address when the Andika backend is selected.
 - **`OREMI_DEVICE_ANDIKA_PORT`** – Dedicated connection port routing Andika streams. Default: `5022`.
 - **`OREMI_DEVICE_ANDIKA_MODEL`** – Core system tracking string designating targeted local model profiles. Default: `zhifeixie/Mega-ASR`.
 - **`OREMI_DEVICE_ANDIKA_SAMPLERATE`** – Audio capture configuration sampling frequency. Default: `16000`.
+- **`OREMI_DEVICE_ANDIKA_CERT_FILE`** – CA certificate used for a secure Andika connection. Default: `None`.
 
 ### Whisper Engine
 
@@ -661,9 +669,10 @@ Depending on your configured `OREMI_DEVICE_TRANSCRIPTION_BACKEND`, one additiona
 - **`OREMI_DEVICE_MQTT_DISCOVERY`** – Activates autodiscovery configurations exposing targets inside Home Assistant systems. Default: `true`.
 - **`OREMI_DEVICE_MQTT_DISCOVERY_PREFIX`** – Primary discovery path root prefix targeting components. Default: `homeassistant`.
 
-### Security
+### MCP Server
 
-- **`OREMI_DEVICE_CERT_FILE`** – Local system path pointing toward explicit TLS certificate authorizer configurations. Default: `None`.
+- **`OREMI_DEVICE_SERVER_HOST`** – MCP server bind address. Default: `127.0.0.1`.
+- **`OREMI_DEVICE_SERVER_PORT`** – MCP server port. Default: `5048`.
 
 ### Logging Settings
 
@@ -673,17 +682,9 @@ Depending on your configured `OREMI_DEVICE_TRANSCRIPTION_BACKEND`, one additiona
 
 ### Verification and Error Diagnostics
 
-In validation scenarios where missing elements or incorrect values conflict with expected bounds, startup procedures break cleanly with an exit code of `2`.
-
-To safeguard system architecture integrity, diagnostics output only explicit parameter requirements, avoiding raw stack trace paths or inner system environment variable memory values:
-
-```text
-oremi-device: configuration error
-  - OREMI_DEVICE_OHUNERIN_HOST is required
-  - OREMI_DEVICE_ANDIKA_HOST is required
-  - OREMI_DEVICE_NODE_ID is required
-  - OREMI_DEVICE_MQTT_BROKER is required
-```
+Invalid or incomplete configuration prevents startup and the command exits with
+status `1`. The application logs the validation error; set the required
+variables listed above before retrying.
 
 ## MQTT
 
