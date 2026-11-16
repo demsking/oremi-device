@@ -280,6 +280,13 @@ def test_disabled_audio_discovery(mock_mqtt_class) -> None:
 
   assert len(audio_config_payloads) == 5
   assert all(payload == "" for payload in audio_config_payloads.values())
+  microphone_sensor_configs = {
+    call.args[0]: call.args[1]
+    for call in mock_client.publish.call_args_list
+    if call.args[0].endswith(("/transcription/config", "/wakeword/config", "/sound/config"))
+  }
+  assert len(microphone_sensor_configs) == 3
+  assert all(payload == "" for payload in microphone_sensor_configs.values())
   mock_client.publish.assert_any_call(
     "oremi/device/nodes/test-node/player/discovery",
     "",

@@ -234,6 +234,9 @@ class HomeAssistantDevice:
     self.client.connect(self.broker, self.port, keepalive=0)
     self.client.loop_start()
 
+  def _publish_discovery_config(self, topic: str, payload: dict, *, enabled: bool) -> None:
+    self.client.publish(topic, json.dumps(payload) if enabled else "", retain=True)
+
   def publish_discovery_configs(
     self,
     input_devices: list[str],
@@ -273,7 +276,7 @@ class HomeAssistantDevice:
       "device": device,
     }
     transcription_topic = f"{self.discovery_prefix}/sensor/{node_id}/transcription/config"
-    self.client.publish(transcription_topic, json.dumps(transcription_payload), retain=True)
+    self._publish_discovery_config(transcription_topic, transcription_payload, enabled=microphone_enabled)
 
     event_topic = self.parse_node_topic("events/detection")
     wakeword_payload = {
@@ -294,7 +297,7 @@ class HomeAssistantDevice:
       "device": device,
     }
     wakeword_topic = f"{self.discovery_prefix}/sensor/{node_id}/wakeword/config"
-    self.client.publish(wakeword_topic, json.dumps(wakeword_payload), retain=True)
+    self._publish_discovery_config(wakeword_topic, wakeword_payload, enabled=microphone_enabled)
 
     sound_payload: dict = {
       "name": "Sound Detector",
@@ -333,7 +336,7 @@ class HomeAssistantDevice:
       )
 
     sound_topic = f"{self.discovery_prefix}/sensor/{node_id}/sound/config"
-    self.client.publish(sound_topic, json.dumps(sound_payload), retain=True)
+    self._publish_discovery_config(sound_topic, sound_payload, enabled=microphone_enabled)
 
     # ── Additional custom entities (if provided) ──────────────────────────────
     for ha_domain, entity_slug, payload in entities or []:
