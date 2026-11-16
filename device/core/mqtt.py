@@ -412,6 +412,7 @@ class HomeAssistantDevice:
         "payload_not_available": "offline",
         "options": languages,
         "icon": "mdi:translate",
+        "entity_category": "config",
         "device": device,
       }
       language_topic = f"{self.discovery_prefix}/select/{node_id}/language/config"
@@ -430,6 +431,7 @@ class HomeAssistantDevice:
           "payload_available": "online",
           "payload_not_available": "offline",
           "icon": DEVICE_CONTEXT_ICONS[field],
+          "entity_category": "config",
           "device": device,
         }
         topic = f"{self.discovery_prefix}/text/{node_id}/{field}/config"
@@ -447,6 +449,7 @@ class HomeAssistantDevice:
           "payload_not_available": "offline",
           "options": options,
           "icon": DEVICE_CONTEXT_ICONS[field],
+          "entity_category": "config",
           "device": device,
         }
         topic = f"{self.discovery_prefix}/select/{node_id}/{field}/config"
@@ -466,6 +469,7 @@ class HomeAssistantDevice:
         "payload_not_available": "offline",
         "options": voices,
         "icon": "mdi:account-voice",
+        "entity_category": "config",
         "device": device,
       }
       voice_topic = f"{self.discovery_prefix}/select/{node_id}/voice/config"
@@ -488,6 +492,7 @@ class HomeAssistantDevice:
       "payload_available": "online",
       "payload_not_available": "offline",
       "icon": "mdi:microphone-off",
+      "entity_category": "config",
       "device": device,
     }
 
@@ -508,6 +513,7 @@ class HomeAssistantDevice:
       "payload_not_available": "offline",
       "options": input_devices,
       "icon": "mdi:microphone",
+      "entity_category": "config",
       "device": device,
     }
 
@@ -530,6 +536,7 @@ class HomeAssistantDevice:
       "payload_not_available": "offline",
       "options": output_devices or [],
       "icon": "mdi:speaker",
+      "entity_category": "config",
       "device": device,
     }
 
@@ -553,6 +560,7 @@ class HomeAssistantDevice:
       "payload_available": "online",
       "payload_not_available": "offline",
       "icon": "mdi:volume-off",
+      "entity_category": "config",
       "device": device,
     }
     speaker_mute_topic = f"{self.discovery_prefix}/switch/{node_id}/speaker_muted/config"
@@ -576,6 +584,7 @@ class HomeAssistantDevice:
       "mode": "slider",
       "unit_of_measurement": "%",
       "icon": "mdi:volume-high",
+      "entity_category": "config",
       "device": device,
     }
     speaker_volume_topic = f"{self.discovery_prefix}/number/{node_id}/speaker_volume/config"
@@ -628,6 +637,7 @@ class HomeAssistantDevice:
           "payload_available": "online",
           "payload_not_available": "offline",
           "icon": icon,
+          "entity_category": "config",
           "device": device,
         }
         topic = f"{self.discovery_prefix}/switch/{node_id}/{service.replace('-', '_')}/config"

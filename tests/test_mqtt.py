@@ -105,6 +105,7 @@ def test_publish_discovery_configs_no_entities(mock_mqtt_class) -> None:
   assert data_lang["unique_id"] == "oremi-device-oremi-ohunerin-custom_language"
   assert data_lang["options"] == ["fr", "en"]
   assert data_lang["icon"] == "mdi:translate"
+  assert data_lang["entity_category"] == "config"
 
   # Fifth call: language state
   call_lang_state = calls[4]
@@ -554,6 +555,7 @@ def test_service_control_and_status_discovery(mock_mqtt_class) -> None:
   assert ambient_switch["payload_on"] == "ON"
   assert ambient_switch["payload_off"] == "OFF"
   assert assistant_switch["name"] == "Voice assistant"
+  assert assistant_switch["entity_category"] == "config"
   assert assistant_switch["command_topic"].endswith("/services/voice-assistant/enabled/set")
   assert published["oremi/device/nodes/kitchen/services/ambient-sound/enabled/state"] == "OFF"
   assert published["oremi/device/nodes/kitchen/services/voice-assistant/enabled/state"] == "ON"
