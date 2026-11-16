@@ -612,7 +612,7 @@ runtime from Home Assistant.
 - **`OREMI_DEVICE_MICROPHONE_ENABLED`** – Enables microphone capture, wake-word detection and transcription. Set to `false` for a speaker-only MQTT/Home Assistant node. Default: `true`.
 - **`OREMI_DEVICE_MICROPHONE_MUTED`** – Initializes the recording input in a quiet state. While muted, the Ohunerin and Andika connections are stopped and microphone capture is fully disabled; unmuting reconnects them. Default: `false`.
 - **`OREMI_DEVICE_SPEAKER_ENABLED`** – Enables playback, volume and mute control. Set to `false` for a microphone-only MQTT/Home Assistant node. Default: `true`. When both flags are `true`, the node operates as a combined microphone and speaker.
-- **`OREMI_DEVICE_SPEAKER_DEVICE`** – Explicit device identifier assignment mapping the designated sound driver. Default: `None`.
+- **`OREMI_DEVICE_SPEAKER_DEVICE`** – Explicit device identifier assignment mapping the designated sound driver. Default: `None`. If the configured output cannot be opened at startup, the device falls back to the system default speaker; runtime selections are verified before being applied.
 - **`OREMI_DEVICE_SPEAKER_MUTED`** – Initializes sound rendering outputs to silent runtime configurations. Default: `false`.
 - **`OREMI_DEVICE_SPEAKER_VOLUME`** – Floating level index mapping target playback audio scales between `0.0` and `1.0`. Default: `1.0`.
 - **`OREMI_DEVICE_DATA_PATH`** – Directory used for the runtime settings cache. Default: `$XDG_DATA_HOME/oremi-device` (or `~/.local/share/oremi-device`); the Docker image sets `/oremi/data`.
@@ -653,7 +653,7 @@ runtime from Home Assistant.
 - **`OREMI_DEVICE_ANDIKA_ENABLED`** – Enables speech-to-text transcription (both `andika` and `whisper.cpp` backends). Set to `false` to start without a voice assistant. Default: `true`.
 - **`OREMI_DEVICE_ANDIKA_HOST`** – Andika server host or IP address when the Andika backend is selected and enabled.
 - **`OREMI_DEVICE_ANDIKA_PORT`** – Dedicated connection port routing Andika streams. Default: `5022`.
-- **`OREMI_DEVICE_ANDIKA_MODEL`** – Core system tracking string designating targeted local model profiles. Default: `zhifeixie/Mega-ASR`.
+- **`OREMI_DEVICE_ANDIKA_MODEL`** – Core system tracking string designating targeted local model profiles. Default: `zhifeixie/Mega-ASR`. The model must appear in the Andika server's `/api/models` response; otherwise the device logs a warning and the server may fall back to a default model that transcribes in an unexpected language.
 - **`OREMI_DEVICE_ANDIKA_SAMPLERATE`** – Audio capture configuration sampling frequency. Default: `16000`.
 - **`OREMI_DEVICE_ANDIKA_CERT_FILE`** – CA certificate used for a secure Andika connection. Default: `None`.
 
