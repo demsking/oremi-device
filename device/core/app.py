@@ -477,6 +477,8 @@ class DeviceApplication:
     if enabled:
       if self.settings.microphone_muted:
         self._set_service_status(name, "muted")
+      elif not self.audio.needs_audio:
+        self._set_service_status(name, "disabled")
       else:
         await self._start_component(name)
 
