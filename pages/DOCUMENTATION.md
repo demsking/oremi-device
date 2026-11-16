@@ -1178,6 +1178,44 @@ Example aggregate payload:
 - **Payload:** `ON` enables follow-up listening for Akorin messages classified
   as needing a user answer; `OFF` disables it.
 
+#### Services
+
+Ohunerin and Andika can be started or stopped at runtime. Both command topics
+accept `ON` or `OFF`; the retained state topics mirror the desired configuration.
+
+- **Ohunerin enable command:** `<OREMI_DEVICE_MQTT_TOPIC>/nodes/<OREMI_DEVICE_NODE_ID>/services/ohunerin/enabled/set`
+- **Ohunerin enable state:** `<OREMI_DEVICE_MQTT_TOPIC>/nodes/<OREMI_DEVICE_NODE_ID>/services/ohunerin/enabled/state`
+- **Andika enable command:** `<OREMI_DEVICE_MQTT_TOPIC>/nodes/<OREMI_DEVICE_NODE_ID>/services/andika/enabled/set`
+- **Andika enable state:** `<OREMI_DEVICE_MQTT_TOPIC>/nodes/<OREMI_DEVICE_NODE_ID>/services/andika/enabled/state`
+- **Service status:** `<OREMI_DEVICE_MQTT_TOPIC>/nodes/<OREMI_DEVICE_NODE_ID>/services/<service>/status`
+- **Device status:** `<OREMI_DEVICE_MQTT_TOPIC>/nodes/<OREMI_DEVICE_NODE_ID>/device/status`
+
+The service status payload is retained JSON:
+
+```json
+{"state": "online", "enabled": true, "detail": "connection refused"}
+```
+
+`detail` is only present after a failure. The state is one of `disabled`,
+`starting`, `idle`, `online`, `busy`, `error`, or `offline`. Ohunerin reports
+`online` only while its WebSocket is connected. Andika reports `idle` while it
+waits for a wake word, `busy` while transcribing, and `error` after a failed
+turn. Akọrin reports `idle`, `busy`, or `error` around each request. Speech
+synthesis reports `online` once its voices are loaded, `error` when the backend
+cannot be reached, and `disabled` when no TTS backend is configured.
+
+The device status payload is retained JSON:
+
+```json
+{"state": "running", "node_id": "kitchen", "version": "1.0.0b20", "started_at": "2026-11-16T08:00:00+00:00"}
+```
+
+`state` is `running` after startup and `stopped` during graceful shutdown.
+
+Disabling Ohunerin removes the wake-word trigger, so an enabled Andika service
+will stay idle. Disabling Andika keeps wake-word and sound detection running,
+but no transcription is produced.
+
 #### Microphone
 
 - **Select command:** `<OREMI_DEVICE_MQTT_TOPIC>/nodes/<OREMI_DEVICE_NODE_ID>/microphone/set`
@@ -1229,18 +1267,25 @@ retained discovery configurations below `homeassistant` for:
 - speaker selection, mute state, and volume
 - Ohunerin wake-word and sound sensors
 - Andika transcription sensor
+- Ohunerin and Andika enable switches
+- Ohunerin, Andika, Akọrin, speech synthesis, and device status sensors
 
 The entities share one device identifier derived from
 `OREMI_DEVICE_NODE_ID`. Available microphones and speakers are included as
 select options. When microphone or speaker support is disabled, the
-corresponding retained discovery configs are cleared.
+corresponding retained discovery configs are cleared. The wake-word and sound
+sensors are also cleared when Ohunerin is disabled, and the transcription
+sensor is cleared when Andika is disabled. Service enable switches and
+diagnostic status sensors stay visible so the current configuration can be
+inspected.
 
 Set `OREMI_DEVICE_MQTT_DISCOVERY=false` to disable discovery or set
 `OREMI_DEVICE_MQTT_DISCOVERY_PREFIX` when Home Assistant uses a custom prefix.
 Changes made through the discovered Home Assistant controls are cached by
 Oremi Device and applied on restart. The cache includes language, device
 context preferences, microphone device and mute state, speaker device, speaker
-mute and volume, and speech synthesis voice. Mount the data directory or set
+mute and volume, speech synthesis voice, and the Ohunerin/Andika enable
+state. Mount the data directory or set
 `OREMI_DEVICE_DATA_PATH` to a persistent path when running in a container.
 The transcription sensor follows the node's `transcription/result` topic and
 extracts its state from the final JSON payload's `text` field.

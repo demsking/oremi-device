@@ -655,12 +655,17 @@ extra="ignore")`.
 
 ### 7.2 Required settings (Observed)
 
-- `node_id`, `ohunerin_host`, `mqtt_broker` are always required.
-- Backend-conditional:
-  - `andika_host` required when `transcription_backend == "andika"`
-    (default).
-  - `whisper_url` required when `transcription_backend == "whisper.cpp"`.
-  - `edge_tts_url` required when `tts_backend == "edge-tts"`.
+- `node_id` and `mqtt_broker` are always required.
+- Microphone-conditional:
+  - `ohunerin_host` required when `microphone_enabled` and
+    `ohunerin_enabled` (defaults `true`).
+  - `andika_host` required when `microphone_enabled`, `andika_enabled`, and
+    `transcription_backend == "andika"` (default).
+  - `whisper_url` required when `microphone_enabled`, `andika_enabled`, and
+    `transcription_backend == "whisper.cpp"`.
+- Speaker-conditional:
+  - `edge_tts_url` required when `speaker_enabled` and
+    `tts_backend == "edge-tts"`.
 
 ### 7.3 Defaults and runtime cache (Observed)
 
@@ -670,7 +675,8 @@ Key defaults: `server_host=127.0.0.1`, `server_port=5048`, `language=fr`,
 `date_format=DD/MM/YYYY`, `first_day_of_week=monday`,
 `microphone_enabled=True`, `microphone_muted=False`, `speaker_enabled=True`,
 `speaker_volume=1.0`, `delay=3`, `conversation_timeout=15.0`,
-`ohunerin_port=5023`, `ohunerin_threshold=0.25`,
+`ohunerin_enabled=True`, `ohunerin_port=5023`, `ohunerin_threshold=0.25`,
+`andika_enabled=True`,
 `transcription_backend=andika`, `andika_port=5022`,
 `andika_model=zhifeixie/Mega-ASR`, `andika_samplerate=16000`,
 `tts_backend=izwi`, `edge_tts_model=tts-1`,
