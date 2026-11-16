@@ -701,7 +701,7 @@ async def test_microphone_mute_stops_and_restarts_voice_services() -> None:
 
 
 @pytest.mark.asyncio
-async def test_speaker_change_updates_shared_speaker_state() -> None:
+async def test_speaker_change_updates_shared_speaker_state(tmp_path) -> None:
   from device.core.app import DeviceApplication
   from device.core.settings import Settings
 
@@ -713,6 +713,7 @@ async def test_speaker_change_updates_shared_speaker_state() -> None:
     mqtt_broker="localhost",
     mqtt_discovery=False,
     speaker_device="Built-in Audio",
+    data_path=tmp_path,
   )
 
   with patch("device.core.app.get_settings", return_value=fake_settings):
@@ -740,7 +741,7 @@ async def test_speaker_change_updates_shared_speaker_state() -> None:
 
 
 @pytest.mark.asyncio
-async def test_failed_speaker_change_keeps_previous_device() -> None:
+async def test_failed_speaker_change_keeps_previous_device(tmp_path) -> None:
   from device.core.app import DeviceApplication
   from device.core.settings import Settings
 
@@ -752,6 +753,7 @@ async def test_failed_speaker_change_keeps_previous_device() -> None:
     mqtt_broker="localhost",
     mqtt_discovery=False,
     speaker_device="Built-in Audio",
+    data_path=tmp_path,
   )
 
   with patch("device.core.app.get_settings", return_value=fake_settings):
