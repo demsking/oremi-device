@@ -586,9 +586,13 @@ values matching the structural block patterns declared with the designated
 
 - **`OREMI_DEVICE_NODE_ID`** – Unique node identifier used in MQTT device topics.
 - **`OREMI_DEVICE_MQTT_BROKER`** – MQTT broker host or IP address.
-- **`OREMI_DEVICE_OHUNERIN_HOST`** – Ohunerin server host or IP address. Required only when `OREMI_DEVICE_MICROPHONE_ENABLED=true` and `OREMI_DEVICE_OHUNERIN_ENABLED=true`.
+- **`OREMI_DEVICE_OHUNERIN_HOST`** – Ohunerin server host or IP address. Required when `OREMI_DEVICE_MICROPHONE_ENABLED=true`.
 
-When the microphone and the transcription service are enabled, the configured
+Wake-word detection is always active while the microphone is enabled. Ambient
+sound detection can be turned off independently with
+`OREMI_DEVICE_SOUND_DETECTION_ENABLED=false` without disabling the wake word.
+
+When the microphone and the voice assistant are enabled, the configured
 `OREMI_DEVICE_TRANSCRIPTION_BACKEND` requires one additional setting:
 
 - **`andika` engine backend**: `OREMI_DEVICE_ANDIKA_HOST` must point to an active Andika engine instance.
@@ -597,17 +601,16 @@ When the microphone and the transcription service are enabled, the configured
 For a microphone-only node, set `OREMI_DEVICE_MICROPHONE_ENABLED=true` and
 `OREMI_DEVICE_SPEAKER_ENABLED=false`. For an output-only node, use the inverse
 values; it can then run without an Ohunerin or transcription service. Leave
-both enabled for the combined voice-assistant device. Ohunerin and Andika can
-also be disabled independently with `OREMI_DEVICE_OHUNERIN_ENABLED=false` and
-`OREMI_DEVICE_ANDIKA_ENABLED=false`, either at startup or at runtime from
-Home Assistant.
+both enabled for the combined voice-assistant device. The voice assistant can
+be disabled with `OREMI_DEVICE_ANDIKA_ENABLED=false`, either at startup or at
+runtime from Home Assistant.
 
 ### Audio Hardware
 
 - **`OREMI_DEVICE_MICROPHONE_DEVICE_INDEX`** – Explicit host system hardware device identifier index for audio recording capture mapping. Default: `None` (System Auto).
 - **`OREMI_DEVICE_MICROPHONE_DEVICE`** – Specific named identifier string overlaying microphone targeting configurations. Default: `None`.
 - **`OREMI_DEVICE_MICROPHONE_ENABLED`** – Enables microphone capture, wake-word detection and transcription. Set to `false` for a speaker-only MQTT/Home Assistant node. Default: `true`.
-- **`OREMI_DEVICE_MICROPHONE_MUTED`** – Initializes the recording input hardware engine stream in a quiet state. Default: `false`.
+- **`OREMI_DEVICE_MICROPHONE_MUTED`** – Initializes the recording input in a quiet state. While muted, the Ohunerin and Andika connections are stopped and microphone capture is fully disabled; unmuting reconnects them. Default: `false`.
 - **`OREMI_DEVICE_SPEAKER_ENABLED`** – Enables playback, volume and mute control. Set to `false` for a microphone-only MQTT/Home Assistant node. Default: `true`. When both flags are `true`, the node operates as a combined microphone and speaker.
 - **`OREMI_DEVICE_SPEAKER_DEVICE`** – Explicit device identifier assignment mapping the designated sound driver. Default: `None`.
 - **`OREMI_DEVICE_SPEAKER_MUTED`** – Initializes sound rendering outputs to silent runtime configurations. Default: `false`.
@@ -639,15 +642,15 @@ Home Assistant.
 
 ### Ohunerin Wake Word
 
-- **`OREMI_DEVICE_OHUNERIN_ENABLED`** – Enables wake-word and sound detection. Set to `false` to start without Ohunerin. Default: `true`.
-- **`OREMI_DEVICE_OHUNERIN_HOST`** – Ohunerin server host or IP address. Required when Ohunerin is enabled.
+- **`OREMI_DEVICE_SOUND_DETECTION_ENABLED`** – Enables ambient sound detection. Wake-word detection remains active even when this is `false`. Default: `true`.
+- **`OREMI_DEVICE_OHUNERIN_HOST`** – Ohunerin server host or IP address. Required when the microphone is enabled.
 - **`OREMI_DEVICE_OHUNERIN_PORT`** – Connectivity port routing Ohunerin service sockets. Default: `5023`.
 - **`OREMI_DEVICE_OHUNERIN_THRESHOLD`** – Minimum operational score matching confidence boundaries. Default: `0.25`.
 - **`OREMI_DEVICE_OHUNERIN_CERT_FILE`** – CA certificate used for a secure Ohunerin connection. Default: `None`.
 
 ### Andika Engine
 
-- **`OREMI_DEVICE_ANDIKA_ENABLED`** – Enables speech-to-text transcription (both `andika` and `whisper.cpp` backends). Set to `false` to start without transcription. Default: `true`.
+- **`OREMI_DEVICE_ANDIKA_ENABLED`** – Enables speech-to-text transcription (both `andika` and `whisper.cpp` backends). Set to `false` to start without a voice assistant. Default: `true`.
 - **`OREMI_DEVICE_ANDIKA_HOST`** – Andika server host or IP address when the Andika backend is selected and enabled.
 - **`OREMI_DEVICE_ANDIKA_PORT`** – Dedicated connection port routing Andika streams. Default: `5022`.
 - **`OREMI_DEVICE_ANDIKA_MODEL`** – Core system tracking string designating targeted local model profiles. Default: `zhifeixie/Mega-ASR`.
@@ -1180,15 +1183,24 @@ Example aggregate payload:
 
 #### Services
 
-Ohunerin and Andika can be started or stopped at runtime. Both command topics
-accept `ON` or `OFF`; the retained state topics mirror the desired configuration.
+Home Assistant exposes user-facing controls and diagnostic sensors rather than
+internal service names.
 
-- **Ohunerin enable command:** `<OREMI_DEVICE_MQTT_TOPIC>/nodes/<OREMI_DEVICE_NODE_ID>/services/ohunerin/enabled/set`
-- **Ohunerin enable state:** `<OREMI_DEVICE_MQTT_TOPIC>/nodes/<OREMI_DEVICE_NODE_ID>/services/ohunerin/enabled/state`
-- **Andika enable command:** `<OREMI_DEVICE_MQTT_TOPIC>/nodes/<OREMI_DEVICE_NODE_ID>/services/andika/enabled/set`
-- **Andika enable state:** `<OREMI_DEVICE_MQTT_TOPIC>/nodes/<OREMI_DEVICE_NODE_ID>/services/andika/enabled/state`
-- **Service status:** `<OREMI_DEVICE_MQTT_TOPIC>/nodes/<OREMI_DEVICE_NODE_ID>/services/<service>/status`
+- **Ambient sound detection command:** `<OREMI_DEVICE_MQTT_TOPIC>/nodes/<OREMI_DEVICE_NODE_ID>/services/ambient-sound/enabled/set`
+- **Ambient sound detection state:** `<OREMI_DEVICE_MQTT_TOPIC>/nodes/<OREMI_DEVICE_NODE_ID>/services/ambient-sound/enabled/state`
+- **Voice assistant command:** `<OREMI_DEVICE_MQTT_TOPIC>/nodes/<OREMI_DEVICE_NODE_ID>/services/voice-assistant/enabled/set`
+- **Voice assistant state:** `<OREMI_DEVICE_MQTT_TOPIC>/nodes/<OREMI_DEVICE_NODE_ID>/services/voice-assistant/enabled/state`
+- **Wake word status:** `<OREMI_DEVICE_MQTT_TOPIC>/nodes/<OREMI_DEVICE_NODE_ID>/services/wake-word/status`
+- **Voice assistant status:** `<OREMI_DEVICE_MQTT_TOPIC>/nodes/<OREMI_DEVICE_NODE_ID>/services/voice-assistant/status`
+- **Command processing status:** `<OREMI_DEVICE_MQTT_TOPIC>/nodes/<OREMI_DEVICE_NODE_ID>/services/command-processing/status`
+- **Voice responses status:** `<OREMI_DEVICE_MQTT_TOPIC>/nodes/<OREMI_DEVICE_NODE_ID>/services/voice-responses/status`
 - **Device status:** `<OREMI_DEVICE_MQTT_TOPIC>/nodes/<OREMI_DEVICE_NODE_ID>/device/status`
+
+Both command topics accept `ON` or `OFF`; the retained state topics mirror the
+desired configuration. The ambient sound switch only controls ambient sound
+detection: wake-word detection is never disabled while the microphone is on.
+The voice assistant switch controls transcription. If the voice assistant is
+off, wake words are still detected but no transcription is produced.
 
 The service status payload is retained JSON:
 
@@ -1197,12 +1209,13 @@ The service status payload is retained JSON:
 ```
 
 `detail` is only present after a failure. The state is one of `disabled`,
-`starting`, `idle`, `online`, `busy`, `error`, or `offline`. Ohunerin reports
-`online` only while its WebSocket is connected. Andika reports `idle` while it
-waits for a wake word, `busy` while transcribing, and `error` after a failed
-turn. Akọrin reports `idle`, `busy`, or `error` around each request. Speech
-synthesis reports `online` once its voices are loaded, `error` when the backend
-cannot be reached, and `disabled` when no TTS backend is configured.
+`starting`, `idle`, `online`, `busy`, `error`, `offline`, or `muted`. The wake
+word reports `online` only while the Ohunerin WebSocket is connected. The voice
+assistant reports `idle` while it waits for a wake word, `busy` while
+transcribing, and `error` after a failed turn. Command processing reports
+`idle`, `busy`, or `error` around each request. Voice responses reports `online`
+once voices are loaded, `error` when the backend cannot be reached, and
+`disabled` when no speech synthesis backend is configured.
 
 The device status payload is retained JSON:
 
@@ -1212,9 +1225,11 @@ The device status payload is retained JSON:
 
 `state` is `running` after startup and `stopped` during graceful shutdown.
 
-Disabling Ohunerin removes the wake-word trigger, so an enabled Andika service
-will stay idle. Disabling Andika keeps wake-word and sound detection running,
-but no transcription is produced.
+Muting the microphone is a hard stop for the voice pipeline: the Ohunerin and
+Andika connections are closed, their statuses become `muted`, and microphone
+capture stops. Unmuting reconnects the enabled services. If the voice assistant
+is unreachable or command processing fails, the device plays an error cue and
+speaks a localized message asking the user to try again later.
 
 #### Microphone
 
@@ -1265,27 +1280,29 @@ retained discovery configurations below `homeassistant` for:
 - continue-conversation switch for follow-up prompts
 - microphone selection and mute state
 - speaker selection, mute state, and volume
-- Ohunerin wake-word and sound sensors
-- Andika transcription sensor
-- Ohunerin and Andika enable switches
-- Ohunerin, Andika, Akọrin, speech synthesis, and device status sensors
+- wake-word, ambient-sound, and voice-transcription data sensors
+- "Ambient sound detection" and "Voice assistant" enable switches
+- "Wake word", "Voice assistant", "Command processing", "Voice responses", and
+  "Device" status sensors
 
 The entities share one device identifier derived from
 `OREMI_DEVICE_NODE_ID`. Available microphones and speakers are included as
 select options. When microphone or speaker support is disabled, the
-corresponding retained discovery configs are cleared. The wake-word and sound
-sensors are also cleared when Ohunerin is disabled, and the transcription
-sensor is cleared when Andika is disabled. Service enable switches and
-diagnostic status sensors stay visible so the current configuration can be
-inspected.
+corresponding retained discovery configs are cleared. The ambient-sound
+sensor is cleared when ambient sound detection is disabled; the wake-word
+sensor stays visible because wake-word detection is always active. The
+transcription sensor is cleared when the voice assistant is disabled. Service
+enable switches and diagnostic status sensors stay visible so the current
+configuration can be inspected. While the microphone is muted, the voice
+services report `muted` and their connections are stopped.
 
 Set `OREMI_DEVICE_MQTT_DISCOVERY=false` to disable discovery or set
 `OREMI_DEVICE_MQTT_DISCOVERY_PREFIX` when Home Assistant uses a custom prefix.
 Changes made through the discovered Home Assistant controls are cached by
 Oremi Device and applied on restart. The cache includes language, device
 context preferences, microphone device and mute state, speaker device, speaker
-mute and volume, speech synthesis voice, and the Ohunerin/Andika enable
-state. Mount the data directory or set
+mute and volume, speech synthesis voice, ambient sound detection, and the voice
+assistant enable state. Mount the data directory or set
 `OREMI_DEVICE_DATA_PATH` to a persistent path when running in a container.
 The transcription sensor follows the node's `transcription/result` topic and
 extracts its state from the final JSON payload's `text` field.

@@ -657,8 +657,8 @@ extra="ignore")`.
 
 - `node_id` and `mqtt_broker` are always required.
 - Microphone-conditional:
-  - `ohunerin_host` required when `microphone_enabled` and
-    `ohunerin_enabled` (defaults `true`).
+  - `ohunerin_host` required when `microphone_enabled` (wake-word detection
+    is always active).
   - `andika_host` required when `microphone_enabled`, `andika_enabled`, and
     `transcription_backend == "andika"` (default).
   - `whisper_url` required when `microphone_enabled`, `andika_enabled`, and
@@ -675,8 +675,8 @@ Key defaults: `server_host=127.0.0.1`, `server_port=5048`, `language=fr`,
 `date_format=DD/MM/YYYY`, `first_day_of_week=monday`,
 `microphone_enabled=True`, `microphone_muted=False`, `speaker_enabled=True`,
 `speaker_volume=1.0`, `delay=3`, `conversation_timeout=15.0`,
-`ohunerin_enabled=True`, `ohunerin_port=5023`, `ohunerin_threshold=0.25`,
-`andika_enabled=True`,
+`sound_detection_enabled=True`, `ohunerin_port=5023`,
+`ohunerin_threshold=0.25`, `andika_enabled=True`,
 `transcription_backend=andika`, `andika_port=5022`,
 `andika_model=zhifeixie/Mega-ASR`, `andika_samplerate=16000`,
 `tts_backend=izwi`, `edge_tts_model=tts-1`,
