@@ -261,6 +261,35 @@ async def test_andika_speaks_error_when_connection_fails() -> None:
 
 
 @pytest.mark.asyncio
+async def test_andika_warns_when_configured_model_is_unavailable(caplog) -> None:
+  import logging
+
+  from device.components.transcribers.base import SupportedModel
+
+  component = AndikaComponent(_make_settings())
+  shared_resources = {
+    "handle_task_done": None,
+    "active_stream_container": {"stream": None},
+    "wakeword_event": asyncio.Event(),
+    "device_state": {"microphone_muted": False},
+    "conversation_event_handler": None,
+    "final_transcription_handler": None,
+  }
+  supported = [SupportedModel(id="zhifeixie/Mega-ASR", name="Mega ASR", language="auto")]
+
+  with (
+    patch.object(component, "_get_supported_models", return_value=supported),
+    caplog.at_level(logging.WARNING),
+  ):
+    await component.start(AndikaConfig(model="vosk-model-small-fr-0.22"), shared_resources)
+    await asyncio.sleep(0.05)
+    await component.stop()
+
+  assert "not available on the server" in caplog.text
+  assert "zhifeixie/Mega-ASR" in caplog.text
+
+
+@pytest.mark.asyncio
 async def test_andika_reports_idle_when_started() -> None:
   component = AndikaComponent(_make_settings())
   statuses: list[tuple[str, str, str | None]] = []

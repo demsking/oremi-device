@@ -134,6 +134,13 @@ class Speech2Text(AudioStreamComponent[AndikaConfig]):
       supported_model_ids = ", ".join(model.id for model in supported_models)
       logger.info(f"Andika Supported Models: {supported_model_ids}")
 
+      if config.model not in {model.id for model in supported_models}:
+        logger.warning(
+          f"Andika model '{config.model}' is not available on the server. "
+          f"Available models: {supported_model_ids}. The server may fall back to a "
+          f"default model and transcribe in an unexpected language."
+        )
+
     loop = asyncio.get_running_loop()
     self._handle_task_done = resources.get("handle_task_done")
     self._task = loop.create_task(self._run(config, publisher, resources), name="Andika Task")
