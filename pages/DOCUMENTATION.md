@@ -120,7 +120,6 @@ services:
     environment:
       LOG_LEVEL: info
       OREMI_DEVICE_NODE_ID: living-room
-      OREMI_DEVICE_OLLAMA_BASE_URL: http://ollama:11434
       OREMI_DEVICE_LANGUAGE: fr
       OREMI_DEVICE_LOCATION: Douala, Cameroon
       OREMI_DEVICE_TIMEZONE: Africa/Douala
@@ -279,7 +278,6 @@ services:
     environment:
       LOG_LEVEL: info
       OREMI_DEVICE_NODE_ID: living-room
-      OREMI_DEVICE_OLLAMA_BASE_URL: http://ollama:11434
       OREMI_DEVICE_LANGUAGE: fr
       OREMI_DEVICE_LOCATION: Douala, Cameroon
       OREMI_DEVICE_TIMEZONE: Africa/Douala
@@ -429,7 +427,6 @@ services:
     environment:
       LOG_LEVEL: info
       OREMI_DEVICE_NODE_ID: living-room
-      OREMI_DEVICE_OLLAMA_BASE_URL: http://ollama:11434
       OREMI_DEVICE_LANGUAGE: fr
       OREMI_DEVICE_LOCATION: Douala, Cameroon
       OREMI_DEVICE_TIMEZONE: Africa/Douala
@@ -654,31 +651,6 @@ Depending on your configured `OREMI_DEVICE_TRANSCRIPTION_BACKEND`, one additiona
 - **`OREMI_DEVICE_EDGE_TTS_RESPONSE_FORMAT`** – Codec selection array parameters (`mp3` | `opus` | `aac` | `flac` | `wav` | `pcm`). Default: `mp3`.
 - **`OREMI_DEVICE_EDGE_TTS_SPEED`** – Dynamic rate pacing scaling index options ranging from `0.25` up through `4.0`. Default: `1.0`.
 - **`OREMI_DEVICE_TTS_VOICE`** – Direct voice identity tag strings tracking active target character synthesis styles. Default: `None`.
-
-### LLM Settings
-
-These settings configure the internal LLM agent used by Oremi Device to classify
-follow-up prompts and rewrite follow-up answers into standalone Akorin requests.
-
-- `OREMI_DEVICE_LLM_MODEL`: Optional. Defaults to `ollama:qwen3.5:2b`.
-  Fully qualified Pydantic-AI model identifier. Use provider-prefixed values
-  such as `ollama:qwen3.5:2b`, `openai:gpt-4.1-mini`, or
-  `anthropic:claude-sonnet-4-0`.
-- `OREMI_DEVICE_OLLAMA_BASE_URL`: Optional. Ollama API base URL used when
-  `OREMI_DEVICE_LLM_MODEL` starts with `ollama:`. The default is `None`, and
-  it must be explicitly provided for Ollama-backed runs.
-
-**Examples for `OREMI_DEVICE_LLM_MODEL`:**
-
-- Ollama:
-  - `ollama:qwen3.5:2b`
-  - Recommended for local or self-hosted deployments.
-- ChatGPT / OpenAI:
-  - `openai:gpt-4.1-mini`
-  - Requires an OpenAI API key.
-- Claude / Anthropic:
-  - `anthropic:claude-sonnet-4-0`
-  - Requires an Anthropic API key.
 
 ### MQTT Broker
 

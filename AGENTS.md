@@ -9,7 +9,7 @@ unless a more specific `AGENTS.md` exists in a subdirectory.
 > - **Observed** — directly confirmed in the repository source, tests, or
 >   config. Treated as an existing project rule.
 > - **Inference** — strongly supported by the code but not stated explicitly.
-> - **Recommendation** — a proposed guideline, *not* an existing convention.
+> - **Recommendation** — a proposed guideline, _not_ an existing convention.
 >
 > The existing code is the source of truth. When a document (including this one,
 > or `pages/DOCUMENTATION.md`) disagrees with the code, the code wins.
@@ -254,7 +254,7 @@ Where an agent is most likely to work: `device/core/audio.py`,
 - **Responsibility (Observed):** select an input device and run a miniaudio
   `CaptureDevice`, fan out PCM frames to subscribers.
 - **Primary API:** `Audio(dtype="int16", samplerate=16000, blocksize=4000,
-  device_index=None, device_name=None, loop=None)`; `start_stream()`,
+device_index=None, device_name=None, loop=None)`; `start_stream()`,
   `stop()`, `close()`, `restart_stream()`; `async __aenter__/__aexit__`
   (reference-counted start/stop); `subscribe() -> asyncio.Queue[bytes]` /
   `unsubscribe(queue)`; `async data(queue=None)`; `is_active()`;
@@ -302,7 +302,7 @@ Where an agent is most likely to work: `device/core/audio.py`,
 - **Responsibility (Observed):** parse JSON messages from the Ohunerin
   WebSocket, threshold-filter, publish MQTT events, set the wake-word event.
 - **Message shape (Observed, `DetectedSound`):** `type` (`"sound" |
-  "wakeword"`), `sound` (str), `score` (float), `datetime` (ISO 8601).
+"wakeword"`), `sound` (str), `score` (float), `datetime` (ISO 8601).
 - **Publish topic (Observed):** `DETECTION_EVENT_TOPIC = "event"` ->
   `<mqtt_topic>/nodes/<node_id>/event`.
 - **API:** `detecting()`, `process_detected_sound(data)`,
@@ -351,13 +351,13 @@ Where an agent is most likely to work: `device/core/audio.py`,
 - **API:** `Speaker(device_name=None, *, volume=1.0, muted=False)`;
   `select_device(name)`, `verify_device()`, `set_volume(v)`,
   `set_muted(b)`; `play_url(url, *, method="GET", body=None, headers=None,
-  interrupt=True, duckable=True)`; `play_file(path, *, interrupt=False,
-  duckable=False)`; `stop()`, `pause()`, `resume()`;
+interrupt=True, duckable=True)`; `play_file(path, *, interrupt=False,
+duckable=False)`; `stop()`, `pause()`, `resume()`;
   static `get_compatible_output_devices()`; properties `device_name`,
   `info`, `volume`, `muted`, `gain`, `output_channels`; ducking
   `begin_ducking()` / `end_ducking()` / `playback_gain(duckable=...)`.
 - **Playback format (Observed):** ffmpeg emits `-f f32le -acodec pcm_f32le
-  -ac <output_channels> -ar 48000`; `PlaybackDevice` is `FLOAT32`,
+-ac <output_channels> -ar 48000`; `PlaybackDevice` is `FLOAT32`,
   `output_channels` (2 by default), `48000` Hz. Volume/mute/ducking are
   applied in Python by scaling float samples.
 - **Important:** `play_url`/`play_file` are **blocking** and must be called
@@ -384,7 +384,7 @@ Where an agent is most likely to work: `device/core/audio.py`,
   `publish_device_context()`, `publish_device_context_value()`,
   `publish_voice_state()`.
 - **Client (Observed):** `paho.mqtt.client.Client(CallbackAPIVersion.VERSION2,
-  client_id="oremi-device-<node_id>")`; `connect(broker, port, keepalive=0)`
+client_id="oremi-device-<node_id>")`; `connect(broker, port, keepalive=0)`
   then `loop_start()`. Username/password are only set when a username is
   present.
 - **Topic scheme (Observed):** `<mqtt_topic>/nodes/<node_id>/...`.
@@ -405,10 +405,10 @@ Where an agent is most likely to work: `device/core/audio.py`,
   a frozen dataclass describing a request for `Speaker.play_url()` (it does
   not perform I/O).
 - **`IzwiClient` (`device/components/izwi.py`):** `GET
-  {base}/api/tts/voices`; `POST {base}/api/tts/stream` with JSON
+{base}/api/tts/voices`; `POST {base}/api/tts/stream` with JSON
   `{text, voice, audio_format: "wav", language?}`.
 - **`OpenAIEdgeTTSClient` (`device/components/edge_tts.py`):** `GET
-  {base}/v1/voices`; `POST {base}/v1/audio/speech` with
+{base}/v1/voices`; `POST {base}/v1/audio/speech` with
   `{model, input, voice, response_format, speed}` and
   `Authorization: Bearer <edge_tts_api_key>`. Voice parsing tolerates several
   metadata shapes.
@@ -416,6 +416,7 @@ Where an agent is most likely to work: `device/core/audio.py`,
   multilingual/auto markers, language names, and `xx-` prefixes.
 
 ### 4.8 `CommandExecutor` — command execution
+
 (`device/services/command_executor.py`)
 
 - **Responsibility (Observed):** execute a validated `ProcessingResponse`
@@ -448,8 +449,8 @@ Where an agent is most likely to work: `device/core/audio.py`,
 ### 4.10 MCP surface (`device/core/mcp.py`, `device/mcp/`)
 
 - **Server (Observed, `app.py`):** `FastMCP(name="Oremi Device", host=
-  settings.server_host, port=settings.server_port, stateless_http=True,
-  json_response=True, streamable_http_path="/mcp", ...)`, started with
+settings.server_host, port=settings.server_port, stateless_http=True,
+json_response=True, streamable_http_path="/mcp", ...)`, started with
   `mcp.run_streamable_http_async()` as a background task.
 - **Registered tools (Observed, `device/mcp/tools.py`):**
   `get_device_status`, `list_voices`, `update_device_settings`,
@@ -514,9 +515,9 @@ All values below are **Observed** in code/tests.
 **Playback**
 
 - Decoder: `ffmpeg -nostdin -loglevel error -i <source> -f f32le -acodec
-  pcm_f32le -ac <channels> -ar 48000 pipe:1`.
+pcm_f32le -ac <channels> -ar 48000 pipe:1`.
 - Sink: `miniaudio.PlaybackDevice(output_format=FLOAT32, nchannels=2,
-  sample_rate=48000, device_id=...)` (channels from `Speaker._output_channels`,
+sample_rate=48000, device_id=...)` (channels from `Speaker._output_channels`,
   which is 2).
 - Volume/mute/ducking are applied in Python to float32 samples. Ducking gain is
   `0.25` for duckable streams.
@@ -570,8 +571,8 @@ All values below are **Observed** in code/tests.
   `andika_model`, `andika_samplerate`.
 - **whisper.cpp alternative:** `whisper_url` (required when selected),
   `whisper_silence_threshold`, `whisper_silence_duration`; `POST
-  {whisper_url}/inference` with `files={"file": ("utterance.wav", wav,
-  "audio/wav")}` and form fields `language` and `response_format=json`.
+{whisper_url}/inference` with `files={"file": ("utterance.wav", wav,
+"audio/wav")}` and form fields `language` and `response_format=json`.
 - **No retry loop (Observed):** unlike Ohunerin, the Andika transcription turn
   is per-conversation; failures cancel the turn rather than retry.
 
@@ -582,7 +583,7 @@ All values below are **Observed** in code/tests.
   of `AkorinClient.endpoint`).
 - **Request body (Observed):**
   `{"message": <text>, "context": {"preferences": <device context>,
-  "language": <lang>}, "tags": ["device_id:<node_id>"]}`.
+"language": <lang>}, "tags": ["device_id:<node_id>"]}`.
   (Note: `pages/DOCUMENTATION.md` shows `language` at the top level and a
   different context shape; the code above is authoritative.)
 - **Response (Observed):** validated against `ProcessingResponse` and pushed
@@ -639,7 +640,7 @@ All values below are **Observed** in code/tests.
 - `device/core/settings.py` defines `Settings` as a pydantic-settings
   `BaseSettings` with
   `SettingsConfigDict(env_prefix="OREMI_DEVICE_", env_file=".env",
-  extra="ignore")`.
+extra="ignore")`.
 - Every field maps to `OREMI_DEVICE_<FIELD_UPPERCASED>`; a local `.env` file
   is also read. `.env.example` is the committed sample.
 - `get_settings()` is `lru_cache`d and returns `Settings` after applying
@@ -703,16 +704,15 @@ Key defaults: `server_host=127.0.0.1`, `server_port=5048`, `language=fr`,
 `pages/DOCUMENTATION.md` is partly stale. When touching these areas, prefer
 the code and update the docs:
 
-| Documented | Actual code |
-| --- | --- |
-| `OREMI_DEVICE_LLM_MODEL`, `OREMI_DEVICE_OLLAMA_BASE_URL` | Not present in `Settings` or anywhere in `device/`. |
-| `OREMI_DEVICE_CERT_FILE` | Replaced by `ohunerin_cert_file` and `andika_cert_file`. |
-| Exit code 2 with formatted validation errors | `__main__.main` logs and exits 1; `format_settings_errors` is test-only. |
-| MCP tool `list_audio_devices` | Actual tools are `list_input_devices` and `list_output_devices`. |
-| Separate `PauseCommand`/`ResumeCommand`/`StopCommand` | One `PlayerCommand` with `type` in `stop|pause|resume`. |
-| Akorin request has top-level `language` | `language` is nested under `context`. |
-| `conversation/continue/set` topic | No such topic in code (only `conversation/state`). |
-| HA sensor `state_topic` `.../events/detection` | `SoundDetector` publishes to `.../event` (discovery/publish mismatch — see §11). |
+| Documented                                            | Actual code                                                                      |
+| ----------------------------------------------------- | -------------------------------------------------------------------------------- | ----- | -------- |
+| `OREMI_DEVICE_CERT_FILE`                              | Replaced by `ohunerin_cert_file` and `andika_cert_file`.                         |
+| Exit code 2 with formatted validation errors          | `__main__.main` logs and exits 1; `format_settings_errors` is test-only.         |
+| MCP tool `list_audio_devices`                         | Actual tools are `list_input_devices` and `list_output_devices`.                 |
+| Separate `PauseCommand`/`ResumeCommand`/`StopCommand` | One `PlayerCommand` with `type` in `stop                                         | pause | resume`. |
+| Akorin request has top-level `language`               | `language` is nested under `context`.                                            |
+| `conversation/continue/set` topic                     | No such topic in code (only `conversation/state`).                               |
+| HA sensor `state_topic` `.../events/detection`        | `SoundDetector` publishes to `.../event` (discovery/publish mismatch — see §11). |
 
 ---
 
@@ -781,7 +781,7 @@ sandbox could not run `uv` (read-only cache); tests were run successfully with
   `major`, `release`, `publish`.
 - Docker: multi-stage Alpine build; `ffmpeg`, `alsa-lib`,
   `pulseaudio-utils`, `tzdata` installed at runtime; `CMD ["python",
-  "/oremi/device"]`; data volume `/oremi/data`.
+"/oremi/device"]`; data volume `/oremi/data`.
 
 **Commands that do NOT exist (Observed)**
 
@@ -804,12 +804,12 @@ sandbox could not run `uv` (read-only cache); tests were run successfully with
   device-context helpers). 169 tests pass in the current tree.
 - **Conventions (Observed):**
   - Helper `_make_settings(**kwargs)` builds `Settings(_env_file=None,
-    **defaults)` with the required fields and `.env` disabled.
+**defaults)` with the required fields and `.env` disabled.
   - `tests/conftest.py` has an **autouse** fixture that monkeypatches
     `device.core.settings.get_location_geocode` so tests never hit the
     network.
-  - `tests/test_args.py` clears the `get_settings` lru_cache and deletes
-    `OREMI_DEVICE_*` env vars for isolation.
+  - `tests/test_args.py` clears the `get_settings` lru*cache and deletes
+    `OREMI_DEVICE*\*` env vars for isolation.
   - Boundaries are mocked with `unittest.mock.patch` / `MagicMock` /
     `AsyncMock` / `monkeypatch`: `miniaudio.Devices`,
     `miniaudio.CaptureDevice`, `miniaudio.PlaybackDevice`,
@@ -850,7 +850,7 @@ All items are **Observed** unless marked otherwise.
   `from __future__ import annotations` first when present), then third-party,
   then `device.*` (`reorder-python-imports`). No wildcard imports. The code
   uses `from typing import X` rather than `typing.X`. `from __future__
-  import annotations` is only present in some modules (`playback.py`,
+import annotations` is only present in some modules (`playback.py`,
   `mcp/tools.py`, `core/mcp.py`) — do not add it everywhere.
 - **Typing:** annotate new/changed functions and methods. Use PEP 604 unions
   (`str | None`), builtin generics (`dict[str, Any]`, `list[T]`),
@@ -863,7 +863,7 @@ All items are **Observed** unless marked otherwise.
   `# pylint: disable=invalid-name` (`id`, `at`, `ok`).
 - **Models:** Pydantic v2 `BaseModel` for config/commands/DTOs; discriminated
   unions via `Annotated[..., Field(discriminator="type")]`; `ConfigDict(
-  extra="forbid")` on `Command` so unknown fields are rejected (see §11).
+extra="forbid")` on `Command` so unknown fields are rejected (see §11).
 - **Exceptions:** custom domain exceptions are declared next to the subsystem
   that raises them (`AudioDeviceError`, `SpeakerDeviceError`,
   `SpeakerPlaybackError`). Use `raise ... from error` to chain. Broad
@@ -937,7 +937,7 @@ All items are **Observed** unless marked otherwise.
 - **Framework (Observed):** stdlib `logging`, configured once in
   `DeviceApplication.run()` via `device/utils/logger.py:configure_logging`.
 - **Console format:** `%(asctime)s - oremi-device - %(levelname)s -
-  %(message)s`, date `%Y-%m-%d %H:%M:%S`. In **DEBUG** the format is
+%(message)s`, date `%Y-%m-%d %H:%M:%S`. In **DEBUG** the format is
   `%(name)s - %(levelname)s - %(message)s` (logger name shown instead of the
   app name/date).
 - **File logging:** when `log_file` is set, a `RotatingFileHandler`
@@ -980,7 +980,7 @@ All items are **Observed** unless marked otherwise.
 4. **MQTT thread rule:** paho callbacks run off the event loop. Any queue/task
    interaction from them must go through `loop.call_soon_threadsafe`.
 5. **Playback format:** ffmpeg decodes to `f32le / pcm_f32le / 48000 Hz /
-   Speaker.output_channels`; the `PlaybackDevice` must match. Changing one
+Speaker.output_channels`; the `PlaybackDevice` must match. Changing one
    without the other breaks playback.
 6. **Never block the event loop:** `Speaker.play_url`/`play_file`,
    `Audio` device enumeration, and geocoding must stay off the loop
@@ -1010,7 +1010,7 @@ All items are **Observed** unless marked otherwise.
 12. **Akorin single in-flight request:** a new transcription cancels the
     previous request; do not run concurrent Akorin requests for one node.
 13. **Runtime-settings persistence:** `apply_settings_updates` updates live
-    subsystems *and* writes the cache. Any new mutable setting must be added to
+    subsystems _and_ writes the cache. Any new mutable setting must be added to
     `SettingsUpdates`/`RuntimeSettingsCache` to persist.
 14. **Settings singleton:** `get_settings()` is lru-cached. Tests mutating the
     environment must clear it. Production code should not construct
@@ -1032,9 +1032,9 @@ All items are **Observed** unless marked otherwise.
     `httpx.get` and is called from `_publish_discovery()` (async context).
   - `AndikaTranscriber.get_supported_models()` performs a synchronous
     `httpx.get` and is called from `Speech2Text.start()`.
-  These can stall the event loop on slow/unreachable hosts. If you touch this
-  area, consider `asyncio.to_thread`, but treat it as a behavior change with
-  tests.
+    These can stall the event loop on slow/unreachable hosts. If you touch this
+    area, consider `asyncio.to_thread`, but treat it as a behavior change with
+    tests.
 - **Un-awaited coroutine on import (Observed):** `device/__init__.py`'s
   module-level `app = start()` emits a `RuntimeWarning` on every import and
   creates a throwaway coroutine. Do not copy this pattern; if you refactor it,
