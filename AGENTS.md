@@ -438,9 +438,10 @@ client_id="oremi-device-<node_id>")`; `connect(broker, port, keepalive=0)`
   instances, expose `needs_audio` (= `microphone_enabled`),
   `speaker_enabled`, `audio_stream`, `speaker`, `device_state`,
   `speaker_state`.
-- `initialize_hardware()` builds the mic (re-raises `AudioDeviceError`) and
-  the speaker (non-fatal: logs a warning and disables speaker support on
-  `SpeakerDeviceError`).
+- `initialize_hardware()` builds the mic (on `AudioDeviceError` it logs and
+  leaves `audio_stream=None`) and then the speaker (non-fatal: logs a warning
+  and disables speaker support on `SpeakerDeviceError`). The two are
+  independent: a microphone failure must never skip speaker initialization.
 - `change_audio_device(target, components)` closes the old stream, creates a
   new `Audio` in a thread, and notifies every `AudioStreamComponent` via
   `on_device_changed(...)` (or `None` on failure).
@@ -913,9 +914,9 @@ extra="forbid")` on `Command` so unknown fields are rejected (see §11).
   `sys.exit(1)`. `format_settings_errors()` (clean `OREMI_DEVICE_*`
   messages) exists but is unused in production. Changing this is a behavior
   change and must update `tests/test_args.py`.
-- **Microphone:** `AudioService.initialize_hardware()` re-raises
-  `AudioDeviceError`; `DeviceApplication.run()` catches it, logs, and
-  continues with no capture device (components then see `stream=None`).
+- **Microphone:** `AudioService.initialize_hardware()` logs the
+  `AudioDeviceError` and continues with no capture device (components then see
+  `stream=None`); speaker initialization still runs afterwards.
 - **Speaker:** failure to build/verify the speaker is non-fatal —
   `AudioService` logs a warning, sets `speaker=None` and
   `speaker_enabled=False`.

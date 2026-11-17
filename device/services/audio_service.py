@@ -49,8 +49,10 @@ class AudioService:
 
         logger.info(f"Active Microphone Device: {self.audio_stream.device_name} ({self.audio_stream.info})")
       except AudioDeviceError as error:
-        logger.error(str(error))
-        raise
+        # Microphone and speaker initialization are independent: a missing or
+        # unreadable microphone must never disable audio output.
+        self.audio_stream = None
+        logger.error(f"Microphone initialization failed: {error}")
 
     if self.speaker_enabled:
       configured_device = self.settings.speaker_device

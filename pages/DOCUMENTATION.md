@@ -69,9 +69,61 @@ $ oremi-device
 
 All device configuration, including server addresses, audio parameters, and UI localization context, is provided through environment variables or a `.env` file rather than command-line options.
 
-Because it interacts directly with host audio devices for capture and output,
-containerized deployments typically require binding `/dev/snd` and, where
-appropriate, host networking for low-latency local routing.
+Because it captures and plays audio, a containerized deployment must be given
+access to the host audio stack. See [Audio devices in
+containers](#audio-devices-in-containers) below; host networking is also
+recommended for low-latency local routing.
+
+### Audio devices in containers
+
+Oremi Device does not drive the hardware itself: it uses whichever audio
+backend `miniaudio` can reach. Two setups are supported.
+
+#### Use the host sound server (recommended)
+
+When the host runs PipeWire or PulseAudio, mount its runtime socket into the
+container:
+
+```yaml
+volumes:
+  - ${XDG_RUNTIME_DIR:-/run/user/1000}/pulse:/var/config/pulse
+```
+
+The image ships `/etc/pulse/client.conf`, which points at
+`/var/config/pulse/native`, so `miniaudio` selects the PulseAudio backend and
+uses the host devices. This has three benefits:
+
+- the microphone and every output device (jack, USB, HDMI) are the host's
+  devices, including the host's default sink;
+- devices plugged in or unplugged after the container started are picked up
+  automatically, with no container restart;
+- the host sound server keeps ownership of the hardware, so the container
+  never conflicts with it over an ALSA device.
+
+Replace `1000` with the numeric id of the host user that owns the sound-server
+session, or export `XDG_RUNTIME_DIR` before running `docker compose`.
+
+#### Use ALSA directly
+
+`devices: - /dev/snd:/dev/snd` creates the ALSA device nodes inside the
+container **when the container is created**. It is not a live view of the host
+devices: a USB microphone or speaker plugged in after `docker compose up` never
+appears inside the container, so the application cannot detect it. To support
+hotplug over raw ALSA, bind-mount the directory and allow the ALSA device major
+(116) in the device cgroup:
+
+```yaml
+devices:
+  - /dev/snd:/dev/snd
+volumes:
+  - /dev/snd:/dev/snd
+device_cgroup_rules:
+  - 'c 116:* rwm'
+```
+
+This only works while the host sound server releases the cards; otherwise ALSA
+reports `unable to open slave` and neither input nor output devices are
+available. Prefer the sound-server socket described above.
 
 ### Volumes
 
@@ -89,6 +141,7 @@ Use the official Docker image [`demsking/oremi-device`](https://hub.docker.com/r
 docker run --rm -it \
   --network host \
   --device /dev/snd:/dev/snd \
+  -v ${XDG_RUNTIME_DIR:-/run/user/1000}/pulse:/var/config/pulse \
   -v oremi-device-data:/oremi/data \
   --env-file <path_to_env_file> \
   demsking/oremi-device
@@ -120,6 +173,7 @@ services:
     devices:
       - /dev/snd:/dev/snd
     volumes:
+      - ${XDG_RUNTIME_DIR:-/run/user/1000}/pulse:/var/config/pulse
       - oremi-device-data:/oremi/data
     environment:
       LOG_LEVEL: info
@@ -278,6 +332,7 @@ services:
     devices:
       - /dev/snd:/dev/snd
     volumes:
+      - ${XDG_RUNTIME_DIR:-/run/user/1000}/pulse:/var/config/pulse
       - oremi-device-data:/oremi/data
     environment:
       LOG_LEVEL: info
@@ -427,6 +482,7 @@ services:
     devices:
       - /dev/snd:/dev/snd
     volumes:
+      - ${XDG_RUNTIME_DIR:-/run/user/1000}/pulse:/var/config/pulse
       - oremi-device-data:/oremi/data
     environment:
       LOG_LEVEL: info

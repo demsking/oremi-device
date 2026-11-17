@@ -563,3 +563,33 @@ def test_speaker_initialization_disables_speaker_when_default_fails() -> None:
 
   assert service.speaker is None
   assert service.speaker_enabled is False
+
+
+def test_microphone_failure_does_not_prevent_speaker_initialization() -> None:
+  from device.core.settings import Settings
+  from device.services.audio_service import AudioService
+
+  settings = Settings(
+    _env_file=None,
+    node_id="test-node",
+    ohunerin_host="localhost",
+    andika_host="localhost",
+    mqtt_broker="localhost",
+    microphone_enabled=True,
+    speaker_enabled=True,
+  )
+  service = AudioService(settings)
+  speaker = MagicMock()
+  speaker.device_name = "Built-in Audio"
+  speaker.info = {"device": "Built-in Audio"}
+
+  with (
+    patch("device.services.audio_service.Audio", side_effect=AudioDeviceError("No compatible audio input device found")),
+    patch("device.services.audio_service.Speaker", return_value=speaker),
+  ):
+    service.initialize_hardware()
+
+  assert service.audio_stream is None
+  assert service.speaker is speaker
+  assert service.speaker_enabled is True
+  assert service.speaker_state["device"] == "Built-in Audio"
