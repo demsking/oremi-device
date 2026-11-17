@@ -14,6 +14,7 @@
 # ==============================================================================
 import asyncio
 import logging
+from collections.abc import Callable
 from datetime import datetime
 from datetime import timezone
 
@@ -39,12 +40,18 @@ logger = logging.getLogger(__name__)
 
 class CommandExecutor:
   def __init__(
-    self, audio_service: AudioService, tts_manager: TTSManager, ha_device: HomeAssistantDevice, loop: asyncio.AbstractEventLoop
+    self,
+    audio_service: AudioService,
+    tts_manager: TTSManager,
+    ha_device: HomeAssistantDevice,
+    loop: asyncio.AbstractEventLoop,
+    volume_feedback: Callable[[], None] | None = None,
   ):
     self.audio = audio_service
     self.tts = tts_manager
     self.ha_device = ha_device
     self.loop = loop
+    self._volume_feedback = volume_feedback
 
     # Task references for clean cancellation
     self.playback_task: asyncio.Task | None = None
@@ -161,14 +168,15 @@ class CommandExecutor:
 
   def _set_volume(self, command: SetVolumeCommand) -> None:
     volume = command.volume / 100
+    speaker = self.audio.speaker
+    previous_volume = speaker.volume if speaker is not None else None
     self.audio.speaker_state["volume"] = volume
 
-    if self.audio.speaker is not None:
-      self.audio.speaker.set_volume(volume)
-      self.loop.create_task(
-        asyncio.to_thread(self.audio.speaker.play_file, get_sound_cue_path("volume")),
-        name="Volume Sound Task",
-      )
+    if speaker is not None:
+      speaker.set_volume(volume)
+
+      if volume != previous_volume and self._volume_feedback is not None:
+        self._volume_feedback()
 
     self.ha_device.set_speaker_volume_state(volume)
 

@@ -1307,6 +1307,9 @@ speaks a localized message asking the user to try again later.
 - **Volume command:** `<OREMI_DEVICE_MQTT_TOPIC>/nodes/<OREMI_DEVICE_NODE_ID>/speaker/volume/set`
 - **Volume state:** `<OREMI_DEVICE_MQTT_TOPIC>/nodes/<OREMI_DEVICE_NODE_ID>/speaker/volume/state`
 - **Volume payload:** Integer percentage from `0` to `100`.
+- **Volume feedback:** a short confirmation beep is played once the level
+  stops changing, so a whole slider drag produces a single beep. It is skipped
+  while the speaker is muted or at `0` %.
 
 #### Player
 

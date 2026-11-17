@@ -208,3 +208,34 @@ def test_edge_tts_voice_parser_accepts_edge_voice_metadata() -> None:
     description="Microsoft Denise Online (Natural) - French (France)",
     primary_language="fr-FR",
   )
+
+
+def test_set_volume_command_requests_confirmation_feedback() -> None:
+  from device.core.models import SetVolumeCommand
+  from device.services.command_executor import CommandExecutor
+
+  audio = MagicMock()
+  audio.speaker.volume = 1.0
+  audio.speaker_state = {"device": "", "muted": False, "volume": 1.0}
+  feedback = MagicMock()
+  executor = CommandExecutor(audio, MagicMock(), MagicMock(), MagicMock(), volume_feedback=feedback)
+
+  executor._set_volume(SetVolumeCommand(type="set_volume", volume=40))
+
+  feedback.assert_called_once_with()
+  audio.speaker.play_file.assert_not_called()
+
+
+def test_set_volume_command_does_not_confirm_unchanged_volume() -> None:
+  from device.core.models import SetVolumeCommand
+  from device.services.command_executor import CommandExecutor
+
+  audio = MagicMock()
+  audio.speaker.volume = 0.4
+  audio.speaker_state = {"device": "", "muted": False, "volume": 0.4}
+  feedback = MagicMock()
+  executor = CommandExecutor(audio, MagicMock(), MagicMock(), MagicMock(), volume_feedback=feedback)
+
+  executor._set_volume(SetVolumeCommand(type="set_volume", volume=40))
+
+  feedback.assert_not_called()

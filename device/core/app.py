@@ -65,6 +65,10 @@ from device.utils.logger import configure_logging
 
 logger = logging.getLogger(__name__)
 
+# Delay used to coalesce a burst of volume changes (slider drags) into a
+# single confirmation cue.
+VOLUME_FEEDBACK_DELAY = 0.25
+
 
 class DeviceApplication:
   def __init__(self) -> None:
@@ -81,6 +85,8 @@ class DeviceApplication:
     self.background_tasks: list[asyncio.Task] = []
 
     self._geocode_retry_interval = 60.0
+    self._volume_feedback_handle: asyncio.TimerHandle | None = None
+    self._volume_feedback_task: asyncio.Task | None = None
 
     self._setup_queues()
 
@@ -111,6 +117,27 @@ class DeviceApplication:
     if not self.shutdown_event.is_set():
       logger.info("Shutdown signal received. Stopping application...")
       self.shutdown_event.set()
+
+  def schedule_volume_feedback(self) -> None:
+    """Play the volume confirmation cue once the level stops changing.
+
+    Slider drags send a burst of volume updates; delaying the cue and
+    restarting the timer on each update plays a single beep at the end
+    instead of queuing one blocking playback per intermediate value.
+    """
+    if self._volume_feedback_handle is not None:
+      self._volume_feedback_handle.cancel()
+
+    self._volume_feedback_handle = self.loop.call_later(VOLUME_FEEDBACK_DELAY, self._play_volume_feedback)
+
+  def _play_volume_feedback(self) -> None:
+    self._volume_feedback_handle = None
+    speaker = self.audio.speaker
+
+    if speaker is None or speaker.muted or speaker.volume <= 0.0:
+      return
+
+    self._volume_feedback_task = self.loop.create_task(self.play_sound_cue("volume"), name="Volume feedback")
 
   async def play_sound_cue(self, cue: SoundCue) -> None:
     if self.audio.speaker:
@@ -648,11 +675,14 @@ class DeviceApplication:
 
     if "speaker_volume" in updates:
       volume = updates["speaker_volume"]
+      changed = volume != self.settings.speaker_volume
       self.settings.speaker_volume = volume
 
       if hasattr(self, "audio") and self.audio and self.audio.speaker:
         self.audio.speaker.set_volume(volume)
-        await self.play_sound_cue("volume")
+
+        if changed:
+          self.schedule_volume_feedback()
 
       if hasattr(self, "ha_device") and self.ha_device:
         self.ha_device.set_speaker_volume_state(volume)
@@ -891,7 +921,9 @@ class DeviceApplication:
 
     # Assume a TTS stub exists or inject the client here based on your original imports
     self.tts = TTSManager(self.settings)
-    self.executor = CommandExecutor(self.audio, self.tts, self.ha_device, self.loop)
+    self.executor = CommandExecutor(
+      self.audio, self.tts, self.ha_device, self.loop, volume_feedback=self.schedule_volume_feedback
+    )
 
     self._load_components()
 
@@ -998,6 +1030,16 @@ class DeviceApplication:
     # Stop all components
     for component in self.components.values():
       await component.stop()
+
+    # Drop a pending volume confirmation cue so it cannot overlap the
+    # shutdown sound.
+    if self._volume_feedback_handle is not None:
+      self._volume_feedback_handle.cancel()
+      self._volume_feedback_handle = None
+
+    if self._volume_feedback_task is not None:
+      self._volume_feedback_task.cancel()
+      self._volume_feedback_task = None
 
     # Play shutdown sound
     if self.audio.speaker:

@@ -428,7 +428,9 @@ client_id="oremi-device-<node_id>")`; `connect(broker, port, keepalive=0)`
   `PlayerCommand` (`stop|pause|resume`) -> speaker control;
   `AlarmCommand`/`ReminderCommand` -> schedule an asyncio task keyed by
   `id`; `CancelScheduledCommand` -> cancel; `SetVolumeCommand`/`MuteCommand`
-  -> update speaker and HA state.
+  -> update speaker and HA state. Volume changes also request the debounced
+  confirmation cue through the `volume_feedback` callback supplied by
+  `DeviceApplication`.
 - **State:** `playback_task`, `speech_task`, `scheduled_tasks`;
   `cancel_active()` stops the speaker and awaits/clears active tasks.
 

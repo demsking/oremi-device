@@ -910,3 +910,154 @@ async def test_publish_service_statuses() -> None:
     "running",
     started_at="2026-11-16T08:00:00+00:00",
   )
+
+
+@pytest.mark.asyncio
+async def test_volume_change_plays_one_cue_after_settling(tmp_path, monkeypatch) -> None:
+  from device.core import app as app_module
+  from device.core.app import DeviceApplication
+  from device.core.settings import Settings
+
+  monkeypatch.setattr(app_module, "VOLUME_FEEDBACK_DELAY", 0.02)
+
+  fake_settings = Settings(
+    _env_file=None,
+    node_id="test-node",
+    ohunerin_host="localhost",
+    andika_host="localhost",
+    mqtt_broker="localhost",
+    mqtt_discovery=False,
+    data_path=tmp_path,
+  )
+
+  with patch("device.core.app.get_settings", return_value=fake_settings):
+    app = DeviceApplication()
+
+  app.audio = MagicMock()
+  app.audio.speaker = MagicMock()
+  app.audio.speaker.muted = False
+  app.audio.speaker.volume = 1.0
+  app.audio.speaker.set_volume = MagicMock(side_effect=lambda value: setattr(app.audio.speaker, "volume", value))
+  app.audio.speaker_state = {"device": "Built-in Audio", "muted": False, "volume": 1.0}
+  app.ha_device = MagicMock()
+  app._publish_discovery = AsyncMock()
+  app.play_sound_cue = AsyncMock()
+
+  for volume in (0.3, 0.5, 0.7):
+    await app.apply_settings_updates({"speaker_volume": volume})
+
+  app.play_sound_cue.assert_not_awaited()
+
+  await asyncio.sleep(0.1)
+
+  app.play_sound_cue.assert_awaited_once_with("volume")
+
+
+@pytest.mark.asyncio
+async def test_volume_feedback_is_skipped_when_muted(tmp_path, monkeypatch) -> None:
+  from device.core import app as app_module
+  from device.core.app import DeviceApplication
+  from device.core.settings import Settings
+
+  monkeypatch.setattr(app_module, "VOLUME_FEEDBACK_DELAY", 0.02)
+
+  fake_settings = Settings(
+    _env_file=None,
+    node_id="test-node",
+    ohunerin_host="localhost",
+    andika_host="localhost",
+    mqtt_broker="localhost",
+    mqtt_discovery=False,
+    data_path=tmp_path,
+  )
+
+  with patch("device.core.app.get_settings", return_value=fake_settings):
+    app = DeviceApplication()
+
+  app.audio = MagicMock()
+  app.audio.speaker = MagicMock()
+  app.audio.speaker.muted = True
+  app.audio.speaker.volume = 0.5
+  app.audio.speaker_state = {"device": "Built-in Audio", "muted": True, "volume": 0.5}
+  app.ha_device = MagicMock()
+  app._publish_discovery = AsyncMock()
+  app.play_sound_cue = AsyncMock()
+
+  await app.apply_settings_updates({"speaker_volume": 0.8})
+  await asyncio.sleep(0.1)
+
+  app.play_sound_cue.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_volume_feedback_is_skipped_at_zero_volume(tmp_path, monkeypatch) -> None:
+  from device.core import app as app_module
+  from device.core.app import DeviceApplication
+  from device.core.settings import Settings
+
+  monkeypatch.setattr(app_module, "VOLUME_FEEDBACK_DELAY", 0.02)
+
+  fake_settings = Settings(
+    _env_file=None,
+    node_id="test-node",
+    ohunerin_host="localhost",
+    andika_host="localhost",
+    mqtt_broker="localhost",
+    mqtt_discovery=False,
+    data_path=tmp_path,
+  )
+
+  with patch("device.core.app.get_settings", return_value=fake_settings):
+    app = DeviceApplication()
+
+  app.audio = MagicMock()
+  app.audio.speaker = MagicMock()
+  app.audio.speaker.muted = False
+  app.audio.speaker.volume = 0.5
+  app.audio.speaker.set_volume = MagicMock(side_effect=lambda value: setattr(app.audio.speaker, "volume", value))
+  app.audio.speaker_state = {"device": "Built-in Audio", "muted": False, "volume": 0.5}
+  app.ha_device = MagicMock()
+  app._publish_discovery = AsyncMock()
+  app.play_sound_cue = AsyncMock()
+
+  await app.apply_settings_updates({"speaker_volume": 0.0})
+  await asyncio.sleep(0.1)
+
+  app.play_sound_cue.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_volume_feedback_is_skipped_when_volume_is_unchanged(tmp_path, monkeypatch) -> None:
+  from device.core import app as app_module
+  from device.core.app import DeviceApplication
+  from device.core.settings import Settings
+
+  monkeypatch.setattr(app_module, "VOLUME_FEEDBACK_DELAY", 0.02)
+
+  fake_settings = Settings(
+    _env_file=None,
+    node_id="test-node",
+    ohunerin_host="localhost",
+    andika_host="localhost",
+    mqtt_broker="localhost",
+    mqtt_discovery=False,
+    data_path=tmp_path,
+    speaker_volume=0.5,
+  )
+
+  with patch("device.core.app.get_settings", return_value=fake_settings):
+    app = DeviceApplication()
+
+  app.audio = MagicMock()
+  app.audio.speaker = MagicMock()
+  app.audio.speaker.muted = False
+  app.audio.speaker.volume = 0.5
+  app.audio.speaker_state = {"device": "Built-in Audio", "muted": False, "volume": 0.5}
+  app.ha_device = MagicMock()
+  app._publish_discovery = AsyncMock()
+  app.play_sound_cue = AsyncMock()
+
+  await app.apply_settings_updates({"speaker_volume": 0.5})
+  await asyncio.sleep(0.1)
+
+  app.play_sound_cue.assert_not_awaited()
