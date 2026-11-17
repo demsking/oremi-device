@@ -26,6 +26,7 @@ class SupportedModel(BaseModel):
   id: str  # pylint: disable=invalid-name
   name: str
   language: str
+  backend: str | None = None
 
 
 class BaseTranscriber(abc.ABC):

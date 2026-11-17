@@ -81,6 +81,16 @@ def test_settings_defaults() -> None:
   assert settings.edge_tts_url is None
 
 
+def test_andika_model_accepts_identifiers_provided_by_the_server() -> None:
+  settings = Settings(
+    _env_file=None,
+    **REQUIRED_SETTINGS,
+    andika_model=" vosk-model-small-fr-0.22 ",
+  )
+
+  assert settings.andika_model == "vosk-model-small-fr-0.22"
+
+
 def test_settings_are_loaded_from_environment(monkeypatch: pytest.MonkeyPatch) -> None:
   monkeypatch.setattr(
     "device.core.settings.get_location_geocode",
@@ -224,7 +234,7 @@ def test_speaker_only_settings_do_not_require_microphone_services() -> None:
     ("first_day_of_week", "friday"),
     ("akorin_url", "not-a-url"),
     ("ohunerin_threshold", 0),
-    ("andika_model", "unsupported"),
+    ("andika_model", "   "),
     ("andika_samplerate", 0),
     ("speaker_volume", 1.1),
     ("izwi_url", "not-a-url"),

@@ -460,7 +460,7 @@ def test_andika_get_supported_models() -> None:
   component = AndikaComponent(_make_settings())
   response = MagicMock()
   response.json.return_value = [
-    {"id": "vosk-model-small-fr-0.22", "name": "French (Small)", "language": "fr"},
+    {"id": "vosk-model-small-fr-0.22", "name": "French (Small)", "language": "fr", "backend": "vosk"},
     {"id": "vosk-model-small-en-us-0.15", "name": "English US (Small)", "language": "en"},
   ]
 
@@ -471,6 +471,8 @@ def test_andika_get_supported_models() -> None:
   response.raise_for_status.assert_called_once()
   assert [model.id for model in models] == ["vosk-model-small-fr-0.22", "vosk-model-small-en-us-0.15"]
   assert models[0].language == "fr"
+  assert models[0].backend == "vosk"
+  assert models[1].backend is None
 
 
 def test_andika_get_supported_models_secure_endpoint() -> None:

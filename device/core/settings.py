@@ -36,6 +36,7 @@ from pydantic_settings import SettingsConfigDict
 
 from device.core.geocode import get_location_geocode
 from device.core.models import AndikaModel
+from device.core.models import normalize_model_id
 from device.core.package import APP_NAME
 from device.core.package import APP_VERSION
 from device.core.timezone import infer_timezone_from_coordinates
@@ -78,8 +79,8 @@ def format_settings_errors(error: ValidationError) -> list[str]:
       message = "must be one of: fr, en"
     elif field == "preferred_currency" and error_type == "string_pattern_mismatch":
       message = "must be a three-letter ISO 4217 currency code"
-    elif field == "andika_model" and error_type == "literal_error":
-      message = "contains an unsupported model identifier"
+    elif field == "andika_model" and error_type == "value_error":
+      message = "must be a non-empty model identifier exposed by the Andika server"
     elif field == "izwi_url" and error_type in ("url_parsing", "url_scheme"):
       message = "must be a valid HTTP or HTTPS URL"
     elif field == "edge_tts_url" and error_type in ("url_parsing", "url_scheme"):
@@ -228,6 +229,11 @@ class Settings(BaseSettings):
   @classmethod
   def normalize_preferred_currency(cls, value: str) -> str:
     return value.upper() if isinstance(value, str) else value
+
+  @field_validator("andika_model")
+  @classmethod
+  def validate_andika_model(cls, value: str) -> str:
+    return normalize_model_id(value)
 
   @field_validator("timezone")
   @classmethod

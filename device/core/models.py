@@ -71,39 +71,24 @@ class OhunerinConfig(BaseModel):
     return list(dict.fromkeys(value))
 
 
-AndikaModel = Literal[
-  "zhifeixie/Mega-ASR",
-  "vosk-model-small-en-us-0.15",
-  "vosk-model-small-en-in-0.4",
-  "vosk-model-small-cn-0.22",
-  "vosk-model-small-ru-0.22",
-  "vosk-model-small-fr-0.22",
-  "vosk-model-small-de-0.15",
-  "vosk-model-small-es-0.42",
-  "vosk-model-small-pt-0.3",
-  "vosk-model-small-tr-0.3",
-  "vosk-model-small-vn-0.4",
-  "vosk-model-small-it-0.22",
-  "vosk-model-small-nl-0.22",
-  "vosk-model-small-ca-0.4",
-  "vosk-model-small-ar-tn-0.1-linto",
-  "vosk-model-small-fa-0.42",
-  "vosk-model-small-uk-v3-small",
-  "vosk-model-small-kz-0.42",
-  "vosk-model-small-sv-rhasspy-0.15",
-  "vosk-model-small-ja-0.22",
-  "vosk-model-small-eo-0.42",
-  "vosk-model-small-hi-0.22",
-  "vosk-model-small-cs-0.4-rhasspy",
-  "vosk-model-small-pl-0.22",
-  "vosk-model-small-uz-0.22",
-  "vosk-model-small-ko-0.22",
-  "vosk-model-small-gu-0.42",
-  "vosk-model-small-tg-0.22",
-  "vosk-model-small-te-0.42",
-  "vosk-model-small-ky-0.42",
-  "vosk-model-small-ka-0.42",
-]
+def normalize_model_id(value: str) -> str:
+  """
+  Normalize and validate a transcription model identifier.
+
+  Available models are discovered at runtime from the transcription server
+  (Andika exposes them on ``/api/models``); they must not be hard-coded here.
+  """
+  model = value.strip()
+
+  if not model:
+    raise ValueError("must be a non-empty model identifier")
+
+  return model
+
+
+# Backward compatibility alias. The supported identifiers are provided by the
+# Andika server, so this is a free-form string rather than a fixed literal.
+AndikaModel = str
 
 
 class AndikaConfig(BaseModel):
@@ -111,8 +96,13 @@ class AndikaConfig(BaseModel):
   The configuration schema for the Andika speech-recognition component.
   """
 
-  model: AndikaModel = Field(default="zhifeixie/Mega-ASR", description="The Andika speech-to-text model identifier.")
+  model: str = Field(default="zhifeixie/Mega-ASR", description="The Andika speech-to-text model identifier.")
   samplerate: int = Field(default=16000, description="The audio sample rate in Hz.")
+
+  @field_validator("model")
+  @classmethod
+  def validate_model(cls, value: str) -> str:
+    return normalize_model_id(value)
 
 
 class AkorinConfig(BaseModel):
